@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package bambuflow.events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// 平台事件（技术设计文档 13.7）：产生方写入自己库里的发件表，与业务变更同一事务提交，再转发到事件流；
+// governance 消费后按订阅投递 Webhook。至少投递一次，消费方按 event_id 去重。
+// 只带 ID、类型、时间和对象 ID，不带文档或问答内容：接收方需要详情时再带身份调 API。
+message PlatformEvent {
+  // 前缀 evt_。
+  string event_id = 1;
+  // 事件名，对象.动作（技术设计文档 13.11），取值见文件末尾。
+  string type = 2;
+  // 事件所属的租户；为空表示与所有租户相关（如共享索引的新版本上线）。
+  string tenant = 3;
+  // 事件对象的 ID：batch.* 为 batch_id（bat_），index.version.* 为索引版本号，source.* 为数据源 ID（src_）。
+  string object_id = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+// 已实现的事件名（字符串常量，对外原样使用）：
+//   batch.completed      批次结束，至少一条成功
+//   batch.failed         批次结束，没有一条成功
+//   index.version.live   索引新版本上线
+//   source.revoked       数据源被撤销（object_id 为 src_）：connectors 据此对该源全部文档写删除标记

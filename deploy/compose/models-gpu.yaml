@@ -1,0 +1,19 @@
+# GPU 主机上的模型服务（BF_MODELS_GPU=1 时由 Makefile 叠加在 compose.yaml 之上）：CUDA 版 torch、申请一块 GPU。
+services:
+  models:
+    build:
+      args:
+        REQUIREMENTS: requirements-gpu.txt
+        TORCH_INDEX: https://download.pytorch.org/whl/cu126
+    image: bambuflow-model-server:gpu
+    environment:
+      BF_BATCH: "64"
+      # GPU 上长文本不再是瓶颈，按模型支持的长度处理
+      BF_MAX_TOKENS: "1024"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

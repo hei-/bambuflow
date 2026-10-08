@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package bambuflow.ingestion.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// 入库事件（入库管道详设 14.2）：只带 ID、版本、哈希和引用，不带正文；消息键为 doc_id；
+// 至少投递一次，消费方必须按 event_id 幂等。
+
+// DocumentChanged 由 connectors 发出，表示源系统中一份文档发生了变化。
+message DocumentChanged {
+  // 前缀 evt_。
+  string event_id = 1;
+  // 前缀 src_。
+  string source_id = 2;
+  string doc_id = 3;
+  ChangeType change_type = 4;
+  string content_hash = 5;
+  // 权限摘要：源端 ACL 归一化后的哈希，用于发现仅权限变化。
+  string acl_fingerprint = 6;
+  // 源端发生变更的时间，“删除优先”靠它判断先后。
+  google.protobuf.Timestamp occurred_at = 7;
+  google.protobuf.Timestamp detected_at = 8;
+  Detection detection = 9;
+  // 原文在对象存储中的引用；delete 和 acl_only 时为空。
+  string raw_ref = 10;
+}
+
+enum ChangeType {
+  CHANGE_TYPE_UNSPECIFIED = 0;
+  CHANGE_TYPE_UPSERT = 1;
+  CHANGE_TYPE_DELETE = 2;
+  CHANGE_TYPE_ACL_ONLY = 3;
+}
+
+// 变更是怎么发现的。
+enum Detection {
+  DETECTION_UNSPECIFIED = 0;
+  DETECTION_WEBHOOK = 1;
+  DETECTION_POLL = 2;
+  DETECTION_LISTING = 3;
+  DETECTION_RECONCILE = 4;
+  DETECTION_PUSH = 5;
+}

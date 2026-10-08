@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// WebhookAdminService 是事件订阅的管理接口（技术设计文档 13.7），由 governance 实现。
+// 现由命令行与端到端测试调用；console 接入后经 gateway 的 /v1/admin 路由调用。
+service WebhookAdminService {
+  // 登记订阅。签名密钥由 governance 生成并存进 Vault，只在这次响应里返回一次。
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (CreateSubscriptionResponse);
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+  // 停用订阅：不再产生新的投递，已排队的投递也不再发送。
+  rpc DeleteSubscription(DeleteSubscriptionRequest) returns (DeleteSubscriptionResponse);
+  // 按订阅查投递记录，新的在前。
+  rpc ListDeliveries(ListDeliveriesRequest) returns (ListDeliveriesResponse);
+  // 手工重放一次投递（不论之前是否成功），沿用原事件 ID，接收方照常按事件 ID 去重。
+  rpc Redeliver(RedeliverRequest) returns (RedeliverResponse);
+}
+
+message CreateSubscriptionRequest {
+  string tenant = 1;
+  // 回调地址，须为 https（开发环境可另行放开 http）。
+  string url = 2;
+  // 订阅的事件名，如 batch.completed、index.version.live。
+  repeated string event_types = 3;
+  // 用途与负责人，便于运维联系。
+  string description = 4;
+}
+
+message CreateSubscriptionResponse {
+  WebhookSubscription subscription = 1;
+  // 签名密钥（whsec_ 前缀）。只返回这一次，之后只能轮换。
+  string signing_secret = 2;
+}
+
+message ListSubscriptionsRequest {
+  // 为空时列出全部租户的订阅。
+  string tenant = 1;
+}
+
+message ListSubscriptionsResponse {
+  repeated WebhookSubscription subscriptions = 1;
+}
+
+message DeleteSubscriptionRequest {
+  string subscription_id = 1;
+}
+
+message DeleteSubscriptionResponse {}
+
+message ListDeliveriesRequest {
+  string subscription_id = 1;
+  // 1–200，默认 50。
+  int32 limit = 2;
+}
+
+message ListDeliveriesResponse {
+  repeated WebhookDelivery deliveries = 1;
+}
+
+message RedeliverRequest {
+  string subscription_id = 1;
+  string event_id = 2;
+}
+
+message RedeliverResponse {}
+
+message WebhookSubscription {
+  // 前缀 whk_。
+  string subscription_id = 1;
+  string tenant = 2;
+  string url = 3;
+  repeated string event_types = 4;
+  string description = 5;
+  bool active = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message WebhookDelivery {
+  string event_id = 1;
+  string event_type = 2;
+  DeliveryStatus status = 3;
+  int32 attempts = 4;
+  // 最近一次的 HTTP 状态码；没连上时为 0。
+  int32 last_status_code = 5;
+  string last_error = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp next_attempt_at = 8;
+  google.protobuf.Timestamp delivered_at = 9;
+}
+
+enum DeliveryStatus {
+  DELIVERY_STATUS_UNSPECIFIED = 0;
+  DELIVERY_STATUS_PENDING = 1;
+  DELIVERY_STATUS_DELIVERED = 2;
+  // 24 小时内重试仍未成功，或订阅已停用。
+  DELIVERY_STATUS_FAILED = 3;
+}

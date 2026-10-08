@@ -1,0 +1,30 @@
+# evaluation（evaluation 详设）：以回放模式通过 Answer 契约调用 orchestrator，按评测集计算指标；
+# 常驻服务（serve）提供 A/B 分析，guard 每天检查护栏。
+[project]
+name = "bambuflow-evaluation"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "bambuflow-contracts",
+    "bambuflow-grounding",
+    # 常驻服务的鉴权拦截器与 Principal 校验（A/B 分析接口，evaluation 详设 8.2）
+    "bambuflow-platform",
+    "grpcio>=1.84.0",
+    "httpx>=0.28",
+    "pyjwt[crypto]>=2.10",
+    "pyyaml>=6.0",
+    # 在线抽样评审的结果存 evaluation 自有的 schema（evaluation 详设 7.1），与 orchestrator 同一个驱动
+    "psycopg[binary]>=3.2",
+]
+
+[tool.uv.sources]
+bambuflow-contracts = { workspace = true }
+bambuflow-grounding = { workspace = true }
+bambuflow-platform = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bambuflow_evaluation"]

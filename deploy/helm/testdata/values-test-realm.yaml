@@ -1,0 +1,20 @@
+# 反例（make helm-check 断言它校验失败）：生产 values 里出现测试用上游 IdP realm 与开发口令。
+image:
+  registry: registry.corp.example/bambuflow
+  tag: 0.1.0
+vault:
+  addr: https://vault.corp.example
+  role: dev-only-vault
+otel:
+  endpoint: http://otel-collector.observability:4317
+# compose 里的 Redis 服务名
+events:
+  redisAddr: redis:6379
+gateway:
+  platformIssuer: http://keycloak:8080/realms/corp-idp
+retrieval:
+  embedderUrl: http://triton.models:8000
+orchestrator:
+  llmUrl: http://llm:8000
+  llmModel: mock-chat-1
+  nliUrl: http://triton.models:8000

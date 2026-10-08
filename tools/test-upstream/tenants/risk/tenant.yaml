@@ -1,0 +1,8 @@
+# 测试租户（只用于开发与 CI）：风险业务线，处于试点阶段且没有试点群组，问答对所有成员关闭
+tenant: risk
+rollout: pilot
+member_groups: [risk-dept]
+pilot_groups: []
+bound_clients: []
+# 开发与 CI 放宽租户限制（并发 1000 路、每日 1 万亿 token），避免 e2e 与评测连续请求被限；生产按租户申请配置
+quota: {max_concurrency: 1000, daily_tokens: 1000000000000}

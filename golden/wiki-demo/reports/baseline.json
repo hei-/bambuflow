@@ -1,0 +1,80 @@
+{
+  "golden": {
+    "name": "wiki-demo",
+    "version": "2026-10-05.2",
+    "provenance": {
+      "source": "llm_generated_unreviewed",
+      "author": "claude",
+      "reviewed_by": null
+    }
+  },
+  "config": {
+    "index_version": [
+      "ix-20261005-234516-384704"
+    ],
+    "policy_version": [
+      "sha256:f72926859324e111"
+    ],
+    "embedding_model": [
+      "bge-m3@mock-hash-1"
+    ],
+    "generation_model": [
+      "mock-chat-1"
+    ],
+    "prompt_version": [
+      "qa-single-hop@1"
+    ],
+    "nli_model": [
+      "nli@mock-bigram-1"
+    ]
+  },
+  "judge": {
+    "nli_model": "nli@mock-bigram-1"
+  },
+  "repeats": 3,
+  "conclusion": "passed",
+  "reasons": [],
+  "unstable": [],
+  "metrics": {
+    "recall_at_10": 0.9560439560439561,
+    "citation_coverage": 1.0,
+    "groundedness": 1.0,
+    "status_accuracy": 0.8348623853211009,
+    "refusal_accuracy": 0.0,
+    "false_refusal_rate": 0.0,
+    "latency_p50_ms": 75.89678700003333,
+    "latency_p95_ms": 157.0172360000015
+  },
+  "tenant_metrics": {
+    "credit": {
+      "recall_at_10": 0.9259259259259259,
+      "citation_coverage": 1.0,
+      "groundedness": 1.0,
+      "status_accuracy": 0.8709677419354839,
+      "refusal_accuracy": 0.0,
+      "false_refusal_rate": 0.0,
+      "latency_p50_ms": 79.82852600002843,
+      "latency_p95_ms": 165.46284399998967
+    },
+    "ops": {
+      "recall_at_10": 1.0,
+      "citation_coverage": 1.0,
+      "groundedness": 1.0,
+      "status_accuracy": 0.6666666666666666,
+      "refusal_accuracy": 0.0,
+      "false_refusal_rate": 0.0,
+      "latency_p50_ms": 66.77996400003394,
+      "latency_p95_ms": 127.44753999993463
+    },
+    "risk": {
+      "recall_at_10": 1.0,
+      "citation_coverage": 1.0,
+      "groundedness": 1.0,
+      "status_accuracy": 0.84375,
+      "refusal_accuracy": 0.0,
+      "false_refusal_rate": 0.0,
+      "latency_p50_ms": 72.83152499996959,
+      "latency_p95_ms": 149.1158929999301
+    }
+  }
+}

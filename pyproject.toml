@@ -1,0 +1,61 @@
+# uv 工作区根：只做聚合和开发工具，每个 Python 模块自带 pyproject.toml（技术设计文档 12.2）。
+[project]
+name = "bambuflow-workspace"
+version = "0"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = ["ruff>=0.14", "mypy>=1.18", "pytest>=8.4", "types-grpcio>=1.84", "types-protobuf>=7.35", "types-ldap3>=2.9", "types-pyyaml>=6.0", "pyarrow-stubs>=20", "types-openpyxl>=3.1"]
+
+[tool.uv]
+package = false
+
+# 默认索引用腾讯云 PyPI 镜像：远端构建机（腾讯云）访问 pypi.org 只有约 13–43 KB/s，镜像约 20 MB/s。
+# 安装时 uv 按 uv.lock 里的 sha256 校验每个包，镜像无法篡改内容。
+[[tool.uv.index]]
+name = "tencent"
+url = "https://mirrors.cloud.tencent.com/pypi/simple"
+default = true
+
+[tool.uv.workspace]
+# Python 模块加入时在这里登记。
+members = [
+    "contracts/gen/python",
+    "libs/grounding",
+    "libs/platform-py",
+    "libs/vocabulary",
+    "services/evaluation",
+    "services/ingestion/processing",
+    "services/qa/orchestrator",
+    "tools/e2e",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["**/testdata/**", "contracts/gen/python/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "BLE"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "bambuflow",
+    "bambuflow_evaluation",
+    "bambuflow_grounding",
+    "bambuflow_orchestrator",
+    "bambuflow_platform",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+"**/e2e_tests/**" = ["S101"]
+"**/perm_eval/test_*.py" = ["S101"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+# 生成的契约代码带 .pyi 但没有 py.typed，直接从源码目录读类型。
+# tools/stubs：第三方库自带注解不完整、也没有可用存根包时，仓库自己维护的类型存根（如 PyMuPDF）。
+mypy_path = "contracts/gen/python/src:tools/stubs"
+exclude = ["^contracts/gen/python/src/"]

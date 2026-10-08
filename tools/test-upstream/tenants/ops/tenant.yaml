@@ -1,0 +1,13 @@
+# 测试租户（只用于开发与 CI）：全员可用，用来验证同时属于多个租户、以及群组超过 200 个的用户
+tenant: ops
+rollout: general
+member_groups: [all-staff]
+pilot_groups: []
+bound_clients: []
+# 测试用 MCP agent（P3-I2 的可疑指令用例以 sam 经它调用）：e2e 经 Keycloak 管理 API 建同名客户端
+mcp_agents:
+  - client_id: e2e-agent-ops
+    purpose: 端到端测试
+    owner: 平台组
+# 开发与 CI 放宽租户限制（并发 1000 路、每日 1 万亿 token），避免 e2e 与评测连续请求被限；生产按租户申请配置
+quota: {max_concurrency: 1000, daily_tokens: 1000000000000}

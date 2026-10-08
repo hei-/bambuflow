@@ -1,0 +1,21 @@
+bambuflow
+Copyright 2026 The bambuflow Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes data derived from the following third-party work:
+
+- golden/t2retrieval/queries.jsonl: 500 queries and relevance labels sampled from
+  T2Retrieval in C-MTEB (ModelScope dataset MTEB/T2Retrieval), originally from T2Ranking,
+  licensed under the Apache License, Version 2.0. Passage texts are not included.
+
+The following models are downloaded at build or run time and are not redistributed in this
+repository. Their licenses are set by their publishers; check each model page before use:
+
+- BAAI/bge-m3 (embedding)
+- BAAI/bge-reranker-v2-m3 (reranking)
+- Fengshenbang/Erlangshen-Roberta-110M-NLI, Fengshenbang/Erlangshen-Roberta-330M-NLI (NLI)
+- PaddleOCR PP-OCRv5 detection and recognition models (OCR)
+
+All documents, users, organizations, mailboxes and business records under tools/test-upstream,
+golden/ and tools/e2e are synthetic and fictional, created for development and testing only.

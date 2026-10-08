@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ExperimentAdminService 是 A/B 实验的管理接口（governance 详设 3.1、7.2，技术设计文档 10.5），由 governance 实现，
+// gateway 的 /v1/admin/experiments 调用，调用方须带管理 Principal（平台管理员）。
+// 分组由 orchestrator 按 user_id 与实验 id 计算（orchestrator 详设 12.3）；运行中的实验经 ConfigService 快照下发。
+// A/B 分析在 evaluation（/v1/admin/experiments/{exp_id}/analysis），不在这里。
+service ExperimentAdminService {
+  // 新的在前。
+  rpc ListExperiments(ListExperimentsRequest) returns (ListExperimentsResponse);
+  rpc GetExperiment(GetExperimentRequest) returns (GetExperimentResponse);
+  // 立项并立即开始，流量从 5% 起。同一租户同时只能有一个运行中的实验。
+  rpc CreateExperiment(CreateExperimentRequest) returns (CreateExperimentResponse);
+  // 灰度推进：只能按 5% → 20% → 50% 向上调。
+  rpc RampExperiment(RampExperimentRequest) returns (RampExperimentResponse);
+  // 停止实验，所有请求回到基线配置。已停止的再停返回原样。
+  rpc StopExperiment(StopExperimentRequest) returns (StopExperimentResponse);
+}
+
+// 主要指标：只能选一个（技术设计文档 10.5）。引用点击率与会话内重复提问率还没有数据来源，暂不接受。
+enum PrimaryMetric {
+  PRIMARY_METRIC_UNSPECIFIED = 0;
+  // “有用”反馈率：有反馈的回答里标为有用的比例，越高越好
+  PRIMARY_METRIC_USEFUL_RATE = 1;
+  // insufficient_evidence 比例，越低越好
+  PRIMARY_METRIC_INSUFFICIENT_EVIDENCE_RATE = 2;
+}
+
+enum ExperimentStatus {
+  EXPERIMENT_STATUS_UNSPECIFIED = 0;
+  EXPERIMENT_STATUS_RUNNING = 1;
+  EXPERIMENT_STATUS_STOPPED = 2;
+}
+
+// 实验组替换的对象（orchestrator 详设 12.3）。本期只开放阈值：提示词与模型目前各只有一个可用版本。
+// 不填的字段沿用基线。
+message ExperimentOverrides {
+  // 句支持度门槛，0.3–0.9（orchestrator 详设 12.2 的合理范围）
+  optional double support_threshold = 1;
+  // 引用覆盖率门槛，0.5–1.0
+  optional double min_coverage = 2;
+}
+
+message Experiment {
+  // exp_ 前缀
+  string exp_id = 1;
+  string tenant = 2;
+  // 假设与预期效果
+  string hypothesis = 3;
+  PrimaryMetric primary_metric = 4;
+  // 主要指标的基线值与最小可检测差异（绝对值），据此算出每组需要的用户数
+  double baseline_rate = 5;
+  double min_detectable_effect = 6;
+  int64 sample_size_per_arm = 7;
+  // 进入实验组的用户比例：5、20 或 50
+  int32 traffic_percent = 8;
+  ExperimentOverrides overrides = 9;
+  ExperimentStatus status = 10;
+  string created_by = 11;
+  google.protobuf.Timestamp created_at = 12;
+  string stopped_by = 13;
+  google.protobuf.Timestamp stopped_at = 14;
+  string stop_reason = 15;
+}
+
+message CreateExperimentRequest {
+  string tenant = 1;
+  string hypothesis = 2;
+  PrimaryMetric primary_metric = 3;
+  // 0–1 之间
+  double baseline_rate = 4;
+  // 大于 0，且基线值加减它仍在 0–1 之间
+  double min_detectable_effect = 5;
+  ExperimentOverrides overrides = 6;
+}
+
+message RampExperimentRequest {
+  string exp_id = 1;
+  // 20 或 50，且大于当前值
+  int32 traffic_percent = 2;
+}
+
+message StopExperimentRequest {
+  string exp_id = 1;
+  // 原因必填，最多 500 字
+  string reason = 2;
+}
+
+message GetExperimentRequest {
+  string exp_id = 1;
+}
+
+message GetExperimentResponse {
+  Experiment experiment = 1;
+}
+
+message CreateExperimentResponse {
+  Experiment experiment = 1;
+}
+
+message RampExperimentResponse {
+  Experiment experiment = 1;
+}
+
+message StopExperimentResponse {
+  Experiment experiment = 1;
+}
+
+message ListExperimentsRequest {
+  // 1–200，0 时取 50
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListExperimentsResponse {
+  repeated Experiment experiments = 1;
+  // 没有下一页时为空
+  string next_page_token = 2;
+}

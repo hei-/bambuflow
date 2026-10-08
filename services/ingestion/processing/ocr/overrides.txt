@@ -1,0 +1,4 @@
+# PaddleX 3.7 精确钉住 opencv-contrib-python==4.10.0.84，它内置的 FFmpeg 5.1.4 有已修复的严重漏洞（CVE-2026-40962，
+# CI 镜像扫描拦下）。OCR 只用 OpenCV 解码图片，覆盖成内置 FFmpeg 8.1 的版本；冒烟测试验证识别结果不变。
+# PaddleX 放开这个钉住后删掉本文件。
+opencv-contrib-python==4.14.0.94

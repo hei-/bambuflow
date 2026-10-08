@@ -1,0 +1,24 @@
+# 测试用公司目录（OpenLDAP）的身份同步配置，只用于开发与 CI。生产配置按部署配置清单 N2 填写。
+source: corp-ldap
+ldap:
+  url: ldap://openldap:389
+  bind_dn: cn=admin,dc=corp,dc=example
+  bind_password_env: LDAP_BIND_PASSWORD
+  users:
+    base_dn: ou=people,dc=corp,dc=example
+    filter: (objectClass=inetOrgPerson)
+  groups:
+    base_dn: ou=groups,dc=corp,dc=example
+    filter: (objectClass=groupOfNames)
+    name_attr: cn
+    member_attr: member
+mapping:
+  username: uid
+  display_name: cn
+  dept: departmentNumber
+  title: title
+  region: l
+  grade: employeeType
+  clearance_by_grade: {C1: public, C2: internal, C3: confidential}
+interval: 1m
+full_every: 24h

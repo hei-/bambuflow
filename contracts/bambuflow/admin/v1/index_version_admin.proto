@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// IndexVersionAdminService 是索引版本的管理接口（入库管道详设 14.4），由 indexing 实现，
+// gateway 的 /v1/admin/index-versions 调用，调用方须带管理 Principal（平台运维）。
+// 切换或回滚需双人复核：ActivateIndexVersion 只创建待复核的操作（op_），另一位平台运维 ApproveOperation 后才执行。
+service IndexVersionAdminService {
+  // 版本列表与清单摘要，新的在前。
+  rpc ListIndexVersions(ListIndexVersionsRequest) returns (ListIndexVersionsResponse);
+  // 申请把线上别名切到一个已下线的版本（回滚或切回）。目标版本清单不全或嵌入模型已下线时拒绝（activation_refused）；
+  // 同一版本已有待复核的操作时返回已有的。
+  rpc ActivateIndexVersion(ActivateIndexVersionRequest) returns (ActivateIndexVersionResponse);
+  // 复核并执行。发起人不能复核自己的操作（self_approval_forbidden）；执行前再按同样的条件核对一次。
+  rpc ApproveOperation(ApproveOperationRequest) returns (ApproveOperationResponse);
+}
+
+enum IndexVersionStatus {
+  INDEX_VERSION_STATUS_UNSPECIFIED = 0;
+  // 待发布：正在写入，还没上线
+  INDEX_VERSION_STATUS_PENDING = 1;
+  INDEX_VERSION_STATUS_LIVE = 2;
+  // 已下线：上过线、被新版本或回滚替换
+  INDEX_VERSION_STATUS_RETIRED = 3;
+}
+
+message IndexVersion {
+  string version = 1;
+  IndexVersionStatus status = 2;
+  // 版本清单摘要：一个版本只允许一个嵌入模型与一个分块器版本
+  string embedding_model = 3;
+  string chunker_version = 4;
+  // 清单里的文档数
+  int64 doc_count = 5;
+  // 清单里块记录已经不存在的文档数；大于 0 时清单不全，不能切回这个版本
+  int64 missing_doc_count = 6;
+  google.protobuf.Timestamp created_at = 7;
+  // 最近一次上线的时间；从没上过线时为空
+  google.protobuf.Timestamp published_at = 8;
+}
+
+message ListIndexVersionsRequest {
+  // 1–200，0 时取 50
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListIndexVersionsResponse {
+  repeated IndexVersion versions = 1;
+  // 没有下一页时为空
+  string next_page_token = 2;
+}
+
+enum OperationStatus {
+  OPERATION_STATUS_UNSPECIFIED = 0;
+  // 等待另一位平台运维复核
+  OPERATION_STATUS_PENDING = 1;
+  // 已复核并执行
+  OPERATION_STATUS_EXECUTED = 2;
+  // 复核时核对不通过（如清单已不全），没有执行
+  OPERATION_STATUS_FAILED = 3;
+  // 24 小时内没有复核，自动作废
+  OPERATION_STATUS_EXPIRED = 4;
+}
+
+// Operation 是一个需要双人复核的操作（入库管道详设 14.4）。
+message Operation {
+  // op_ 前缀
+  string operation_id = 1;
+  // 动作，现在只有 activate_index_version
+  string action = 2;
+  // 目标版本
+  string target_version = 3;
+  // 申请时的线上版本
+  string live_version = 4;
+  string reason = 5;
+  string requested_by = 6;
+  google.protobuf.Timestamp requested_at = 7;
+  OperationStatus status = 8;
+  // 复核人与时间；待复核时为空
+  string approved_by = 9;
+  google.protobuf.Timestamp approved_at = 10;
+  // 未执行的原因（failed、expired）
+  string failure_reason = 11;
+  // 过期时间：requested_at + 24 小时
+  google.protobuf.Timestamp expires_at = 12;
+}
+
+message ActivateIndexVersionRequest {
+  string version = 1;
+  // 原因（如故障单号），必填
+  string reason = 2;
+}
+
+message ActivateIndexVersionResponse {
+  Operation operation = 1;
+  // false 表示同一版本已有待复核的操作，返回的是已有的那一个
+  bool created = 2;
+}
+
+message ApproveOperationRequest {
+  string operation_id = 1;
+}
+
+message ApproveOperationResponse {
+  Operation operation = 1;
+}

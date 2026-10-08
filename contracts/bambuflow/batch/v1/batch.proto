@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package bambuflow.batch.v1;
+
+import "bambuflow/answer/v1/answer.proto";
+import "bambuflow/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// BatchService 由 qa/batch 实现，gateway 把 /v1/batches 系列接口转成这里的调用（技术设计文档 13.5，gateway 详设 4.1）。
+// 每次调用都带调用者的 Principal：提交时记下提交人与租户；查询、取消、取结果只对提交人本人开放，
+// 其他人一律 NOT_FOUND（不区分无权与不存在）。
+service BatchService {
+  rpc CreateBatch(CreateBatchRequest) returns (CreateBatchResponse);
+  rpc GetBatch(GetBatchRequest) returns (GetBatchResponse);
+  // 取消还没开始执行的条目；正在执行的条目照常结束。
+  rpc CancelBatch(CancelBatchRequest) returns (CancelBatchResponse);
+  // 按提交顺序分页返回已结束的条目。引用按取结果者当前的权限重新复核，已无权访问的条目改为错误。
+  rpc ListResults(ListResultsRequest) returns (ListResultsResponse);
+}
+
+message CreateBatchRequest {
+  // 前缀 bat_，由 gateway 生成并写进委托。
+  string batch_id = 1;
+  // gateway 签发的委托（gateway 详设 3.3）：绑定提交人、租户、批次与有效期，qa/batch 原样保存，
+  // 每条执行前凭它向 gateway 换发 Principal（identity.v1.PrincipalService.Exchange）。
+  string delegation = 2;
+  BatchMode mode = 3;
+  // 1–10,000 条，custom_id 在批内唯一。
+  repeated BatchItem items = 4;
+  // 调用方的 Idempotency-Key；同一提交人重复提交同一个键时返回已有批次。
+  string idempotency_key = 5;
+  // 请求内容的摘要：同一幂等键对应不同内容时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
+  string request_digest = 6;
+}
+
+message CreateBatchResponse {
+  Batch batch = 1;
+}
+
+message BatchItem {
+  string custom_id = 1;
+  // 不超过 2000 字。
+  string question = 2;
+  bambuflow.common.v1.Filters filters = 3;
+}
+
+message GetBatchRequest {
+  string batch_id = 1;
+}
+
+message GetBatchResponse {
+  Batch batch = 1;
+}
+
+message CancelBatchRequest {
+  string batch_id = 1;
+}
+
+message CancelBatchResponse {
+  Batch batch = 1;
+}
+
+message ListResultsRequest {
+  string batch_id = 1;
+  // 每页条数，1–100，默认 100。
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListResultsResponse {
+  repeated BatchResult results = 1;
+  // 没有下一页时为空。
+  string next_page_token = 2;
+}
+
+message Batch {
+  string batch_id = 1;
+  BatchStatus status = 2;
+  BatchMode mode = 3;
+  BatchCounts counts = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+  // 结果的保留截止时间：结束后 7 天（技术设计文档 13.5）；未结束时为空。
+  google.protobuf.Timestamp expires_at = 8;
+}
+
+message BatchCounts {
+  int64 total = 1;
+  int64 succeeded = 2;
+  int64 failed = 3;
+  int64 cancelled = 4;
+}
+
+message BatchResult {
+  string custom_id = 1;
+  oneof outcome {
+    // 完整的回答契约；AnswerResponse.audit 只供 gateway 写审计。
+    bambuflow.answer.v1.AnswerResponse answer = 2;
+    ItemError error = 3;
+  }
+}
+
+// 条目失败的原因，type 取对外错误类型（技术设计文档 13.10），如 forbidden、invalid_request、service_unavailable。
+message ItemError {
+  string type = 1;
+  string title = 2;
+}
+
+enum BatchStatus {
+  BATCH_STATUS_UNSPECIFIED = 0;
+  BATCH_STATUS_QUEUED = 1;
+  BATCH_STATUS_RUNNING = 2;
+  BATCH_STATUS_COMPLETED = 3;
+  BATCH_STATUS_FAILED = 4;
+  BATCH_STATUS_CANCELLED = 5;
+}
+
+// 批次模式（技术设计文档 13.5：问答 / 仅检索）。
+enum BatchMode {
+  BATCH_MODE_UNSPECIFIED = 0;
+  BATCH_MODE_ANSWER = 1;
+  BATCH_MODE_EVIDENCE_ONLY = 2;
+}

@@ -1,0 +1,8 @@
+# 开发用模型服务的依赖（不进 uv 工作区：torch 很大，只有这个镜像需要）。
+# 用 make run 在工具容器里生成带 sha256 的 requirements.txt，见 tools/model-server/README.md。
+torch
+transformers
+safetensors
+numpy
+# 下载权重；transformers 也依赖它，这里显式列出因为 server.py 直接使用
+httpx

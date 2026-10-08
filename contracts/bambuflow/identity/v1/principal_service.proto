@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package bambuflow.identity.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// PrincipalService 由 gateway 实现，只供 qa/batch 调用（gateway 详设 3.3，技术设计文档 13.3）。
+// 批量任务的条目可能在提交几天后才执行，而 Principal 只有 5 分钟有效：每条执行前凭提交时的委托换发一次，
+// gateway 按提交人当前的属性重新签发；提交人已停用、不再是租户成员或委托过期时拒绝（PERMISSION_DENIED）。
+service PrincipalService {
+  rpc Exchange(ExchangeRequest) returns (ExchangeResponse);
+}
+
+message ExchangeRequest {
+  // 提交批次时 gateway 签发的委托。
+  string delegation = 1;
+  // 委托所属的批次，必须与委托里的一致。
+  string batch_id = 2;
+}
+
+message ExchangeResponse {
+  // 新签发的 Principal（JWT），放在调用下游时的 authorization 里。
+  string principal = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}

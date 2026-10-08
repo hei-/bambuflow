@@ -1,0 +1,242 @@
+syntax = "proto3";
+
+package bambuflow.retrieval.v1;
+
+import "bambuflow/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// RetrievalService 是唯一持有索引读凭证的服务（retrieval 详设第 3 节）。
+// 调用方身份只来自 metadata 中的 Principal（authorization），请求体里没有租户字段；
+// metadata 还必须带 x-call-purpose（answer / search / agent_round / mcp / batch）。
+service RetrievalService {
+  // Search 召回并返回已按权限过滤、已排序的候选块。部分召回路失败不算错误，记在 degraded 里。
+  rpc Search(SearchRequest) returns (SearchResponse);
+  // CheckAccess 在返回前复核一批块对调用者是否仍然可见；读权限表，不读索引和缓存。
+  rpc CheckAccess(CheckAccessRequest) returns (CheckAccessResponse);
+  // ListDocuments 列出调用者有权看到、符合过滤条件的文档（K2 详设第 3 节）。只读元数据，不读向量与关键词索引；
+  // 权限、密级、删除标记、拒绝名单这些必含条件与 Search 相同，先于列举生效。
+  rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
+  // CountDocuments 统计调用者有权看到、符合过滤条件的文档数。必含条件先于计数生效：无权文档不影响数量。
+  rpc CountDocuments(CountDocumentsRequest) returns (CountDocumentsResponse);
+  // GetExcerpt 返回线上索引版本里一个块的原文片段（MCP 的 get_document_excerpt，gateway 详设第 7 节）。
+  // 先按调用者权限判定块所属文档，可见才读正文；无权与不存在一律返回 NOT_FOUND，不让调用方据此探测文档是否存在。
+  rpc GetExcerpt(GetExcerptRequest) returns (GetExcerptResponse);
+  // CheckDocumentAccess 按文档复核调用者当前是否仍然可见，判定与 CheckAccess 相同、读权限表的最新状态。
+  // 用于引用文档本身而非原文块的内容（清单类回答的列表项，K2 详设第 8 节），如批量取结果时的复核。
+  rpc CheckDocumentAccess(CheckDocumentAccessRequest) returns (CheckDocumentAccessResponse);
+}
+
+message SubQuery {
+  string id = 1;
+  string text = 2;
+}
+
+message SearchRequest {
+  // 1–4 个子查询。
+  repeated SubQuery queries = 1;
+  bambuflow.common.v1.Filters filters = 2;
+  // 返回条数，默认 20，最大 50。
+  int32 top_k = 3;
+  // 是否精排。不设时按调用目的取默认值：answer、agent_round、batch 为 true，search、mcp 为 false（详设 3.2）。
+  optional bool rerank = 4;
+  // 调用方判定的问题意图（orchestrator 详设 5.3）。关系类问题提高图召回在融合中的权重（详设 7.1，
+  // 权重属于检索计划，由 retrieval 决定）；只影响排序，不改变召回范围与权限。不设时按普通问题处理。
+  SearchIntent intent = 5;
+}
+
+enum SearchIntent {
+  SEARCH_INTENT_UNSPECIFIED = 0;
+  // 问单个关系（“由哪个团队负责”）。
+  SEARCH_INTENT_RELATION = 1;
+}
+
+message SearchResponse {
+  repeated Hit hits = 1;
+  // 本次实际读到的索引版本与策略包版本，调用方写入回答的 why。
+  string index_version = 2;
+  string policy_version = 3;
+  repeated bambuflow.common.v1.Degradation degraded = 4;
+  // 本次召回所用索引版本的嵌入模型版本（如 bge-m3@mock-hash-1），调用方写入 why。
+  string embedding_model = 5;
+  // 本次实际使用的精排模型版本；未精排（关闭、不可用或时间不足）时为空，原因见 degraded。
+  string rerank_model = 6;
+}
+
+message Hit {
+  // chunk_id 与 doc_version 一起定位正文；二者和 span 缺一不可。
+  string chunk_id = 1;
+  string doc_id = 2;
+  int64 doc_version = 3;
+  string parent_chunk_id = 4;
+  // 已按调用者密级脱敏。
+  string text = 5;
+  bambuflow.common.v1.Span span = 6;
+  string title = 7;
+  repeated string heading_path = 8;
+  string source_uri = 9;
+  bambuflow.common.v1.SourceType source_type = 10;
+  string owner = 11;
+  bambuflow.common.v1.Classification classification = 12;
+  // 最终排序分：精排分，未精排时为融合分。
+  double score = 13;
+  // 图召回找到这一块时的路径（实体 → 关系 → 实体，1–2 条边，最后一条边的证据就是本块）；
+  // 只由图召回填写，路径上每条边的证据块调用者都可见（retrieval 详设 6.2、13 节用例 4）。
+  repeated GraphEdge graph_path = 14;
+  // 入库时检测到可疑指令（retrieval 详设 3.3）。调用方把它当作不可信内容：不能成为陈述的唯一依据，返回给 agent 时继续携带。
+  bool injection_flag = 15;
+}
+
+message GraphEdge {
+  // 实体名称已按调用者密级脱敏
+  string from_entity = 1;
+  bambuflow.common.v1.EntityType from_type = 2;
+  bambuflow.common.v1.RelationType relation_type = 3;
+  string to_entity = 4;
+  bambuflow.common.v1.EntityType to_type = 5;
+}
+
+message ListDocumentsRequest {
+  bambuflow.common.v1.Filters filters = 1;
+  // 每页条数，默认 20，最大 50。最多翻到第 10,000 条。
+  int32 page_size = 2;
+  // 上一页响应的 next_page_token；第一页为空。索引版本变化后旧令牌失效，返回 FAILED_PRECONDITION。
+  string page_token = 3;
+  DocumentOrder order_by = 4;
+}
+
+enum DocumentOrder {
+  // 按标题。
+  DOCUMENT_ORDER_UNSPECIFIED = 0;
+  // 按生效日期倒序，没有生效日期的排在最后（K2 详设第 5 节）。
+  DOCUMENT_ORDER_EFFECTIVE_DATE_DESC = 1;
+}
+
+message ListDocumentsResponse {
+  repeated DocumentSummary documents = 1;
+  // 与 CountDocuments 的口径相同。
+  int64 total_count = 2;
+  bool total_is_exact = 3;
+  // 为空表示没有下一页。
+  string next_page_token = 4;
+  string index_version = 5;
+  string policy_version = 6;
+  repeated MetadataGap metadata_gaps = 7;
+}
+
+// MetadataGap：其他条件都符合、但被筛选的这个字段为空的文档数（K2 详设第 4 节），回答据此披露缺口。
+message MetadataGap {
+  // doc_type、dept、topic_codes、effective_date、validity_status 之一。
+  string field = 1;
+  int64 count = 2;
+}
+
+message DocumentSummary {
+  string doc_id = 1;
+  int64 doc_version = 2;
+  string title = 3;
+  string source_id = 4;
+  string source_uri = 5;
+  bambuflow.common.v1.SourceType source_type = 6;
+  bambuflow.common.v1.Classification classification = 7;
+  bambuflow.common.v1.DocMetadata metadata = 8;
+  // 本文档在所读索引版本里的文档级摘要块（K2 详设第 3 节），用 GetExcerpt 取正文；还没有生成摘要时为空。
+  string summary_chunk_id = 9;
+}
+
+message CountDocumentsRequest {
+  bambuflow.common.v1.Filters filters = 1;
+  CountGroupBy group_by = 2;
+}
+
+enum CountGroupBy {
+  COUNT_GROUP_BY_UNSPECIFIED = 0;
+  COUNT_GROUP_BY_DOC_TYPE = 1;
+  COUNT_GROUP_BY_DEPT = 2;
+  COUNT_GROUP_BY_VALIDITY_STATUS = 3;
+  // 生效日期的年份。
+  COUNT_GROUP_BY_YEAR = 4;
+}
+
+// CountGroup 是一个分组；字段为空的文档归入 value 为空的一组。
+message CountGroup {
+  string value = 1;
+  int64 count = 2;
+}
+
+message CountDocumentsResponse {
+  // 超过 10,000 时为 10000 且 total_is_exact = false：只表示可见文档很多，与无权文档无关（K2 详设第 8 节）。
+  int64 total_count = 1;
+  bool total_is_exact = 2;
+  string index_version = 3;
+  string policy_version = 4;
+  // 最多 50 组，按数量倒序。
+  repeated CountGroup groups = 5;
+  repeated MetadataGap metadata_gaps = 6;
+}
+
+message GetExcerptRequest {
+  string doc_id = 1;
+  // 块必须属于 doc_id 所指的文档。
+  string chunk_id = 2;
+}
+
+message GetExcerptResponse {
+  // 块的字段含义与 Hit 相同；没有 score。正文已按调用者密级脱敏。
+  string chunk_id = 1;
+  string doc_id = 2;
+  int64 doc_version = 3;
+  string text = 4;
+  bambuflow.common.v1.Span span = 5;
+  string title = 6;
+  repeated string heading_path = 7;
+  string source_uri = 8;
+  bambuflow.common.v1.SourceType source_type = 9;
+  string owner = 10;
+  bambuflow.common.v1.Classification classification = 11;
+  string index_version = 12;
+  string policy_version = 13;
+  bool injection_flag = 14;
+}
+
+message CheckAccessRequest {
+  // 1–50 个。
+  repeated string chunk_ids = 1;
+}
+
+message CheckAccessResponse {
+  repeated AccessResult results = 1;
+  google.protobuf.Timestamp checked_at = 2;
+  string policy_version = 3;
+}
+
+message AccessResult {
+  string chunk_id = 1;
+  bool allowed = 2;
+  AccessReason reason = 3;
+}
+
+enum AccessReason {
+  ACCESS_REASON_UNSPECIFIED = 0;
+  ACCESS_REASON_ALLOWED = 1;
+  ACCESS_REASON_ACL_DENIED = 2;
+  ACCESS_REASON_CLASSIFICATION_EXCEEDED = 3;
+  ACCESS_REASON_TOMBSTONED = 4; // 文档已打删除标记
+  ACCESS_REASON_NOT_FOUND = 5;
+}
+
+message CheckDocumentAccessRequest {
+  // 1–50 个。
+  repeated string doc_ids = 1;
+}
+
+message CheckDocumentAccessResponse {
+  repeated DocumentAccessResult results = 1;
+  google.protobuf.Timestamp checked_at = 2;
+  string policy_version = 3;
+}
+
+message DocumentAccessResult {
+  string doc_id = 1;
+  bool allowed = 2;
+  AccessReason reason = 3;
+}

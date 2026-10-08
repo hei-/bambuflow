@@ -1,0 +1,14 @@
+# terms-check 白名单，格式见 check.go 的 allowList 注释。
+# 每条都是“在举反例或保留原文”，新增前先确认确实不能改写。
+# 只在私有仓库里的文件（开源导出时不带）写在同目录的 allow.private.txt，存在时一并读取。
+
+# 术语表本身列出的就是要避免的写法
+file docs/terminology.md
+# 检查工具自身的测试数据和说明
+file tools/terms-check/
+
+# 常见词里恰好包含“行内”
+context 行内 执行内
+context 行内 运行内
+context 行内 进行内
+context 行内 流行内

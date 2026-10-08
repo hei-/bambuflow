@@ -1,0 +1,979 @@
+# 单机开发、演示与 CI 端到端测试用的 Compose 环境（技术设计文档 12.8）。不用于生产或真实数据。
+#
+# 约束：
+# - 可以跑在远端 Docker 上下文（DOCKER_CONTEXT）：不挂载本地目录，配置随 build 打进镜像或用 configs 内联，数据用命名卷；
+# - 端口只绑 127.0.0.1，本机访问用 make tunnel；
+# - 下面的口令与密钥只用于开发与 CI，可用同名环境变量覆盖；生产值来自 Vault，不进仓库。
+name: bambuflow
+
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 30
+  start_period: 10s
+
+services:
+  postgres:
+    profiles: [core]
+    image: pgvector/pgvector:0.8.7-pg17-trixie
+    environment:
+      POSTGRES_DB: bambuflow
+      POSTGRES_USER: bambuflow
+      POSTGRES_PASSWORD: ${BF_PG_PASSWORD:-dev-only-pg}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - 127.0.0.1:${BF_PG_PORT:-27432}:5432
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD-SHELL, pg_isready -U bambuflow -d bambuflow]
+
+  redis:
+    profiles: [core]
+    image: redis:8.10.2
+    ports:
+      - 127.0.0.1:${BF_REDIS_PORT:-27379}:6379
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, redis-cli, ping]
+
+  vault:
+    profiles: [core]
+    image: hashicorp/vault:2.1.1
+    command: [server, -dev]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - 127.0.0.1:${BF_VAULT_PORT:-27200}:8200
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD-SHELL, VAULT_ADDR=http://127.0.0.1:8200 vault status]
+
+  # S3 兼容对象存储（ADR-9：开发与 CI 用 RustFS，生产接 S3 或公司现有对象存储）
+  rustfs:
+    profiles: [core]
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      RUSTFS_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - 127.0.0.1:${BF_S3_PORT:-27900}:9000
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, curl, -fs, -o, /dev/null, http://127.0.0.1:9000/health/ready]
+
+  # Jaeger v2 内置 OTel Collector 的 OTLP 接收端，compose 里同时充当采集与查看；生产环境 Collector 单独部署。
+  jaeger:
+    profiles: [core]
+    image: jaegertracing/jaeger:2.21.0
+    ports:
+      - 127.0.0.1:${BF_JAEGER_UI_PORT:-27686}:16686
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:13133/status]
+
+  # 测试用公司目录（只用于开发与 CI）
+  openldap:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: tools/test-upstream/openldap.Dockerfile
+      args:
+        TEST_USER_PASSWORD: ${BF_TEST_USER_PASSWORD:-dev-only-user}
+    image: bambuflow-test-openldap:dev
+    environment:
+      LDAP_ORGANISATION: Corp Example
+      LDAP_DOMAIN: corp.example
+      LDAP_ADMIN_PASSWORD: ${BF_LDAP_ADMIN_PASSWORD:-dev-only-ldap}
+      LDAP_TLS: "false"
+    volumes:
+      - ldap-data:/var/lib/ldap
+      - ldap-config:/etc/ldap/slapd.d
+    healthcheck:
+      <<: *healthcheck
+      test:
+        - CMD-SHELL
+        - >-
+          ldapsearch -x -H ldap://127.0.0.1 -b dc=corp,dc=example -D cn=admin,dc=corp,dc=example -w "$$LDAP_ADMIN_PASSWORD" "(uid=alice)" uid | grep -q "^uid: alice"
+
+  # 平台授权服务；dev 镜像另含充当公司 IdP 的测试 realm（corp-idp），平台 realm 经 OIDC 代理到它。
+  keycloak:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: deploy/authz/Dockerfile
+      target: dev
+    image: bambuflow-authz:dev
+    command: [start-dev, --import-realm]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${BF_KC_ADMIN_PASSWORD:-dev-only-kc}
+      # 签发方地址固定为容器网络内的名字，容器内外的令牌 iss 一致；本机经隧道访问时把 keycloak 指向 127.0.0.1
+      KC_HOSTNAME: http://keycloak:8080
+      PLATFORM_ISSUER: http://keycloak:8080/realms/bambuflow
+      CONSOLE_REDIRECT_URI: http://localhost/callback
+      CORP_IDP_ISSUER: http://keycloak:8080/realms/corp-idp
+      CORP_IDP_CLIENT_ID: bambuflow-broker
+      CORP_IDP_CLIENT_SECRET: ${BF_CORP_IDP_CLIENT_SECRET:-dev-only-broker}
+      LDAP_URL: ldap://openldap:389
+      LDAP_BIND_DN: cn=admin,dc=corp,dc=example
+      LDAP_BIND_PASSWORD: ${BF_LDAP_ADMIN_PASSWORD:-dev-only-ldap}
+    ports:
+      - 127.0.0.1:${BF_KC_PORT:-27080}:8080
+    depends_on:
+      openldap:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      start_period: 60s
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '"UP"' <&3
+
+  # ---- 平台服务 ----
+
+  governance-migrate:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: services/governance/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+      target: dev
+    image: bambuflow-governance:dev
+    command: [migrate]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 开发与 CI 专用：写入受控词表种子（tools/test-upstream/vocab.yaml）；生产由各归口部门经管理接口维护
+  vocab-seed:
+    profiles: [core]
+    image: bambuflow-governance:dev
+    pull_policy: never
+    command: [vocab-load, /etc/bambuflow/vocab.yaml]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      governance-migrate:
+        condition: service_completed_successfully
+
+  # 开发与 CI 专用：写入数据源与租户授权的种子（tools/test-upstream/sources.yaml）；生产经 /v1/admin/sources 维护
+  sources-seed:
+    profiles: [core]
+    image: bambuflow-governance:dev
+    pull_policy: never
+    command: [sources-load, /etc/bambuflow/sources.yaml]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      governance-migrate:
+        condition: service_completed_successfully
+
+  # ConfigService：向 processing、orchestrator 下发词表快照（governance 详设 7.1）；
+  # 管理接口（紧急拒绝规则等）由 gateway 的 /v1/admin 调用，变更审计写审计桶
+  governance:
+    profiles: [core]
+    image: bambuflow-governance:dev
+    pull_policy: never
+    command: [serve]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+      # 紧急拒绝规则经 indexing 写进拒绝名单；indexing 在 ingest profile 里，没起时规则保持 pending、每 10 秒重试
+      BF_INDEXING_ADDR: indexing:9090
+      BF_AUDIT_S3_ENDPOINT: http://rustfs:9000
+      BF_AUDIT_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_AUDIT_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_AUDIT_BUCKET: bambuflow-audit
+      BF_AUDIT_RETENTION_DAYS: "1"
+      # 平台事件流：撤销数据源时发 source.revoked
+      BF_REDIS_ADDR: redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
+      vocab-seed:
+        condition: service_completed_successfully
+      sources-seed:
+        condition: service_completed_successfully
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, governance, serve-healthcheck]
+
+  identity-sync:
+    profiles: [core]
+    image: bambuflow-governance:dev
+    # 镜像由同一 compose 里的其他服务构建，不去镜像仓库拉取
+    pull_policy: never
+    command: [identity-sync]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_IDENTITY_SYNC_CONFIG: /etc/bambuflow/identity-sync.yaml
+      LDAP_BIND_PASSWORD: ${BF_LDAP_ADMIN_PASSWORD:-dev-only-ldap}
+    depends_on:
+      governance-migrate:
+        condition: service_completed_successfully
+      openldap:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, governance, healthcheck]
+
+  # 开发与 CI 专用：在 Vault 里写入 gateway 的 Principal 签名密钥（已存在则不动）
+  vault-seed:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: tools/devtools/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+    image: bambuflow-devtools:dev
+    command: [devseed]
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+    depends_on:
+      vault:
+        condition: service_healthy
+
+  gateway:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: services/gateway/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+      target: dev
+    image: bambuflow-gateway:dev
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_TENANTS_DIR: /etc/bambuflow/tenants
+      # 平台角色 → 群组（管理接口的 RBAC），测试映射见 tools/test-upstream/admin-roles.yaml
+      BF_ADMIN_ROLES_FILE: /etc/bambuflow/admin-roles.yaml
+      BF_PLATFORM_CLIENTS: console
+      BF_PLATFORM_ISSUER: http://keycloak:8080/realms/bambuflow
+      # 开发环境的 MCP 资源标识用容器网络内的地址，与 e2e 访问 gateway 的地址一致
+      BF_PUBLIC_URL: http://gateway:8080
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      BF_RETRIEVAL_ADDR: retrieval:9090
+      BF_ORCHESTRATOR_ADDR: orchestrator:9090
+      BF_BATCH_ADDR: batch:9090
+      # 管理接口的实现方（gateway 详设 4.2）
+      BF_GOVERNANCE_ADDR: governance:9090
+      BF_EVALUATION_ADDR: evaluation-api:9090
+      # indexing 在 ingest profile 里；没起时索引版本的管理接口返回 503
+      BF_INDEXING_ADDR: indexing:9090
+      BF_REDIS_ADDR: redis:6379
+      # e2e 与评测用少数几个测试用户连续发请求，开发环境把限流放宽；生产取 gateway 详设 5.1 的默认值
+      BF_CLIENT_RPS: "1000"
+      BF_USER_ANSWER_RPS: "1000"
+      BF_USER_ANSWER_BURST: "1000"
+      BF_USER_STREAMS: "1000"
+      BF_AUDIT_S3_ENDPOINT: http://rustfs:9000
+      BF_AUDIT_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_AUDIT_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_AUDIT_BUCKET: bambuflow-audit
+      # 开发环境只保留 1 天、5 秒送一次，e2e 才能很快在桶里查到
+      BF_AUDIT_RETENTION_DAYS: "1"
+      BF_AUDIT_SHIP_INTERVAL: 5s
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+    volumes:
+      - gateway-audit:/var/lib/gateway/audit
+    ports:
+      - 127.0.0.1:${BF_GATEWAY_PORT:-27088}:8080
+    depends_on:
+      vault-seed:
+        condition: service_completed_successfully
+      identity-sync:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, gateway, healthcheck]
+
+  # 异步批量问答（技术设计文档 13.5）：表结构在 batch schema
+  batch-migrate:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: services/qa/batch/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+    image: bambuflow-batch:dev
+    command: [migrate]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 逐条向 gateway 换发 Principal（gateway 的内部 gRPC 端口），再以调用目的 batch 调 orchestrator
+  batch:
+    profiles: [core]
+    image: bambuflow-batch:dev
+    pull_policy: never
+    command: [serve]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+      BF_GATEWAY_ADDR: gateway:9090
+      BF_ORCHESTRATOR_ADDR: orchestrator:9090
+      BF_RETRIEVAL_ADDR: retrieval:9090
+      BF_REDIS_ADDR: redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+    depends_on:
+      batch-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, batch, healthcheck]
+
+  # evaluation 自有的表（在线抽样评审的结果，evaluation 详设 7.1）
+  evaluation-migrate:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: services/evaluation/Dockerfile
+    image: bambuflow-evaluation:dev
+    command: [migrate]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # evaluation 常驻服务（evaluation 详设第 2 节）：A/B 分析与在线质量趋势接口；读 governance 的实验、orchestrator 的回答记录。
+  # 护栏检查（guard）与在线抽样评审（online-sample）在生产是每天的 CronJob，开发环境按需
+  # docker compose run evaluation-api guard | online-sample
+  evaluation-api:
+    profiles: [core]
+    image: bambuflow-evaluation:dev
+    pull_policy: never
+    command: [serve]
+    environment:
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+      BF_CONFIG_ADDR: governance:9090
+      BF_ORCHESTRATOR_ADDR: orchestrator:9090
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      # 在线抽样评审：判定用的 NLI（应与线上校验器不同；模拟服务只有 nli 一个）与抽样的租户
+      BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
+      BF_EVAL_NLI_MODEL: ${BF_EVAL_NLI_MODEL:-nli}
+      BF_ONLINE_TENANTS: credit,ops
+    depends_on:
+      evaluation-migrate:
+        condition: service_completed_successfully
+      governance:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, python, -c, "import socket; socket.create_connection(('127.0.0.1', 9090), 3)"]
+
+  # Webhook 投递（技术设计文档 13.7）：消费平台事件流，按订阅签名投递；签名密钥存 Vault
+  webhook:
+    profiles: [core]
+    image: bambuflow-governance:dev
+    pull_policy: never
+    command: [webhook]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_REDIS_ADDR: redis:6379
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      # e2e 的接收方在容器网络里，只能用 http；生产只接受 https
+      BF_WEBHOOK_ALLOW_HTTP: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+    depends_on:
+      governance-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, governance, webhook-healthcheck]
+
+  # 唯一的索引读入口和权限过滤执行点；dev 镜像另含测试租户的策略数据（tools/test-upstream/policy）；
+  # 租户可访问的数据源从 governance 取（种子见 tools/test-upstream/sources.yaml）
+  retrieval:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: services/retrieval/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+      target: dev
+    image: bambuflow-retrieval:dev
+    environment: &retrieval-env
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+      BF_EMBEDDER_URL: ${BF_EMBEDDER_URL:-http://embedder:8000}
+      BF_CONFIG_ADDR: governance:9090
+      # 模拟嵌入服务同时提供模拟精排模型；真实模型时指向 models
+      BF_RERANKER_URL: ${BF_RERANKER_URL:-http://embedder:8000}
+      # 启用的召回路；对照评测时可设为 dense 只开稠密路
+      BF_RETRIEVERS: ${BF_RETRIEVERS:-dense,keyword,graph}
+      # 权限评测集与 e2e 用少数几个租户连续调用，开发环境把租户限流放宽；生产取 retrieval 详设 9.2 的部署值
+      BF_TENANT_RPS: "1000"
+      BF_TENANT_BURST: "2000"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+      governance:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, retrieval, healthcheck]
+
+  # 回答记录与反馈的表结构（orchestrator schema），与 orchestrator 用同一个镜像
+  orchestrator-migrate:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: services/qa/orchestrator/Dockerfile
+    image: bambuflow-orchestrator:dev
+    command: [migrate]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 问答编排：单跳检索 → 生成 → 逐句校验（grounding 以库的形式内嵌）
+  orchestrator:
+    profiles: [core]
+    image: bambuflow-orchestrator:dev
+    pull_policy: never
+    environment:
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+      BF_RETRIEVAL_ADDR: retrieval:9090
+      BF_LLM_URL: ${BF_LLM_URL:-http://llm:8000}
+      BF_LLM_MODEL: ${BF_LLM_MODEL:-mock-chat-1}
+      # 厂商专有的请求参数（JSON），如推理模型要关闭思考：{"thinking":{"type":"disabled"}}
+      BF_LLM_EXTRA_BODY: ${BF_LLM_EXTRA_BODY:-}
+      # 外部 LLM 的密钥以 secret 文件注入，不出现在环境变量与 docker inspect 里；用模拟网关时为空
+      BF_LLM_API_KEY_FILE: /run/secrets/llm_api_key
+      BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
+      BF_CONFIG_ADDR: governance:9090
+      # 会话与 agent 中间状态（orchestrator 详设第 10 节）
+      BF_REDIS_ADDR: redis:6379
+      # 回答记录与反馈（回放、反馈接口）
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      # sql_query：视图目录与查询账号（P3-Q）；查询账号由 make ingest 的 dbschema-seed 建，之前 sql_query 返回不可用
+      BF_SQL_CATALOG: /etc/bambuflow/sql-catalog.yaml
+      BF_SQL_DSN: postgres://sql_query_login:${BF_SQL_QUERY_PASSWORD:-dev-only-sql}@postgres:5432/bambuflow?sslmode=disable
+    configs:
+      - source: sql_catalog
+        target: /etc/bambuflow/sql-catalog.yaml
+    secrets: [llm_api_key]
+    depends_on:
+      orchestrator-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      governance:
+        condition: service_healthy
+      retrieval:
+        condition: service_healthy
+      llm:
+        condition: service_healthy
+      nli:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, python, -m, bambuflow_orchestrator, healthcheck]
+
+  # 真实模型（models profile，make up PROFILE=core,ingest,models）：CPU 推理的开发用模型服务，接口与 Triton 相同。
+  # 首次启动从 ModelScope 下载约 6 GB 权重到命名卷并校验 sha256；Makefile 在启用该 profile 时把嵌入与 NLI 地址指向它。
+  models:
+    profiles: [models]
+    build:
+      context: ../..
+      dockerfile: tools/model-server/Dockerfile
+      args:
+        PIP_INDEX_URL: ${BF_PIP_INDEX_URL:-https://pypi.org/simple}
+    image: bambuflow-model-server:dev
+    environment:
+      BF_NLI_DEFAULT: ${BF_NLI_DEFAULT:-nli-erlangshen-110m}
+      BF_TORCH_THREADS: "6"
+    volumes:
+      - model-cache:/models
+    healthcheck:
+      <<: *healthcheck
+      start_period: 3600s
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v2/health/ready', timeout=3)"]
+
+  # 公司 LLM 网关的模拟服务（OpenAI 兼容接口）；接公司网关时只改 orchestrator 的 BF_LLM_URL 与 BF_LLM_MODEL
+  llm:
+    profiles: [core]
+    image: bambuflow-devtools:dev
+    pull_policy: never
+    command: [mock-llm]
+    depends_on:
+      vault-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/8000"]
+
+  # NLI 模型的模拟服务（KServe v2 接口，与 Triton 相同）
+  nli:
+    profiles: [core]
+    image: bambuflow-devtools:dev
+    pull_policy: never
+    command: [mock-nli]
+    depends_on:
+      vault-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/8000"]
+
+  # 嵌入模型的模拟服务（KServe v2 接口，与 Triton 相同）；models profile 加入真实模型前由它顶替
+  embedder:
+    profiles: [core]
+    image: bambuflow-devtools:dev
+    pull_policy: never
+    command: [mock-embedder]
+    depends_on:
+      vault-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/8000"]
+
+  # ---- 入库（ingest profile：常驻；ingest-job：make ingest 依次运行的一次性任务）----
+
+  indexing-migrate:
+    profiles: [ingest]
+    build:
+      context: ../..
+      dockerfile: services/indexing/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+    image: bambuflow-indexing:dev
+    command: [migrate]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  indexing:
+    profiles: [ingest]
+    image: bambuflow-indexing:dev
+    pull_policy: never
+    command: [serve]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      # 平台事件（index.version.live）转发到 Redis 事件流
+      BF_REDIS_ADDR: redis:6379
+      # 索引版本的管理接口只接受 gateway 签发的管理 Principal
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+    depends_on:
+      indexing-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, indexing, healthcheck]
+
+  connectors:
+    profiles: [ingest-job]
+    build:
+      context: ../..
+      dockerfile: services/ingestion/connectors/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+      target: dev
+    image: bambuflow-connectors:dev
+    command: [sync-wiki]
+    environment: &ingest-env
+      BF_SOURCE_ID: src_wikidemo
+      BF_WIKI_DIR: /opt/bambuflow/wiki
+      BF_WIKI_BASE_URI: https://wiki.corp.example/pages/
+      BF_S3_ENDPOINT: http://rustfs:9000
+      BF_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_S3_BUCKET: bambuflow-raw
+      BF_REDIS_ADDR: redis:6379
+      BF_REDIS_URL: redis://redis:6379/0
+      BF_EMBEDDER_URL: ${BF_EMBEDDER_URL:-http://embedder:8000}
+      BF_INDEXING_ADDR: indexing:9090
+      BF_OCR_URL: http://ocr:8000
+      BF_CONFIG_ADDR: governance:9090
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 共享盘样例源（PDF、扫描件、Word、Excel、邮件、图片，tools/test-upstream/fileshare），与 Wiki 同一镜像
+  connectors-fileshare:
+    profiles: [ingest-job]
+    image: bambuflow-connectors:dev
+    pull_policy: never
+    command: [sync-fileshare]
+    environment:
+      <<: *ingest-env
+      BF_SOURCE_ID: src_fileshare
+      BF_FILESHARE_DIR: /opt/bambuflow/fileshare
+      BF_FILESHARE_BASE_URI: https://fileshare.corp.example/policies/
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 可疑指令标记的测试数据源（P3-I2，tools/test-upstream/wiki-inject），与 Wiki 同一镜像、同一种连接器
+  connectors-inject:
+    profiles: [ingest-job]
+    image: bambuflow-connectors:dev
+    pull_policy: never
+    command: [sync-wiki]
+    environment:
+      <<: *ingest-env
+      BF_SOURCE_ID: src_injectdemo
+      BF_WIKI_DIR: /opt/bambuflow/wiki-inject
+      BF_WIKI_BASE_URI: https://wiki.corp.example/ops/
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 日志数据源（P3-I3）：logs-seed 向日志主题写测试日志（开发默认实现是 Redis Streams，生产接公司日志平台），
+  # connectors-logs 订阅主题、脱敏、按服务一天一份文档发出；入库的服务、级别与归属见 tools/test-upstream/logs.yaml
+  logs-seed:
+    profiles: [ingest-job]
+    image: bambuflow-devtools:dev
+    pull_policy: never
+    command: [seed-logs]
+    environment:
+      BF_REDIS_ADDR: redis:6379
+      BF_LOG_TOPIC: logs:app
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  connectors-logs:
+    profiles: [ingest-job]
+    image: bambuflow-connectors:dev
+    pull_policy: never
+    command: [sync-logs]
+    environment:
+      <<: *ingest-env
+      BF_SOURCE_ID: src_applogs
+      BF_LOG_CONFIG: /opt/bambuflow/logs.yaml
+      BF_LOG_BASE_URI: https://logs.corp.example/
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 关系型数据库表结构（P3-I4）：dbschema-seed 在开发 Postgres 里建演示库（bankdemo schema）与只读账号，
+  # connectors-dbschema 以只读账号读系统表，只同步白名单视图的表结构与字段说明（部署时每小时一次）
+  dbschema-seed:
+    profiles: [ingest-job]
+    image: bambuflow-devtools:dev
+    pull_policy: never
+    command: [seed-dbschema]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_DBSCHEMA_PASSWORD: ${BF_DBSCHEMA_PASSWORD:-dev-only-dbschema}
+      # orchestrator 的 sql_query 用的查询账号（P3-Q）
+      BF_SQL_QUERY_PASSWORD: ${BF_SQL_QUERY_PASSWORD:-dev-only-sql}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  connectors-dbschema:
+    profiles: [ingest-job]
+    image: bambuflow-connectors:dev
+    pull_policy: never
+    command: [sync-dbschema]
+    environment:
+      <<: *ingest-env
+      BF_SOURCE_ID: src_dbschema
+      BF_DBSCHEMA_CONFIG: /opt/bambuflow/dbschema.yaml
+      BF_DBSCHEMA_DSN: postgres://dbschema_reader:${BF_DBSCHEMA_PASSWORD:-dev-only-dbschema}@postgres:5432/bambuflow?sslmode=disable
+      BF_DBSCHEMA_BASE_URI: db://
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # processing 的 OCR 镜像（扫描件与图片，PaddleOCR CPU 推理）；模型在镜像里，运行时不联网
+  ocr:
+    profiles: [ingest]
+    build:
+      context: ../..
+      dockerfile: services/ingestion/processing/ocr/Dockerfile
+      args:
+        # 默认官方源；访问不了时在 .env.local 里设 BF_PIP_INDEX_URL、BF_DEBIAN_MIRROR
+        PIP_INDEX_URL: ${BF_PIP_INDEX_URL:-https://pypi.org/simple}
+        DEBIAN_MIRROR: ${BF_DEBIAN_MIRROR:-http://deb.debian.org}
+    image: bambuflow-processing-ocr:dev
+    healthcheck:
+      <<: *healthcheck
+      start_period: 60s
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+
+  processing:
+    profiles: [ingest-job]
+    build:
+      context: ../..
+      dockerfile: services/ingestion/processing/Dockerfile
+    image: bambuflow-processing:dev
+    environment: *ingest-env
+    depends_on:
+      indexing:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+      ocr:
+        condition: service_healthy
+      governance:
+        condition: service_healthy
+
+  indexing-publish:
+    profiles: [ingest-job]
+    image: bambuflow-indexing:dev
+    pull_policy: never
+    command: [publish]
+    environment:
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+    depends_on:
+      indexing:
+        condition: service_healthy
+
+  # 权限评测集的故障注入（make eval-perm）：同一镜像分别去掉策略包、指向不存在的元数据库、拿不到 governance 的租户授权，
+  # 验证三种故障下都拒绝而不是放行。它们的 readiness 本来就应为 false，所以不等健康检查。
+  retrieval-nopolicy:
+    profiles: [test]
+    image: bambuflow-retrieval:dev
+    pull_policy: never
+    environment:
+      <<: *retrieval-env
+      BF_POLICY_DIR: /nonexistent
+  retrieval-nodb:
+    profiles: [test]
+    image: bambuflow-retrieval:dev
+    pull_policy: never
+    environment:
+      <<: *retrieval-env
+      BF_PG_DSN: postgres://bambuflow:unused@postgres-unavailable:5432/bambuflow?sslmode=disable&connect_timeout=2
+  retrieval-nogrants:
+    profiles: [test]
+    image: bambuflow-retrieval:dev
+    pull_policy: never
+    environment:
+      <<: *retrieval-env
+      BF_CONFIG_ADDR: governance-unavailable:9090
+
+  # 评测 runner（make eval）：以回放模式调用 orchestrator，报告写到 /out 再由 make 拷回 golden/<集合>/reports/
+  evaluation:
+    profiles: [test]
+    build:
+      context: ../..
+      dockerfile: services/evaluation/Dockerfile
+    image: bambuflow-evaluation:dev
+    environment:
+      BF_RETRIEVAL_ADDR: retrieval:9090
+      BF_ORCHESTRATOR_ADDR: orchestrator:9090
+      BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
+      # 评测判定用的 NLI 模型（应与线上校验器不同）；模拟服务只有 nli 一个
+      BF_EVAL_NLI_MODEL: ${BF_EVAL_NLI_MODEL:-nli}
+      # 评测身份用 gateway 的开发签名密钥签发（只在开发与 CI 的 Vault 里存在，services/evaluation 的 signer.py）
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+
+  # 端到端测试：用工具镜像在 compose 网络里运行 tools/e2e，不从本机直连服务。由 make e2e 调用。
+  e2e:
+    profiles: [test]
+    build:
+      context: ../..
+      dockerfile: deploy/toolbox/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+    image: bambuflow-toolbox:dev
+    command: [make, e2e-tests]
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      # MCP 用例经管理 API 登记测试用 agent 客户端（只在开发与 CI 的 Keycloak 里）
+      KEYCLOAK_ADMIN_PASSWORD: ${BF_KC_ADMIN_PASSWORD:-dev-only-kc}
+      GATEWAY_URL: http://gateway:8080
+      # 运行时保护的用例直接改 gateway 的限流与配额计数（test_runtime_protection.py）
+      BF_REDIS_ADDR: redis:6379
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      # 关系型数据库表结构的只读账号（test_dbschema.py 验证它读不到行数据）
+      BF_DBSCHEMA_PASSWORD: ${BF_DBSCHEMA_PASSWORD:-dev-only-dbschema}
+      BF_INDEXING_ADDR: indexing:9090
+      BF_RETRIEVAL_ADDR: retrieval:9090
+      BF_WEBHOOK_ADDR: webhook:9090
+      # 实验用例核对 governance 下发给 orchestrator 的快照与 orchestrator 导出的回答记录（test_admin_experiments.py）
+      BF_CONFIG_ADDR: governance:9090
+      BF_ORCHESTRATOR_ADDR: orchestrator:9090
+      BF_EMBEDDER_URL: ${BF_EMBEDDER_URL:-http://embedder:8000}
+      BF_LLM_URL: http://llm:8000
+      JAEGER_URL: http://jaeger:16686
+      BF_S3_ENDPOINT: http://rustfs:9000
+      BF_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      # 权限评测集用 gateway 的开发签名密钥签发合成 Principal（只在开发与 CI 的 Vault 里存在）
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      LDAP_URL: ldap://openldap:389
+      LDAP_ADMIN_PASSWORD: ${BF_LDAP_ADMIN_PASSWORD:-dev-only-ldap}
+      TEST_USER_PASSWORD: ${BF_TEST_USER_PASSWORD:-dev-only-user}
+    volumes:
+      - uv-cache:/root/.cache/uv
+      - e2e-venv:/opt/venv
+
+  # Helm 冒烟测试（make helm-smoke）：单节点 k3s 与给它用的镜像仓库，依赖服务用本栈的。
+  # k3s 要在容器里跑 kubelet 与网络插件，只能 privileged；只在开发主机上按需启动，测完 make helm-smoke-down。
+  registry:
+    profiles: [k8s]
+    image: registry:2
+    labels: {org.bambuflow.role: helm-smoke}
+    ports:
+      - 127.0.0.1:${BF_REGISTRY_PORT:-27500}:5000
+    volumes:
+      - registry-data:/var/lib/registry
+
+  k3s:
+    profiles: [k8s]
+    image: rancher/k3s:v1.33.5-k3s1
+    labels: {org.bambuflow.role: helm-smoke}
+    privileged: true
+    command: [server, --disable=traefik, --tls-san=k3s, --write-kubeconfig-mode=0644]
+    configs:
+      - source: k3s_registries
+        target: /etc/rancher/k3s/registries.yaml
+    tmpfs: [/run, /var/run]
+    volumes:
+      - k3s-data:/var/lib/rancher/k3s
+      - k3s-config:/output
+    environment:
+      K3S_KUBECONFIG_OUTPUT: /output/k3s.yaml
+    healthcheck:
+      test: [CMD, kubectl, --kubeconfig, /output/k3s.yaml, get, --raw, /readyz]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  helm-smoke:
+    profiles: [k8s-run]
+    build:
+      context: ../..
+      dockerfile: tools/helm-smoke/Dockerfile
+    image: bambuflow-helm-smoke:dev
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      BF_PG_PASSWORD: ${BF_PG_PASSWORD:-dev-only-pg}
+      BF_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_EMBEDDER_URL: ${BF_EMBEDDER_URL:-http://embedder:8000}
+      BF_RERANKER_URL: ${BF_RERANKER_URL:-http://embedder:8000}
+      BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
+      SMOKE_TOKEN: ${SMOKE_TOKEN:-}
+    volumes:
+      - k3s-config:/k3s:ro
+
+volumes:
+  gateway-audit:
+  registry-data:
+  k3s-data:
+  k3s-config:
+  pg-data:
+  rustfs-data:
+  ldap-data:
+  ldap-config:
+  # 与 make check 的工具容器共用 uv 下载缓存（deploy/compose/toolbox.yaml 的 uv-cache）。远端访问 PyPI 很慢，
+  # 共用后不必重复下载；声明为外部卷，make down VOLUMES=1 不会删除它（make e2e 运行前会确保它存在）
+  uv-cache:
+    external: true
+    name: bambuflow-toolbox_uv-cache
+  e2e-venv:
+  # 模型权重（约 6 GB）。声明为外部卷，make down VOLUMES=1 不会删掉它，换环境不必重新下载（make up 前会确保它存在）
+  model-cache:
+    external: true
+    name: bambuflow-model-cache
+
+configs:
+  # sql_query 的视图目录（P3-Q，只用于开发与 CI）：演示库见 tools/devtools/cmd/seed-dbschema/demo.sql。
+  # 只开放给运维租户；报表角色按调用者的群组映射：sre-oncall 读贷款余额与网点汇总，sre-core 只读网点汇总。
+  # 生产由数据平台与数据属主维护（部署配置清单）。
+  sql_catalog:
+    content: |
+      tenants: [ops]
+      roles:
+        report_ops: [group:sre-oncall]
+        report_finance: [group:sre-core]
+      views:
+        - name: bankdemo.v_loan_balance
+          title: 贷款余额
+          description: 每笔贷款的当前余额，按日更新。
+          classification: internal
+          terms: [贷款]
+          columns:
+            - {name: loan_id, label: 贷款编号, type: number}
+            - {name: branch, label: 经办网点, type: text}
+            - {name: balance, label: 贷款余额（元）, type: number}
+            - {name: opened_on, label: 放款日期, type: date}
+        - name: bankdemo.v_branch_daily
+          title: 网点贷款汇总
+          description: 按网点统计贷款笔数与余额合计。
+          classification: internal
+          terms: [网点]
+          columns:
+            - {name: branch, label: 网点, type: text}
+            - {name: loan_count, label: 贷款笔数, type: number}
+            - {name: total_balance, label: 余额合计（元）, type: number}
+        # 不在数据库授权里也不该被查到：目录只列白名单视图，v_customer_contact 不在这里
+
+  # k3s 拉镜像：本栈的镜像仓库；Docker Hub 可经 BF_K3S_DOCKER_MIRROR 指定镜像加速地址
+  k3s_registries:
+    content: |
+      mirrors:
+        "localhost:${BF_REGISTRY_PORT:-27500}":
+          endpoint: ["http://registry:5000"]
+        docker.io:
+          endpoint: ["${BF_K3S_DOCKER_MIRROR:-https://registry-1.docker.io}"]
+
+secrets:
+  # 外部 LLM 的密钥：取自本机 shell 的 BF_LLM_API_KEY（make 从不入库的 .env.local 读入），未设置时为空
+  llm_api_key:
+    environment: BF_LLM_API_KEY

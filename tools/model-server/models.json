@@ -1,0 +1,156 @@
+{
+  "bge-m3": {
+    "repo": "BAAI/bge-m3",
+    "kind": "embedding",
+    "version": "ms-e44369c5623c",
+    "files": [
+      {
+        "path": "config.json",
+        "revision": "e44369c5623cc146f016da906583db4ee0e3488d",
+        "sha256": "26159e7ad065073448460117eb24b7a4572f6f4e78eadff65dc0a11c052449fa",
+        "size": 687
+      },
+      {
+        "path": "pytorch_model.bin",
+        "revision": "e44369c5623cc146f016da906583db4ee0e3488d",
+        "sha256": "b5e0ce3470abf5ef3831aa1bd5553b486803e83251590ab7ff35a117cf6aad38",
+        "size": 2271145830
+      },
+      {
+        "path": "sparse_linear.pt",
+        "revision": "e44369c5623cc146f016da906583db4ee0e3488d",
+        "sha256": "45c93804d2142b8f6d7ec6914ae23a1eee9c6a1d27d83d908a20d2afb3595ad9",
+        "size": 3516
+      },
+      {
+        "path": "tokenizer.json",
+        "revision": "e44369c5623cc146f016da906583db4ee0e3488d",
+        "sha256": "21106b6d7dab2952c1d496fb21d5dc9db75c28ed361a05f5020bbba27810dd08",
+        "size": 17098108
+      },
+      {
+        "path": "tokenizer_config.json",
+        "revision": "e44369c5623cc146f016da906583db4ee0e3488d",
+        "sha256": "a62b2b6784f990259fddef5f16388693a8043be4f69179e6a5257eeb3f9abac4",
+        "size": 444
+      },
+      {
+        "path": "special_tokens_map.json",
+        "revision": "e44369c5623cc146f016da906583db4ee0e3488d",
+        "sha256": "8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835",
+        "size": 964
+      },
+      {
+        "path": "sentencepiece.bpe.model",
+        "revision": "e44369c5623cc146f016da906583db4ee0e3488d",
+        "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+        "size": 5069051
+      }
+    ]
+  },
+  "bge-reranker-v2-m3": {
+    "repo": "BAAI/bge-reranker-v2-m3",
+    "kind": "reranker",
+    "version": "ms-e099d4b9cdbd",
+    "files": [
+      {
+        "path": "config.json",
+        "revision": "e099d4b9cdbd291b1569d416f19aaa6523570bc3",
+        "sha256": "13dcd6c31d9fec9d1d8e158702072f62d7fa7d312a64b9fe057bec9a08cfe41a",
+        "size": 795
+      },
+      {
+        "path": "model.safetensors",
+        "revision": "e099d4b9cdbd291b1569d416f19aaa6523570bc3",
+        "sha256": "d9e3e081faff1eefb84019509b2f5558fd74c1a05a2c7db22f74174fcedb5286",
+        "size": 2271071852
+      },
+      {
+        "path": "tokenizer.json",
+        "revision": "e099d4b9cdbd291b1569d416f19aaa6523570bc3",
+        "sha256": "69564b696052886ed0ac63fa393e928384e0f8caada38c1f4864a9bfbf379c15",
+        "size": 17098273
+      },
+      {
+        "path": "tokenizer_config.json",
+        "revision": "e099d4b9cdbd291b1569d416f19aaa6523570bc3",
+        "sha256": "7e4c1cc848840aeccdd763458c18dd525eb0f795c992e00ebe9c28554e7db2d4",
+        "size": 1173
+      },
+      {
+        "path": "special_tokens_map.json",
+        "revision": "e099d4b9cdbd291b1569d416f19aaa6523570bc3",
+        "sha256": "8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835",
+        "size": 964
+      },
+      {
+        "path": "sentencepiece.bpe.model",
+        "revision": "e099d4b9cdbd291b1569d416f19aaa6523570bc3",
+        "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+        "size": 5069051
+      }
+    ]
+  },
+  "nli-erlangshen-110m": {
+    "repo": "Fengshenbang/Erlangshen-Roberta-110M-NLI",
+    "kind": "nli",
+    "version": "ms-bc3dfd5e05b5",
+    "files": [
+      {
+        "path": "config.json",
+        "revision": "bc3dfd5e05b53f86005f4e55995db8281f8a680d",
+        "sha256": "bb64591cc2f1580f30f0b34d634eb96f7b5f95ebacb86078076381ed0afd6986",
+        "size": 931
+      },
+      {
+        "path": "pytorch_model.bin",
+        "revision": "bc3dfd5e05b53f86005f4e55995db8281f8a680d",
+        "sha256": "3ee7de12d0dc27d21a3e4a8713e270fa431102c20d74351b876d76f9c8a30b03",
+        "size": 409163949
+      },
+      {
+        "path": "vocab.txt",
+        "revision": "bc3dfd5e05b53f86005f4e55995db8281f8a680d",
+        "sha256": "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c",
+        "size": 109540
+      },
+      {
+        "path": "label_mapping.json",
+        "revision": "bc3dfd5e05b53f86005f4e55995db8281f8a680d",
+        "sha256": "3d006a50fc413451bc2c270f8cd8c7351dad0ba6088a7343af7e65cb8607fd51",
+        "size": 53
+      }
+    ]
+  },
+  "nli-erlangshen-330m": {
+    "repo": "Fengshenbang/Erlangshen-Roberta-330M-NLI",
+    "kind": "nli",
+    "version": "ms-d97f03c23618",
+    "files": [
+      {
+        "path": "config.json",
+        "revision": "d97f03c23618394c51d6dd44c07a3cf6170d409f",
+        "sha256": "1dcc9308ca02974f27842df7037becc7e1bcf2df97427933fdd32f6db410fa70",
+        "size": 932
+      },
+      {
+        "path": "pytorch_model.bin",
+        "revision": "d97f03c23618394c51d6dd44c07a3cf6170d409f",
+        "sha256": "1d48f343eb77965dba8443c66116674178693e62406b8a340661197cec7eca0e",
+        "size": 1302263725
+      },
+      {
+        "path": "vocab.txt",
+        "revision": "d97f03c23618394c51d6dd44c07a3cf6170d409f",
+        "sha256": "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c",
+        "size": 109540
+      },
+      {
+        "path": "label_mapping.json",
+        "revision": "d97f03c23618394c51d6dd44c07a3cf6170d409f",
+        "sha256": "3d006a50fc413451bc2c270f8cd8c7351dad0ba6088a7343af7e65cb8607fd51",
+        "size": 53
+      }
+    ]
+  }
+}

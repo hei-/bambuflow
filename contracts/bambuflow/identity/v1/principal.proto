@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package bambuflow.identity.v1;
+
+import "bambuflow/common/v1/types.proto";
+
+// Principal 是 gateway 签发的内部身份（gateway 详设 3.2），以 ES256 签名的 JWT 放在 gRPC metadata 的
+// authorization 里，下游只信任它，不再处理外部令牌。本消息定义 JWT 的声明结构，供各语言生成解析代码；
+// 编解码用 protojson 并保留字段原名（Go 为 UseProtoNames），使声明名与字段名一致。
+message Principal {
+  // 用户与租户。
+  string sub = 1;
+  string tenant = 2;
+  // 用户属性，全部来自平台身份库，不来自外部令牌。
+  string dept = 3;
+  string title = 4;
+  bambuflow.common.v1.Classification clearance = 5;
+  string region = 6;
+  // 群组。超过 200 个时 groups 为空、只给 groups_ref，由 retrieval 从平台身份库另取。
+  repeated string groups = 7;
+  string groups_ref = 8;
+  // 代用户调用的业务系统或 agent 标识；用户直连时为空。用于审计和配额。
+  string actor = 9;
+  // JWT 标准声明。时间为 Unix 秒；exp = iat + 300。
+  int64 auth_time = 10;
+  int64 iat = 11;
+  int64 exp = 12;
+  string jti = 13;
+  string aud = 14;
+  // 平台角色（platform_admin、platform_operator、infosec、data_owner、auditor），只出现在管理接口的 Principal 里：
+  // gateway 按部署配置把平台身份库的群组映射成角色（gateway 详设 4.2）。管理接口的 Principal 没有 tenant，
+  // 数据接口的 Principal 没有 roles，两类下游各自只接受自己那一类。
+  repeated string roles = 15;
+}

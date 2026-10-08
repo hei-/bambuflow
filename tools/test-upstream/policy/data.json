@@ -1,0 +1,8 @@
+{
+  "tenants": {
+    "credit": {},
+    "risk": {},
+    "ops": {"denied_sources": ["src_evalcredit"]},
+    "bench": {}
+  }
+}

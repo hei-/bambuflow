@@ -1,0 +1,24 @@
+{
+  "source": "MTEB/T2Retrieval",
+  "revision": "master",
+  "license": "Apache-2.0",
+  "files": {
+    "qrels": {
+      "path": "data/dev-00000-of-00001.parquet",
+      "sha256": "c4c6ffd715faf151e0832a26dfcf2d7ec1edc17d9620a9aa99e721cc2436d7d2"
+    },
+    "queries": {
+      "path": "queries/dev-00000-of-00001.parquet",
+      "sha256": "186b4d0a13cc4d8339eccfc6d465d1b2d4d1f6572defa8d39f3c8da3b66b0210"
+    },
+    "corpus": {
+      "path": "corpus/dev-00000-of-00001.parquet",
+      "sha256": "8f0400530c6ba664e580e2ae7bb5ed41a908b8abc17c3b3934f42cc65992ac1e"
+    }
+  },
+  "queries": 500,
+  "corpus": 118605,
+  "corpus_all": true,
+  "relevant_passages": 2614,
+  "seed": 20261005
+}

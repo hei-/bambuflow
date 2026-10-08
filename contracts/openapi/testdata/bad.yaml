@@ -1,0 +1,37 @@
+# 反例：ruleset.yaml 的四条命名规则各应报一处错（make contracts 断言恰好 4 处）。
+openapi: 3.1.0
+info:
+  title: 反例
+  version: 0.0.0
+  description: 用于验证命名规则本身。
+servers:
+  - url: /
+paths:
+  /v1/searchAll:
+    post:
+      operationId: search_all
+      summary: 反例
+      description: 反例
+      responses:
+        "200":
+          description: 反例
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/bad"
+components:
+  schemas:
+    bad:
+      description: 反例
+      type: object
+      properties:
+        answer_id:
+          description: 缺少 ans_ 前缀的 pattern
+          type: string
+        maxCitations:
+          description: 不是 snake_case
+          type: integer
+        status:
+          description: 枚举值不是 snake_case
+          type: string
+          enum: [Answered]

@@ -1,0 +1,348 @@
+# Wiki 样例源的评测集（P0 基线，题目结构见评测详设 3.2、技术设计文档 10.4）。
+#
+# 全部为合成题：由 LLM（Claude）根据 tools/test-upstream/wiki 生成，尚未经业务人员审核（reviewed_by 为空）。
+# 设计要求合成题人工审核后才能入库（技术设计文档 10.4），审核前这份评测集只用于验证评测链路和建立 P0 基线，
+# 不作为质量门禁的依据（审核前只用于回归比较）。
+version: 2026-10-05.2
+tenant_set: wiki-demo
+provenance_default: {source: llm_generated_unreviewed, author: claude, reviewed_by: null}
+
+chunks:  # must_cite 用到的块（锚点），chunk_id 只在内容变化时才变（入库管道详设第 3 节）
+  loan_scope: &loan_scope src_wikidemo:credit-personal-loan#b0f6ac70f1d88a1f
+  loan_general: &loan_general src_wikidemo:credit-personal-loan#7b1742f90a7362de
+  loan_amount: &loan_amount src_wikidemo:credit-personal-loan#2565d11ea33f8145
+  loan_approval: &loan_approval src_wikidemo:credit-personal-loan#805000b6ca427f8e
+  loan_term: &loan_term src_wikidemo:credit-personal-loan#dcf31f0241c6aef5
+  loan_effective: &loan_effective src_wikidemo:credit-personal-loan#a1cfaae872a068ac
+  aml_flow: &aml_flow src_wikidemo:aml-report-procedure#dd1d35bd480b3a2e
+  aml_audit: &aml_audit src_wikidemo:aml-report-procedure#4d1ae6eb3e4e2c68
+  aml_training: &aml_training src_wikidemo:aml-report-procedure#9e06e726ed6923fa
+  draft: &draft src_wikidemo:credit-draft-notes#b2c33c87f90cae6c
+  orphan: &orphan src_wikidemo:legacy-orphan#15d6311625429497
+  risk_system: &risk_system src_wikidemo:risk-limit-policy#79bfbd7f4debc740
+  risk_single: &risk_single src_wikidemo:risk-limit-policy#6ab949650e55eabe
+  risk_over: &risk_over src_wikidemo:risk-limit-policy#748d26de4c8f1f40
+  hb_hours: &hb_hours src_wikidemo:staff-handbook#00750fe2667c4a59
+  hb_security: &hb_security src_wikidemo:staff-handbook#221c7a7ba11be082
+  hb_leave: &hb_leave src_wikidemo:staff-handbook#63fb86e5cb9fa9f6
+
+  kyc_owner: &kyc_owner src_wikidemo:compliance-kyc#54687fb80bfa8555
+  kyc_open: &kyc_open src_wikidemo:compliance-kyc#55ea31138d59960c
+  kyc_level: &kyc_level src_wikidemo:compliance-kyc#a334ae768b7135d0
+  sanc_list: &sanc_list src_wikidemo:compliance-sanctions#343e076e4e6189c9
+  sanc_when: &sanc_when src_wikidemo:compliance-sanctions#89ff382a54b0fef9
+  sanc_hit: &sanc_hit src_wikidemo:compliance-sanctions#f5de7441ce618ca8
+  col_eval: &col_eval src_wikidemo:credit-collateral#025d222536d4dcfe
+  col_keep: &col_keep src_wikidemo:credit-collateral#7664c0214baace5b
+  col_reeval: &col_reeval src_wikidemo:credit-collateral#9f04af7486df30b8
+  col_ratio: &col_ratio src_wikidemo:credit-collateral#f156243ebcdc6525
+  faq_credit: &faq_credit src_wikidemo:credit-faq#2eac50c02315046b
+  faq_death: &faq_death src_wikidemo:credit-faq#6fa867181cbef497
+  faq_staff: &faq_staff src_wikidemo:credit-faq#7c3a2eaa4664eeab
+  mort23_down: &mort23_down src_wikidemo:credit-mortgage-loan-2023#3f39c1ff035aab56
+  mort23_prepay: &mort23_prepay src_wikidemo:credit-mortgage-loan-2023#43637478d3a76fcb
+  mort23_valid: &mort23_valid src_wikidemo:credit-mortgage-loan-2023#49ce908df89916ea
+  mort_term: &mort_term src_wikidemo:credit-mortgage-loan#41e3b09bc292cfa9
+  mort_dti: &mort_dti src_wikidemo:credit-mortgage-loan#52dedc3aa3dcd634
+  mort_prepay: &mort_prepay src_wikidemo:credit-mortgage-loan#6aa0f046bff7dec9
+  mort_scope: &mort_scope src_wikidemo:credit-mortgage-loan#8470a47a4ef767c9
+  mort_down: &mort_down src_wikidemo:credit-mortgage-loan#fc036790fefe9993
+  pl_warn: &pl_warn src_wikidemo:credit-post-loan#2c488bcb585b9f2d
+  pl_check: &pl_check src_wikidemo:credit-post-loan#30f26a86128f315e
+  pl_collect: &pl_collect src_wikidemo:credit-post-loan#ceca69017feb83c9
+  pl_class: &pl_class src_wikidemo:credit-post-loan#e084a1780ce9f102
+  sb_entry: &sb_entry src_wikidemo:credit-small-business#79f3fb05fc64fd82
+  sb_use: &sb_use src_wikidemo:credit-small-business#7c4bea707b77821c
+  sb_amount: &sb_amount src_wikidemo:credit-small-business#b73b41fa5c2ae0d2
+  sb_time: &sb_time src_wikidemo:credit-small-business#e71b841bcd92d43a
+  perf_appeal: &perf_appeal src_wikidemo:hr-performance#0197ca2bcbfba0f1
+  perf_cycle: &perf_cycle src_wikidemo:hr-performance#1813e87d50ca129f
+  perf_ratio: &perf_ratio src_wikidemo:hr-performance#b5c19db01683a0cc
+  train_hours: &train_hours src_wikidemo:hr-training#1a82a5d8402a7b60
+  train_new: &train_new src_wikidemo:hr-training#412cdc5b515d263a
+  train_ext: &train_ext src_wikidemo:hr-training#9fc144aa4d46ce6b
+  trav_deadline: &trav_deadline src_wikidemo:hr-travel#57528f79e97de55a
+  trav_meal: &trav_meal src_wikidemo:hr-travel#5a49a15552665a06
+  trav_transport: &trav_transport src_wikidemo:hr-travel#d23699f3c2367576
+  trav_hotel: &trav_hotel src_wikidemo:hr-travel#e07964684c990d36
+  inc_review: &inc_review src_wikidemo:it-incident#08b99479e7ef69fd
+  inc_level: &inc_level src_wikidemo:it-incident#48bc40bb3e0499ec
+  inc_report: &inc_report src_wikidemo:it-incident#bf7210d62f3f7824
+  pwd_cycle: &pwd_cycle src_wikidemo:it-password#2512ec25e2a0fc95
+  pwd_lock: &pwd_lock src_wikidemo:it-password#e2fd2947668843f9
+  pwd_complex: &pwd_complex src_wikidemo:it-password#e43a5131b1222ece
+  rw_access: &rw_access src_wikidemo:it-remote-work#69f9a1b035b0ea40
+  rw_device: &rw_device src_wikidemo:it-remote-work#6e5640319519ce0d
+  rw_data: &rw_data src_wikidemo:it-remote-work#d782c189ac38faf1
+  cash_limit: &cash_limit src_wikidemo:ops-cash#73341eafba9be9e7
+  cash_escort: &cash_escort src_wikidemo:ops-cash#f61c2bb49766beb7
+  cash_box: &cash_box src_wikidemo:ops-cash#f8663b0e17c0b2b8
+  ctr_error: &ctr_error src_wikidemo:ops-counter#cbc04b7e9bb39097
+  ctr_cash: &ctr_cash src_wikidemo:ops-counter#d258ab3a409972ab
+  ctr_agent: &ctr_agent src_wikidemo:ops-counter#d2eb9b3899912ae6
+  cap_target: &cap_target src_wikidemo:risk-capital-plan#148bb9b55a088983
+  cap_plan: &cap_plan src_wikidemo:risk-capital-plan#329914d1a4630b5c
+  rdraft: &rdraft src_wikidemo:risk-draft-2026#6bc8b87ac45c519c
+  mr_monitor: &mr_monitor src_wikidemo:risk-market-risk#01f99132113d4c7c
+  mr_stop: &mr_stop src_wikidemo:risk-market-risk#5e2a79cb5745ea8d
+  mr_var: &mr_var src_wikidemo:risk-market-risk#7386951eddf022a5
+  op_time: &op_time src_wikidemo:risk-operational#7a395748e62ef5f3
+  op_level: &op_level src_wikidemo:risk-operational#8bc92f2146b14703
+  op_fix: &op_fix src_wikidemo:risk-operational#cabca09c6c3564dd
+  st_scene: &st_scene src_wikidemo:risk-stress-test#c41211b522399b7f
+  st_freq: &st_freq src_wikidemo:risk-stress-test#dc5859712264a5a0
+  st_use: &st_use src_wikidemo:risk-stress-test#e173b1d6a4040ec2
+
+questions:
+  # ---- 个人消费贷款（信贷） ----
+  - {id: q_wiki_001, bucket: single_hop, asker: credit_l2, question: 个人消费贷款的单户授信额度怎么计算？,
+     expected: {status: answered, key_points: [近 12 个月平均月收入乘以 10 倍, 不超过 30 万元], must_cite: [*loan_amount]}}
+  - {id: q_wiki_002, bucket: single_hop, asker: credit_l2, question: 个人消费贷款单户额度最高是多少？,
+     expected: {status: answered, key_points: [不超过 30 万元], must_cite: [*loan_amount]}}
+  - {id: q_wiki_003, bucket: single_hop, asker: credit_l2, question: 借款人已有其他消费类负债时额度怎么处理？,
+     expected: {status: answered, key_points: [扣减未结清余额], must_cite: [*loan_amount]}}
+  - {id: q_wiki_004, bucket: single_hop, asker: credit_l2, question: 个人消费贷款额度由谁审批？,
+     expected: {status: answered, key_points: [10 万元（含）以下支行审批, 10 万元以上分行信贷审批部审批], must_cite: [*loan_approval]}}
+  - {id: q_wiki_005, bucket: single_hop, asker: credit_l2, question: 15 万元的消费贷款需要哪一级审批？,
+     expected: {status: answered, key_points: [分行信贷审批部], must_cite: [*loan_approval]}}
+  - {id: q_wiki_006, bucket: single_hop, asker: credit_l2, question: 个人消费贷款的期限最长几年？,
+     expected: {status: answered, key_points: [最长 5 年], must_cite: [*loan_term]}}
+  - {id: q_wiki_007, bucket: single_hop, asker: credit_l2, question: 个人消费贷款利率怎么定？,
+     expected: {status: answered, key_points: [按本行定价办法执行, 不低于同期贷款市场报价利率], must_cite: [*loan_term]}}
+  - {id: q_wiki_008, bucket: single_hop, asker: credit_l2, question: 个人消费贷款可以用来买房吗？,
+     expected: {status: answered, key_points: [不得用于购房、证券投资等禁止性用途], must_cite: [*loan_general]}}
+  - {id: q_wiki_009, bucket: single_hop, asker: credit_l2, question: 个人消费贷款管理办法从什么时候开始施行？,
+     expected: {status: answered, key_points: [2025 年 3 月 1 日起施行, 原 2024 版同时废止], must_cite: [*loan_effective]}}
+  - {id: q_wiki_010, bucket: single_hop, asker: credit_l2, question: 个人消费贷款管理办法适用于哪些贷款？,
+     expected: {status: answered, key_points: [向自然人发放的个人消费用途人民币贷款], must_cite: [*loan_scope]}}
+  - {id: q_wiki_011, bucket: single_hop, asker: credit_l2, question: 制定个人消费贷款管理办法的目的是什么？,
+     expected: {status: answered, key_points: [规范个人消费贷款业务, 控制信用风险], must_cite: [*loan_general]}}
+
+  # ---- 反洗钱（信贷与风险都可见） ----
+  - {id: q_wiki_012, bucket: single_hop, asker: credit_l2, question: 一线员工发现可疑交易后应该怎么做？,
+     expected: {status: answered, key_points: [当日通过反洗钱系统提交初报, 不得向客户透露], must_cite: [*aml_flow]}}
+  - {id: q_wiki_013, bucket: single_hop, asker: credit_l2, question: 支行反洗钱岗收到初报后多久内完成复核？,
+     expected: {status: answered, key_points: [两个工作日内], must_cite: [*aml_flow]}}
+  - {id: q_wiki_014, bucket: single_hop, asker: risk_manager, question: 分行反洗钱中心多长时间内要形成可疑交易报告？,
+     expected: {status: answered, key_points: [五个工作日内完成分析], must_cite: [*aml_flow]}}
+  - {id: q_wiki_015, bucket: single_hop, asker: risk_manager, question: 涉嫌恐怖融资的可疑交易报送有时限要求吗？,
+     expected: {status: answered, key_points: [应当立即报送, 不受时限限制], must_cite: [*aml_flow]}}
+  - {id: q_wiki_016, bucket: single_hop, asker: credit_l2, question: 可疑交易报告和分析底稿要保存多久？,
+     expected: {status: answered, key_points: [至少保存五年], must_cite: [*aml_flow]}}
+  - {id: q_wiki_017, bucket: single_hop, asker: risk_manager, question: 怎么识别拆分交易规避大额报告？,
+     expected: {status: answered, key_points: [系统自动预警, 合并分析各网点各渠道交易], must_cite: [*aml_flow]}}
+  - {id: q_wiki_018, bucket: single_hop, asker: credit_l2, question: 客户经理能劝阻员工提交可疑交易初报吗？,
+     expected: {status: answered, key_points: [不得劝阻或干预, 记录在案并追责], must_cite: [*aml_flow]}}
+  - {id: q_wiki_019, bucket: single_hop, asker: risk_manager, question: 反洗钱中心多久抽查一次可疑交易报告质量？,
+     expected: {status: answered, key_points: [每季度抽查, 纳入合规考核], must_cite: [*aml_audit]}}
+  - {id: q_wiki_020, bucket: single_hop, asker: credit_l2, question: 一线员工每年要参加多少反洗钱培训？,
+     expected: {status: answered, key_points: [每年不少于 4 学时, 考试合格方可上岗], must_cite: [*aml_training]}}
+
+  # ---- 风险限额（机密级，只有风险经理可见） ----
+  - {id: q_wiki_021, bucket: single_hop, asker: risk_manager, question: 全行风险限额分为哪几类？,
+     expected: {status: answered, key_points: [集中度限额, 行业限额, 单一客户限额], must_cite: [*risk_system]}}
+  - {id: q_wiki_022, bucket: single_hop, asker: risk_manager, question: 单一集团客户授信总额上限是多少？,
+     expected: {status: answered, key_points: [不超过资本净额的 15%, 超过 10% 报风险管理委员会审议], must_cite: [*risk_single]}}
+  - {id: q_wiki_023, bucket: single_hop, asker: risk_manager, question: 限额使用率达到多少会触发预警？,
+     expected: {status: answered, key_points: [90% 预警, 100% 暂停新增授信], must_cite: [*risk_over]}}
+
+  # ---- 员工手册（全员可见） ----
+  - {id: q_wiki_024, bucket: single_hop, asker: credit_l2, question: 工作日上班时间是几点到几点？,
+     expected: {status: answered, key_points: [9:00 至 17:30, 弹性打卡前后 30 分钟], must_cite: [*hb_hours]}}
+  - {id: q_wiki_025, bucket: single_hop, asker: risk_manager, question: 年假需要提前多久申请？,
+     expected: {status: answered, key_points: [提前 3 个工作日在人力系统提交, 直属主管审批], must_cite: [*hb_leave]}}
+  - {id: q_wiki_026, bucket: single_hop, asker: credit_l2, question: 可以在个人手机上保存客户信息吗？,
+     expected: {status: answered, key_points: [不得在个人设备上存储客户信息], must_cite: [*hb_security]}}
+
+  # ---- 属主可见的草稿 ----
+  - {id: q_wiki_027, bucket: single_hop, asker: credit_owner, question: 授信政策修订草稿拟把消费贷款单户上限调整到多少？,
+     expected: {status: answered, key_points: [拟由 30 万元调整为 50 万元, 尚未审议], must_cite: [*draft]}}
+
+  # ---- 应拒答：无权文档、无人可见文档、样例里没有的内容（≥ 15%） ----
+  - {id: q_wiki_028, bucket: should_refuse, asker: credit_l2, question: 单一集团客户授信总额不得超过资本净额的多少？,
+     notes: 风险限额规程是机密级、只对风险管理部开放，信贷客户经理无权看到,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*risk_system, *risk_single, *risk_over]}}
+  - {id: q_wiki_029, bucket: should_refuse, asker: credit_l2, question: 授信政策修订草稿里拟把单户上限调到多少？,
+     notes: 草稿没有 ACL，只有属主 carl 可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*draft]}}
+  - {id: q_wiki_030, bucket: should_refuse, asker: risk_manager, question: 历史迁移页面原来的属主是谁？,
+     notes: 没有 ACL 也没有属主的页面，任何人都不可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*orphan]}}
+  - {id: q_wiki_031, bucket: should_refuse, asker: credit_l2, question: 公司食堂的午餐供应时间是几点？,
+     notes: 样例源里没有相关内容,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: []}}
+  - {id: q_wiki_032, bucket: should_refuse, asker: risk_manager, question: 外汇交易员的单日敞口限额是多少？,
+     notes: 样例源里没有相关内容,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: []}}
+
+  # ---- P1 扩充（2026-10-05）----
+  - {id: q_wiki_033, bucket: single_hop, asker: credit_l2, question: 首套住房贷款最低首付比例是多少？,
+     notes: 新版 20%，已废止的 2023 版为 30%，回答不得采用旧版,
+     expected: {status: answered, key_points: [首套 20%], must_cite: [*mort_down]}}
+  - {id: q_wiki_034, bucket: single_hop, asker: credit_l2, question: 二套住房的最低首付比例是多少？,
+     notes: 已废止的 2023 版为 40%,
+     expected: {status: answered, key_points: [二套 30%], must_cite: [*mort_down]}}
+  - {id: q_wiki_035, bucket: single_hop, asker: credit_l2, question: 个人住房贷款期限最长多少年，对借款人年龄有什么要求？,
+     expected: {status: answered, key_points: [最长 30 年, 年龄与期限之和不超过 70 岁], must_cite: [*mort_term]}}
+  - {id: q_wiki_036, bucket: single_hop, asker: credit_l2, question: 住房贷款对借款人月还款额与收入之比有什么要求？,
+     expected: {status: answered, key_points: [不超过 50%, 夫妻可合并收入], must_cite: [*mort_dti]}}
+  - {id: q_wiki_037, bucket: single_hop, asker: credit_l2, question: 住房贷款提前还款要收违约金吗？,
+     notes: 已废止的 2023 版收取 1% 违约金,
+     expected: {status: answered, key_points: [本行不收取违约金, 还款满 12 个月后可申请], must_cite: [*mort_prepay]}}
+  - {id: q_wiki_038, bucket: single_hop, asker: credit_l2, question: 住房贷款每年最多可以提前还款几次？,
+     expected: {status: answered, key_points: [每年不超过 2 次, 单次不少于 5 万元], must_cite: [*mort_prepay]}}
+  - {id: q_wiki_039, bucket: single_hop, asker: credit_l2, question: 车位可以申请个人住房贷款吗？,
+     expected: {status: answered, key_points: [不适用于商业用房和车位贷款], must_cite: [*mort_scope]}}
+  - {id: q_wiki_040, bucket: single_hop, asker: credit_l2, question: 2023 版个人住房贷款管理办法现在还有效吗？,
+     expected: {status: answered, key_points: [已于 2025 年 5 月 10 日被新版替代], must_cite: [*mort23_valid]}}
+  - {id: q_wiki_041, bucket: single_hop, asker: credit_l2, question: 住宅作为抵押物的抵押率上限是多少？,
+     expected: {status: answered, key_points: [住宅 70%], must_cite: [*col_ratio]}}
+  - {id: q_wiki_042, bucket: single_hop, asker: credit_l2, question: 存单质押的质押率最高是多少？,
+     expected: {status: answered, key_points: [存单、国债质押 90%], must_cite: [*col_ratio]}}
+  - {id: q_wiki_043, bucket: single_hop, asker: credit_l2, question: 抵押物评估报告的有效期是多久？,
+     expected: {status: answered, key_points: [12 个月], must_cite: [*col_eval]}}
+  - {id: q_wiki_044, bucket: single_hop, asker: credit_owner, question: 500 万元以上的抵押物需要几家机构评估？,
+     expected: {status: answered, key_points: [两家机构分别评估, 取较低值], must_cite: [*col_eval]}}
+  - {id: q_wiki_045, bucket: single_hop, asker: credit_l2, question: 住宅抵押物多久重新评估一次？,
+     expected: {status: answered, key_points: [每 2 年, 房价指数一年内跌超 10% 时 1 个月内重评], must_cite: [*col_reeval]}}
+  - {id: q_wiki_046, bucket: single_hop, asker: credit_l2, question: 抵押权证调阅需要谁审批？,
+     expected: {status: answered, key_points: [信贷部负责人审批, 双人经办], must_cite: [*col_keep]}}
+  - {id: q_wiki_047, bucket: single_hop, asker: credit_l2, question: 个人贷款首次贷后检查要在放款后多久内完成？,
+     expected: {status: answered, key_points: [30 天内], must_cite: [*pl_check]}}
+  - {id: q_wiki_048, bucket: single_hop, asker: credit_l2, question: 余额 100 万元以上的个人贷款多久做一次贷后检查？,
+     expected: {status: answered, key_points: [每季度一次], must_cite: [*pl_check]}}
+  - {id: q_wiki_049, bucket: single_hop, asker: credit_l2, question: 哪些情形需要录入贷后预警？,
+     expected: {status: answered, key_points: [连续两期逾期, 涉诉或失信被执行人, 抵押物被查封, 收入来源中断], must_cite: [*pl_warn]}}
+  - {id: q_wiki_050, bucket: single_hop, asker: credit_l2, question: 逾期 120 天的贷款属于哪一类？,
+     expected: {status: answered, key_points: [次级（91 至 180 天）], must_cite: [*pl_class]}}
+  - {id: q_wiki_051, bucket: single_hop, asker: credit_owner, question: 逾期多久的贷款要移交资产保全部？,
+     expected: {status: answered, key_points: [超过 30 天], must_cite: [*pl_collect]}}
+  - {id: q_wiki_052, bucket: single_hop, asker: credit_l2, question: 小微企业贷款的准入条件有哪些？,
+     expected: {status: answered, key_points: [成立满 2 年, 近 12 个月纳税连续, 企业主无不良征信], must_cite: [*sb_entry]}}
+  - {id: q_wiki_053, bucket: single_hop, asker: credit_l2, question: 小微企业信用贷款单户额度上限是多少？,
+     expected: {status: answered, key_points: [信用贷款 300 万元, 抵押贷款 1000 万元], must_cite: [*sb_amount]}}
+  - {id: q_wiki_054, bucket: single_hop, asker: credit_l2, question: 小微企业贷款审批时限是多久？,
+     expected: {status: answered, key_points: [支行 5 个工作日调查, 分行 3 个工作日审批], must_cite: [*sb_time]}}
+  - {id: q_wiki_055, bucket: single_hop, asker: credit_owner, question: 小微企业贷款什么情况下可以自主支付？,
+     expected: {status: answered, key_points: [单笔超过 50 万元须经分行批准], must_cite: [*sb_use]}}
+  - {id: q_wiki_056, bucket: single_hop, asker: credit_l2, question: 查询个人征信需要客户授权吗？,
+     expected: {status: answered, key_points: [需要书面授权, 授权书保存不少于 5 年], must_cite: [*faq_credit]}}
+  - {id: q_wiki_057, bucket: single_hop, asker: credit_l2, question: 借款人去世后贷款由谁偿还？,
+     expected: {status: answered, key_points: [继承人在继承遗产范围内偿还, 有保险先由理赔款偿还], must_cite: [*faq_death]}}
+  - {id: q_wiki_058, bucket: single_hop, asker: credit_l2, question: 本行员工贷款能享受优惠利率吗？,
+     expected: {status: answered, key_points: [不可以，与其他客户相同], must_cite: [*faq_staff]}}
+  - {id: q_wiki_059, bucket: single_hop, asker: credit_l2, question: 个人客户远程开户需要怎么核验身份？,
+     expected: {status: answered, key_points: [视频核验, 录像保存不少于 5 年], must_cite: [*kyc_open]}}
+  - {id: q_wiki_060, bucket: single_hop, asker: risk_manager, question: 高风险客户多久重新识别一次？,
+     expected: {status: answered, key_points: [每半年], must_cite: [*kyc_level]}}
+  - {id: q_wiki_061, bucket: single_hop, asker: risk_manager, question: 对公客户需要识别持股多少以上的受益所有人？,
+     expected: {status: answered, key_points: [25% 以上, 无法识别不得建立业务关系], must_cite: [*kyc_owner]}}
+  - {id: q_wiki_062, bucket: single_hop, asker: credit_l2, question: 什么时候需要做制裁名单筛查？,
+     expected: {status: answered, key_points: [开户, 跨境汇款发起前, 名单更新后 24 小时内], must_cite: [*sanc_when]}}
+  - {id: q_wiki_063, bucket: single_hop, asker: risk_manager, question: 制裁名单疑似命中的交易怎么处理？,
+     expected: {status: answered, key_points: [暂停处理, 合规部 1 个工作日内人工复核], must_cite: [*sanc_hit]}}
+  - {id: q_wiki_064, bucket: single_hop, asker: risk_manager, question: 制裁名单变更记录保存多久？,
+     expected: {status: answered, key_points: [不少于 10 年], must_cite: [*sanc_list]}}
+  - {id: q_wiki_065, bucket: single_hop, asker: risk_manager, question: 交易账户整体风险价值限额是多少？,
+     expected: {status: answered, key_points: [8000 万元, 99% 置信度、持有期 1 天], must_cite: [*mr_var]}}
+  - {id: q_wiki_066, bucket: single_hop, asker: risk_manager, question: 交易员单日亏损多少需要止损？,
+     expected: {status: answered, key_points: [200 万元], must_cite: [*mr_stop]}}
+  - {id: q_wiki_067, bucket: single_hop, asker: risk_manager, question: 市场风险限额使用率超过多少要预警？,
+     expected: {status: answered, key_points: [85%], must_cite: [*mr_monitor]}}
+  - {id: q_wiki_068, bucket: single_hop, asker: risk_manager, question: 操作风险事件要在多长时间内报告？,
+     expected: {status: answered, key_points: [24 小时内, 损失超 100 万元 2 小时内电话报告], must_cite: [*op_time]}}
+  - {id: q_wiki_069, bucket: single_hop, asker: risk_manager, question: 损失 50 万元的操作风险事件属于哪一级？,
+     expected: {status: answered, key_points: [较大事件（10 万至 100 万元）], must_cite: [*op_level]}}
+  - {id: q_wiki_070, bucket: single_hop, asker: risk_manager, question: 重大操作风险事件的整改报告要在多久内提交？,
+     expected: {status: answered, key_points: [30 天内], must_cite: [*op_fix]}}
+  - {id: q_wiki_071, bucket: single_hop, asker: risk_manager, question: 信用风险压力测试多久做一次？,
+     expected: {status: answered, key_points: [每半年], must_cite: [*st_freq]}}
+  - {id: q_wiki_072, bucket: single_hop, asker: risk_manager, question: 重度压力情景假设房价下跌多少？,
+     expected: {status: answered, key_points: [房价下跌 30%, 失业率上升 5 个百分点], must_cite: [*st_scene]}}
+  - {id: q_wiki_073, bucket: single_hop, asker: risk_manager, question: 重度情景下资本充足率低于多少需要制定资本补充预案？,
+     expected: {status: answered, key_points: [低于 10.5%], must_cite: [*st_use]}}
+  - {id: q_wiki_074, bucket: single_hop, asker: risk_manager, question: 2026 年风险偏好草稿拟把不良贷款率容忍上限调到多少？,
+     expected: {status: answered, key_points: [由 1.8% 下调至 1.5%, 尚未审议], must_cite: [*rdraft]}}
+  - {id: q_wiki_075, bucket: single_hop, asker: ops_staff, question: 去上海出差每晚住宿标准是多少？,
+     expected: {status: answered, key_points: [600 元], must_cite: [*trav_hotel]}}
+  - {id: q_wiki_076, bucket: single_hop, asker: credit_l2, question: 去省会城市出差住宿上限是多少？,
+     expected: {status: answered, key_points: [450 元], must_cite: [*trav_hotel]}}
+  - {id: q_wiki_077, bucket: single_hop, asker: ops_staff, question: 出差什么情况下可以坐飞机？,
+     expected: {status: answered, key_points: [单程超过 6 小时可乘飞机经济舱], must_cite: [*trav_transport]}}
+  - {id: q_wiki_078, bucket: single_hop, asker: risk_manager, question: 出差伙食补助每天多少钱？,
+     expected: {status: answered, key_points: [每天 100 元, 无需票据], must_cite: [*trav_meal]}}
+  - {id: q_wiki_079, bucket: single_hop, asker: ops_staff, question: 差旅费要在多长时间内报销？,
+     expected: {status: answered, key_points: [出差结束后 30 天内], must_cite: [*trav_deadline]}}
+  - {id: q_wiki_080, bucket: single_hop, asker: ops_staff, question: 员工每年要参加多少学时的培训？,
+     expected: {status: answered, key_points: [不少于 40 学时, 合规与风险类不少于 12 学时], must_cite: [*train_hours]}}
+  - {id: q_wiki_081, bucket: single_hop, asker: credit_l2, question: 新员工集中培训要多少天？,
+     expected: {status: answered, key_points: [入职 3 个月内完成 5 天集中培训], must_cite: [*train_new]}}
+  - {id: q_wiki_082, bucket: single_hop, asker: ops_staff, question: 外部培训费用超过多少需要签服务期协议？,
+     expected: {status: answered, key_points: [超过 5000 元, 服务期 1 年], must_cite: [*train_ext]}}
+  - {id: q_wiki_083, bucket: single_hop, asker: risk_manager, question: 绩效考核 A 档比例最多多少？,
+     expected: {status: answered, key_points: [不超过 20%], must_cite: [*perf_ratio]}}
+  - {id: q_wiki_084, bucket: single_hop, asker: ops_staff, question: 对绩效考核结果有异议怎么申诉？,
+     expected: {status: answered, key_points: [结果公布后 10 个工作日内, 向人力资源部书面申诉], must_cite: [*perf_appeal]}}
+  - {id: q_wiki_085, bucket: single_hop, asker: credit_l2, question: 年度绩效考核什么时候进行？,
+     expected: {status: answered, key_points: [每年 1 月完成上一年度考核], must_cite: [*perf_cycle]}}
+  - {id: q_wiki_086, bucket: single_hop, asker: ops_staff, question: 办公系统密码有什么复杂度要求？,
+     expected: {status: answered, key_points: [不少于 12 位, 包含三类字符], must_cite: [*pwd_complex]}}
+  - {id: q_wiki_087, bucket: single_hop, asker: credit_l2, question: 办公系统密码多久要更换一次？,
+     expected: {status: answered, key_points: [每 90 天, 不得与最近 5 次相同], must_cite: [*pwd_cycle]}}
+  - {id: q_wiki_088, bucket: single_hop, asker: ops_staff, question: 密码连续输错几次会被锁定？,
+     expected: {status: answered, key_points: [5 次, 锁定 30 分钟], must_cite: [*pwd_lock]}}
+  - {id: q_wiki_089, bucket: single_hop, asker: risk_manager, question: 在家办公怎么访问内部系统？,
+     expected: {status: answered, key_points: [公司 VPN, 双因素认证], must_cite: [*rw_access]}}
+  - {id: q_wiki_090, bucket: single_hop, asker: ops_staff, question: 远程办公时可以把客户信息下载到本地吗？,
+     expected: {status: answered, key_points: [不得下载客户信息到本地], must_cite: [*rw_data]}}
+  - {id: q_wiki_091, bucket: single_hop, asker: credit_l2, question: 笔记本电脑的安全补丁要在多久内安装？,
+     expected: {status: answered, key_points: [发布后 14 天内, 全盘加密], must_cite: [*rw_device]}}
+  - {id: q_wiki_092, bucket: single_hop, asker: ops_staff, question: 收到钓鱼邮件应该怎么办？,
+     expected: {status: answered, key_points: [30 分钟内拨打 IT 服务台热线 8000, 不得自行处置], must_cite: [*inc_report]}}
+  - {id: q_wiki_093, bucket: single_hop, asker: risk_manager, question: 客户信息泄露属于哪一级信息安全事件？,
+     expected: {status: answered, key_points: [一律按重大事件处理], must_cite: [*inc_level]}}
+  - {id: q_wiki_094, bucket: single_hop, asker: credit_l2, question: 个人取现多少需要提前预约？,
+     expected: {status: answered, key_points: [5 万元以上提前 1 个工作日预约, 20 万元以上网点负责人审批], must_cite: [*ctr_cash]}}
+  - {id: q_wiki_095, bucket: single_hop, asker: risk_manager, question: 柜员发现长短款怎么处理？,
+     expected: {status: answered, key_points: [当日上报网点负责人, 长款挂账待查, 短款当日补足], must_cite: [*ctr_error]}}
+  - {id: q_wiki_096, bucket: single_hop, asker: credit_l2, question: 城区网点日终库存现金限额是多少？,
+     expected: {status: answered, key_points: [城区 300 万元, 县域 150 万元], must_cite: [*cash_limit]}}
+  - {id: q_wiki_097, bucket: should_refuse, asker: credit_l2, question: 交易账户的风险价值限额是多少？,
+     notes: 市场风险限额是机密级、仅风险管理部可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*mr_var]}}
+  - {id: q_wiki_098, bucket: should_refuse, asker: credit_l2, question: 重度压力情景假设房价下跌多少？,
+     notes: 压力测试办法仅风险管理部可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*st_scene]}}
+  - {id: q_wiki_099, bucket: should_refuse, asker: risk_manager, question: 核心一级资本充足率的内部管理目标是多少？,
+     notes: 受限级，高于风险经理的机密级,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*cap_target, *cap_plan]}}
+  - {id: q_wiki_100, bucket: should_refuse, asker: credit_l2, question: 2026 年风险偏好草稿拟把不良率上限调到多少？,
+     notes: 草稿没有 ACL，只有属主 bob 可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*rdraft]}}
+  - {id: q_wiki_101, bucket: should_refuse, asker: ops_staff, question: 个人取现多少需要提前预约？,
+     notes: 柜面规范是内部级，公开级员工不可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*ctr_cash]}}
+  - {id: q_wiki_102, bucket: should_refuse, asker: ops_staff, question: 城区网点库存现金限额是多少？,
+     notes: 现金管理办法是内部级，公开级员工不可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*cash_limit]}}
+  - {id: q_wiki_103, bucket: should_refuse, asker: ops_staff, question: 住宅抵押物的抵押率上限是多少？,
+     notes: 抵质押物规程仅信贷 L2 可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*col_ratio]}}
+  - {id: q_wiki_104, bucket: should_refuse, asker: risk_manager, question: 小微企业信用贷款单户额度上限是多少？,
+     notes: 小微企业规程仅信贷 L2 可见,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: [], must_not_cite: [*sb_amount]}}
+  - {id: q_wiki_105, bucket: should_refuse, asker: credit_l2, question: 信用卡年费是多少？,
+     notes: 样例源里没有相关内容,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: []}}
+  - {id: q_wiki_106, bucket: should_refuse, asker: ops_staff, question: 员工年会在哪一天举办？,
+     notes: 样例源里没有相关内容,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: []}}
+  - {id: q_wiki_107, bucket: should_refuse, asker: risk_manager, question: 外币兑换的手续费是多少？,
+     notes: 样例源里没有相关内容,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: []}}
+  - {id: q_wiki_108, bucket: should_refuse, asker: credit_l2, question: 汽车贷款的首付比例是多少？,
+     notes: 样例源里没有相关内容,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: []}}
+  - {id: q_wiki_109, bucket: should_refuse, asker: ops_staff, question: 企业年金的缴费比例是多少？,
+     notes: 样例源里没有相关内容,
+     expected: {status: insufficient_evidence, key_points: [], must_cite: []}}

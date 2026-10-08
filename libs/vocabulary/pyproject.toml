@@ -1,0 +1,17 @@
+# 受控词表的匹配与归一（governance 详设 6.1）：processing 入库时把抽取到的说法归一成编码，
+# orchestrator 把问题里的说法映射成筛选条件。两边用同一套匹配规则，入库与查询才对得上。
+[project]
+name = "bambuflow-vocabulary"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["bambuflow-contracts"]
+
+[tool.uv.sources]
+bambuflow-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bambuflow_vocabulary"]

@@ -1,0 +1,40 @@
+Subject: =?utf-8?b?5YWz5LqOIDIwMjYg5bm05Y+N5rSX6ZKx5LiT6aG55Z+56K6t5a6J5o6S?=
+ =?utf-8?b?55qE6YCa55+l?=
+From: =?utf-8?b?5ZCI6KeE6YOo?= <compliance@corp.example>
+To: =?utf-8?b?5L+h6LS35LqM57qn576k57uE?= <credit-l2@corp.example>,
+ =?utf-8?b?6aOO6Zmp566h55CG6YOo?= <risk-dept@corp.example>
+Date: Fri, 09 Oct 2026 09:30:00 +0800
+Message-ID: <fs-aml-training-mail@corp.example>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="bambuflow-sample-boundary"
+
+--bambuflow-sample-boundary
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: base64
+
+5ZCE5L2N5ZCM5LqL77yaCgrkuLrokL3lrp7lubTluqblj43mtJfpkrHln7norq3opoHmsYLvvIzl
+kIjop4Tpg6jlsIbnu4Tnu4cgMjAyNiDlubTlj43mtJfpkrHkuJPpobnln7norq3vvIzlronmjpLl
+poLkuIvjgIIKCuWfueiureWvueixoeS4uuS/oei0t+S4jumjjumZqeadoee6v+WFqOS9k+WRmOW3
+pe+8jOWfueiuremHh+eUqOe6v+S4iuebtOaSreWKoOe6v+S4i+iAg+ivleeahOW9ouW8j++8jOWF
+t+S9k+WcuuasoeingemZhOS7tuOAggoK6ICD6K+V5ZCI5qC857q/5Li6IDgwIOWIhu+8jOacqumA
+mui/h+eahOWRmOW3pemhu+WcqCAzMCDml6XlhoXlj4LliqDooaXogIPjgILmiKroh7MgMTIg5pyI
+IDMxIOaXpeS7jeacquWujOaIkOWfueiureeahOWRmOW3pe+8jOaaguWBnOWFtuWPr+eWkeS6pOaY
+k+WkjeaguOadg+mZkOOAggoK6K+35ZCE6YOo6Zeo5LqOIDEwIOaciCAyMCDml6XliY3miqXpgIHl
+j4Lorq3lkI3ljZXjgIIKCi0tIArlkIjop4Tpg6gg5Z+56K6t5bKXCuWIhuacuiA4MTIzCgrlhY3o
+tKPlo7DmmI7vvJrmnKzpgq7ku7bku4XkvpvmjIflrprmlLbku7bkurrkvb/nlKjvvIzlpoLor6/m
+lLbor7fnq4vljbPliKDpmaTjgIIKCi0tLS0t5Y6f5aeL6YKu5Lu2LS0tLS0K5Y+R5Lu25Lq6OiDl
+kIjop4Tpg6gK5Li76aKYOiAyMDI1IOW5tOWPjea0l+mSseWfueiureWuieaOkgo+IOiAg+ivleWQ
+iOagvOe6v+S4uiA3MCDliIbjgIIK
+
+--bambuflow-sample-boundary
+Content-Type: text/csv
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment;
+ filename*=utf-8''%E5%9F%B9%E8%AE%AD%E5%9C%BA%E6%AC%A1%E5%AE%89%E6%8E%92.csv
+MIME-Version: 1.0
+
+5Zy65qyhLOaXpeacnyzml7bpl7Qs5b2i5byPCuesrOS4gOWcuiwyMDI2LTExLTA1LDE0OjAw4oCT
+MTY6MDAs57q/5LiK55u05pKtCuesrOS6jOWcuiwyMDI2LTExLTEyLDE0OjAw4oCTMTY6MDAs57q/
+5LiK55u05pKtCuihpeiAgywyMDI2LTEyLTEwLDA5OjMw4oCTMTE6MDAs57q/5LiL6ICD5Zy6Cg==
+
+--bambuflow-sample-boundary--

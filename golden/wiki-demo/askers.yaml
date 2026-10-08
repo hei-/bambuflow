@@ -1,0 +1,25 @@
+# 提问身份模板（评测详设 3.3：用 Principal 模板而不是真实用户）。属性与 tools/test-upstream 的测试目录一致。
+credit_l2:
+  sub: alice
+  tenant: credit
+  dept: 信贷部
+  clearance: 2
+  groups: [credit-l2, all-staff]
+credit_owner:
+  sub: carl
+  tenant: credit
+  dept: 信贷部
+  clearance: 2
+  groups: [credit-l2, all-staff]
+risk_manager:
+  sub: bob
+  tenant: risk
+  dept: 风险管理部
+  clearance: 3
+  groups: [risk-dept, all-staff]
+ops_staff:
+  sub: eve
+  tenant: ops
+  dept: 运营部
+  clearance: 1
+  groups: [all-staff]

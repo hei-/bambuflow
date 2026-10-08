@@ -1,0 +1,325 @@
+{{- /*
+在线服务、qa/batch 与 governance（ConfigService 与管理接口、Webhook 投递）共用一套模板：组件差异（端口、探针、环境变量）在下面的 $components 里列出。
+密钥与连接串（数据库 DSN、LLM 网关凭证、审计桶凭证 BF_AUDIT_S3_ACCESS_KEY/SECRET_KEY 等）不进 values：
+由 Vault Secrets Operator 从 Vault 的 <kvMount>/bambuflow/<组件> 同步到名为 <release>-<组件> 的 Secret，
+以 envFrom 注入，密钥轮换后自动滚动重启（vault.yaml，部署配置清单）。服务间 mTLS 由服务网格提供（技术设计文档 12.6）。
+租户配置与授权策略数据由 values 的 tenants、policyData 渲染成 ConfigMap（config.yaml），改动后经 checksum 注解滚动重启；
+governance 分发租户配置后改为监听。
+gateway 用 StatefulSet：每个实例的入口审计本地队列放在自己的持久卷上，重启后接着把没送出的审计段送往审计桶
+（技术设计文档 8.3）；对象键以实例名为前缀，实例名稳定，送出记录才能对上。
+governance 的管理接口把变更审计写进与 gateway 入口审计同一个审计桶（gateway.audit），凭证同样经 Vault 注入
+（bambuflow/governance 的 BF_AUDIT_S3_ACCESS_KEY/SECRET_KEY）；紧急拒绝规则经入库平面的 indexing（indexing.addr）写进拒绝名单。
+evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob。
+存活探针只看进程是否在，就绪探针才检查依赖：依赖故障时摘流量，不重启。
+运行期要直接读写 Vault 的组件（gateway 读 Principal 签名密钥，webhook 读写订阅的签名密钥）带 vaultRole，
+由 Vault Agent 注入令牌；两者用不同的 Vault 角色，各自只能访问自己的路径。
+平台事件流（Redis Streams platform:events）由 qa/batch、indexing、governance 写入、webhook 消费，必须指向同一个 Redis（events.redisAddr）。
+租户可访问的数据源由 governance 下发给 retrieval（ConfigService，每 10 秒拉取），policyData 只放租户策略（禁止的数据源、地域、可看 PII 的群组）。
+*/ -}}
+{{- $v := .Values -}}
+{{- $jwks := printf "http://%s-gateway:8081/internal/jwks.json" .Release.Name -}}
+{{- /* gateway 按 <租户>/tenant.yaml 读取；ConfigMap 的键是平铺的，用 items 映射成目录结构 */ -}}
+{{- $tenantItems := list -}}
+{{- range $t, $_ := $v.tenants -}}
+{{- $tenantItems = append $tenantItems (dict "key" (printf "%s.yaml" $t) "path" (printf "%s/tenant.yaml" $t)) -}}
+{{- end -}}
+{{- $configSum := include (print $.Template.BasePath "/config.yaml") . | sha256sum -}}
+{{- $components := dict
+  "gateway" (dict
+    "image" "gateway" "values" $v.gateway "kind" "StatefulSet" "vaultRole" $v.vault.role
+    "volumes" (list
+      (dict "name" "tenants" "mountPath" "/etc/bambuflow/tenants" "source" (dict "configMap" (dict "name" (printf "%s-tenants" .Release.Name) "items" $tenantItems)))
+      (dict "name" "admin-roles" "mountPath" "/etc/bambuflow/admin-roles.yaml" "subPath" "admin-roles.yaml" "source" (dict "configMap" (dict "name" (printf "%s-admin-roles" .Release.Name)))))
+    "claims" (list (dict "name" "audit" "mountPath" "/var/lib/gateway/audit" "size" $v.gateway.audit.storageSize))
+    "ports" (list (dict "name" "http" "port" 8080) (dict "name" "internal" "port" 8081) (dict "name" "grpc" "port" 9090))
+    "readiness" (dict "httpGet" (dict "path" "/healthz" "port" "internal"))
+    "liveness" (dict "httpGet" (dict "path" "/livez" "port" "internal"))
+    "env" (dict
+      "BF_PUBLIC_URL" $v.gateway.publicUrl
+      "BF_PLATFORM_ISSUER" $v.gateway.platformIssuer
+      "BF_PLATFORM_CLIENTS" $v.gateway.platformClients
+      "BF_TENANTS_DIR" "/etc/bambuflow/tenants"
+      "BF_ADMIN_ROLES_FILE" "/etc/bambuflow/admin-roles.yaml"
+      "BF_RETRIEVAL_ADDR" (printf "%s-retrieval:9090" .Release.Name)
+      "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)
+      "BF_BATCH_ADDR" (printf "%s-batch:9090" .Release.Name)
+      "BF_GOVERNANCE_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_EVALUATION_ADDR" (printf "%s-evaluation:9090" .Release.Name)
+      "BF_INDEXING_ADDR" $v.indexing.addr
+      "BF_REDIS_ADDR" $v.gateway.redisAddr
+      "BF_GATEWAY_INSTANCES" (toString $v.gateway.replicas)
+      "BF_USER_STREAMS" (toString $v.gateway.userStreams)
+      "BF_QUOTA_TIMEZONE" $v.gateway.quotaTimezone
+      "BF_AUDIT_S3_ENDPOINT" $v.gateway.audit.s3Endpoint
+      "BF_AUDIT_BUCKET" $v.gateway.audit.bucket
+      "BF_AUDIT_RETENTION_DAYS" (toString $v.gateway.audit.retentionDays)
+      "BF_SIGNING_KEY_MOUNT" $v.vault.kvMount
+      "VAULT_TOKEN_FILE" "/vault/secrets/token"))
+  "retrieval" (dict
+    "image" "retrieval" "values" $v.retrieval "kind" "Deployment"
+    "volumes" (list
+      (dict "name" "policy-data" "mountPath" "/etc/bambuflow/policy/data.json" "subPath" "data.json" "source" (dict "configMap" (dict "name" (printf "%s-policy-data" .Release.Name)))))
+    "ports" (list (dict "name" "grpc" "port" 9090) (dict "name" "internal" "port" 8081))
+    "readiness" (dict "httpGet" (dict "path" "/readyz" "port" "internal"))
+    "liveness" (dict "httpGet" (dict "path" "/healthz" "port" "internal"))
+    "env" (dict
+      "BF_PRINCIPAL_JWKS_URL" $jwks
+      "BF_EMBEDDER_URL" $v.retrieval.embedderUrl
+      "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_RERANKER_URL" $v.retrieval.rerankerUrl))
+  "governance" (dict
+    "image" "governance" "values" $v.governance "kind" "Deployment" "args" (list "serve")
+    "ports" (list (dict "name" "grpc" "port" 9090))
+    "readiness" (dict "exec" (dict "command" (list "governance" "serve-healthcheck")))
+    "liveness" (dict "tcpSocket" (dict "port" "grpc"))
+    "env" (dict
+      "BF_PRINCIPAL_JWKS_URL" $jwks
+      "BF_INDEXING_ADDR" $v.indexing.addr
+      "BF_AUDIT_S3_ENDPOINT" $v.gateway.audit.s3Endpoint
+      "BF_AUDIT_BUCKET" $v.gateway.audit.bucket
+      "BF_AUDIT_RETENTION_DAYS" (toString $v.gateway.audit.retentionDays)
+      "BF_REDIS_ADDR" $v.events.redisAddr))
+  "orchestrator" (dict
+    "image" "orchestrator" "values" $v.orchestrator "kind" "Deployment"
+    "volumes" (list
+      (dict "name" "llm-api-key" "mountPath" "/run/secrets/llm_api_key" "subPath" "api_key" "source" (dict "secret" (dict "secretName" (printf "%s-orchestrator-llm" .Release.Name))))
+      (dict "name" "sql-catalog" "mountPath" "/etc/bambuflow/sql-catalog.yaml" "subPath" "sql-catalog.yaml" "source" (dict "configMap" (dict "name" (printf "%s-sql-catalog" .Release.Name)))))
+    "ports" (list (dict "name" "grpc" "port" 9090))
+    "readiness" (dict "tcpSocket" (dict "port" "grpc"))
+    "liveness" (dict "tcpSocket" (dict "port" "grpc"))
+    "env" (dict
+      "BF_PRINCIPAL_JWKS_URL" $jwks
+      "BF_RETRIEVAL_ADDR" (printf "%s-retrieval:9090" .Release.Name)
+      "BF_LLM_URL" $v.orchestrator.llmUrl
+      "BF_LLM_MODEL" $v.orchestrator.llmModel
+      "BF_NLI_URL" $v.orchestrator.nliUrl
+      "BF_LLM_EXTRA_BODY" $v.orchestrator.llmExtraBody
+      "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_REDIS_ADDR" $v.orchestrator.redisAddr
+      "BF_MAX_CONCURRENCY" (toString $v.orchestrator.maxConcurrency)
+      "BF_SQL_CATALOG" (ternary "" "/etc/bambuflow/sql-catalog.yaml" (empty $v.orchestrator.sqlCatalog))
+      "BF_LLM_API_KEY_FILE" "/run/secrets/llm_api_key"))
+  "batch" (dict
+    "image" "batch" "values" $v.batch "kind" "Deployment" "args" (list "serve")
+    "ports" (list (dict "name" "grpc" "port" 9090))
+    "readiness" (dict "tcpSocket" (dict "port" "grpc"))
+    "liveness" (dict "tcpSocket" (dict "port" "grpc"))
+    "env" (dict
+      "BF_PRINCIPAL_JWKS_URL" $jwks
+      "BF_GATEWAY_ADDR" (printf "%s-gateway:9090" .Release.Name)
+      "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)
+      "BF_RETRIEVAL_ADDR" (printf "%s-retrieval:9090" .Release.Name)
+      "BF_REDIS_ADDR" $v.events.redisAddr))
+  "evaluation" (dict
+    "image" "evaluation" "values" $v.evaluation "kind" "Deployment" "args" (list "serve")
+    "ports" (list (dict "name" "grpc" "port" 9090))
+    "readiness" (dict "tcpSocket" (dict "port" "grpc"))
+    "liveness" (dict "tcpSocket" (dict "port" "grpc"))
+    "env" (dict
+      "BF_PRINCIPAL_JWKS_URL" $jwks
+      "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)))
+  "webhook" (dict
+    "image" "governance" "values" $v.webhook "kind" "Deployment" "args" (list "webhook") "vaultRole" $v.vault.webhookRole
+    "ports" (list (dict "name" "grpc" "port" 9090))
+    "readiness" (dict "tcpSocket" (dict "port" "grpc"))
+    "liveness" (dict "tcpSocket" (dict "port" "grpc"))
+    "env" (dict
+      "BF_REDIS_ADDR" $v.events.redisAddr
+      "BF_WEBHOOK_SECRET_MOUNT" $v.vault.kvMount
+      "VAULT_TOKEN_FILE" "/vault/secrets/token"))
+-}}
+{{- range $name, $c := $components }}
+{{- $ctx := dict "root" $ "component" $name }}
+{{- $runtimeVault := hasKey $c "vaultRole" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: {{ $c.kind }}
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  {{- /* 副本数交给 HPA，不在这里写死，否则每次 helm upgrade 都会把 HPA 扩出来的副本缩回去 */}}
+  {{- if eq $c.kind "StatefulSet" }}
+  serviceName: {{ include "bambuflow.name" $ctx }}
+  podManagementPolicy: Parallel
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bambuflow.labels" $ctx | nindent 8 }}
+      annotations:
+        # 租户配置与策略数据只在启动时读取，内容变了就滚动重启
+        checksum/config: {{ $configSum }}
+      {{- if $runtimeVault }}
+        # 运行期要访问 Vault 的组件由 Vault Agent 注入令牌文件，令牌到期由 Agent 续期
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-inject-token: "true"
+        # Agent 默认以 UID 100 运行，写出的令牌文件应用（65532）读不了；与应用容器用同一个用户
+        vault.hashicorp.com/agent-run-as-same-user: "true"
+        vault.hashicorp.com/role: {{ $c.vaultRole | quote }}
+        vault.hashicorp.com/auth-path: {{ printf "auth/%s" $v.vault.authMount | quote }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "bambuflow.name" $ctx }}
+      # Vault Agent 用 ServiceAccount 令牌登录 Vault；不需要的组件不挂令牌
+      automountServiceAccountToken: {{ $runtimeVault }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "bambuflow.selector" $ctx | nindent 14 }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $v.image.registry }}/{{ $c.image }}:{{ $v.image.tag }}"
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          {{- with $c.args }}
+          args: {{ toJson . }}
+          {{- end }}
+          ports:
+            {{- range $c.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .port }}
+            {{- end }}
+          env:
+            {{- range $k, $val := $c.env }}
+            - name: {{ $k }}
+              value: {{ $val | quote }}
+            {{- end }}
+            - name: VAULT_ADDR
+              value: {{ $v.vault.addr | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $v.otel.endpoint | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ include "bambuflow.name" $ctx }}
+          startupProbe:
+            {{- toYaml $c.liveness | nindent 12 }}
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            {{- toYaml $c.readiness | nindent 12 }}
+            periodSeconds: 5
+          livenessProbe:
+            {{- toYaml $c.liveness | nindent 12 }}
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- range concat ($c.volumes | default list) ($c.claims | default list) }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- with .subPath }}
+              subPath: {{ . }}
+              {{- end }}
+              readOnly: {{ not (hasKey . "size") }}
+            {{- end }}
+          resources:
+            {{- toYaml $c.values.resources | nindent 12 }}
+          securityContext:
+            # 容器级也写明用户：Vault Agent 按它决定以哪个用户运行（agent-run-as-same-user）
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- range $c.volumes }}
+        - name: {{ .name }}
+          {{- toYaml .source | nindent 10 }}
+        {{- end }}
+  {{- if $c.claims }}
+  # 缩容或删除实例时保留审计卷：上面可能还有没送出的审计段
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  volumeClaimTemplates:
+    {{- range $c.claims }}
+    - metadata:
+        name: {{ .name }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with $v.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .size }}
+    {{- end }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "bambuflow.selector" $ctx | nindent 4 }}
+  ports:
+    {{- range $c.ports }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .name }}
+    {{- end }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: {{ $c.kind }}
+    name: {{ include "bambuflow.name" $ctx }}
+  minReplicas: {{ $c.values.replicas }}
+  maxReplicas: {{ $c.values.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    # 缩容放慢：流量波动时不来回伸缩
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+{{- end }}

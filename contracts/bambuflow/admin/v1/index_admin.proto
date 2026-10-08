@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+// IndexAdminService 是索引管理接口（入库管道详设 14.4），由 indexing 实现。
+// 由命令行、governance（紧急拒绝规则）与端到端测试在内部网络调用；索引版本的切换见 IndexVersionAdminService。
+service IndexAdminService {
+  // Publish 把待发布版本切换为线上版本。线上版本里本轮没有写到、且未打删除标记的文档原样带入（增量发布）。
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  // 已停用，调用返回 UNIMPLEMENTED：切换或回滚改由 IndexVersionAdminService 经双人复核执行（入库管道详设 14.4）。
+  // 契约按兼容规则保留（contracts/README.md），升 v2 时删除。
+  rpc Rollback(RollbackRequest) returns (RollbackResponse) {
+    option deprecated = true;
+  }
+  // AddDenyRules 把文档、数据源或租户加入紧急拒绝名单：检索的过滤与返回前复核两处都会拦下，对线上立即生效（K9）。
+  // governance 的紧急拒绝规则（/v1/admin/emergency-denials）经它写入；数据源与租户的规则只能新增。
+  rpc AddDenyRules(AddDenyRulesRequest) returns (AddDenyRulesResponse);
+  // RemoveDenyRules 撤销按文档的拒绝规则。
+  rpc RemoveDenyRules(RemoveDenyRulesRequest) returns (RemoveDenyRulesResponse);
+}
+
+message AddDenyRulesRequest {
+  repeated string doc_ids = 1;
+  // 原因，写入审计，必填
+  string reason = 2;
+  // 按数据源拒绝：该源的全部文档任何人都检索不到（governance 的紧急拒绝规则，governance 详设 4.2）
+  repeated string source_ids = 3;
+  // 按租户拒绝：该租户的任何人都检索不到任何文档
+  repeated string tenants = 4;
+}
+
+message AddDenyRulesResponse {
+  // 实际新增的规则数
+  int64 added = 1;
+}
+
+message RemoveDenyRulesRequest {
+  repeated string doc_ids = 1;
+}
+
+message RemoveDenyRulesResponse {
+  int64 removed = 1;
+}
+
+message PublishRequest {}
+
+message PublishResponse {
+  string version = 1;
+  // 从原线上版本带入的文档数
+  int64 carried = 2;
+}
+
+message RollbackRequest {
+  // 目标版本；为空时取上一次上线的版本。
+  string target_version = 1;
+}
+
+message RollbackResponse {
+  string from_version = 1;
+  string to_version = 2;
+}

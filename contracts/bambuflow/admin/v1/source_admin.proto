@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "bambuflow/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// SourceAdminService 是数据源注册、审批、撤销与租户授权（governance 详设 6.2、7.2），由 governance 实现，
+// gateway 的 /v1/admin/sources 调用，调用方须带管理 Principal。数据源与授权以 governance 的数据库为唯一事实来源，
+// 授权经 ConfigService 的快照下发给 retrieval。同步、暂停、恢复由 connectors 实现，不在这里。
+service SourceAdminService {
+  // 注册数据源（平台管理员），状态为待审批；数据源 ID（src_）由 governance 生成。
+  rpc RegisterSource(RegisterSourceRequest) returns (RegisterSourceResponse);
+  // 数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。
+  rpc ApproveSource(ApproveSourceRequest) returns (ApproveSourceResponse);
+  // 撤销（只有本部门的数据属主）：先写按数据源的紧急拒绝规则，在线立即不可见，再发出 source.revoked 事件。
+  rpc RevokeSource(RevokeSourceRequest) returns (RevokeSourceResponse);
+  rpc ListGrants(ListGrantsRequest) returns (ListGrantsResponse);
+  // 授权给租户（本部门的数据属主），数据源须已审批。
+  rpc CreateGrant(CreateGrantRequest) returns (CreateGrantResponse);
+  // 取消授权（本部门的数据属主），1 分钟内在检索生效。
+  rpc DeleteGrant(DeleteGrantRequest) returns (DeleteGrantResponse);
+}
+
+enum SourceStatus {
+  SOURCE_STATUS_UNSPECIFIED = 0;
+  // 已注册，待数据属主审批
+  SOURCE_STATUS_PENDING = 1;
+  SOURCE_STATUS_ACTIVE = 2;
+  // 已撤销，不再恢复
+  SOURCE_STATUS_REVOKED = 3;
+}
+
+message Source {
+  // src_ 前缀
+  string source_id = 1;
+  bambuflow.common.v1.SourceType type = 2;
+  // 数据属主部门
+  string owner_dept = 3;
+  // 源系统默认密级
+  bambuflow.common.v1.Classification default_classification = 4;
+  string description = 5;
+  SourceStatus status = 6;
+  string created_by = 7;
+  google.protobuf.Timestamp created_at = 8;
+  // 审批记录：审批人、时间、依据（如内部工单号）；待审批时为空
+  string approved_by = 9;
+  google.protobuf.Timestamp approved_at = 10;
+  string approval_basis = 11;
+  // 撤销记录；未撤销时为空
+  string revoked_by = 12;
+  google.protobuf.Timestamp revoked_at = 13;
+  string revoke_reason = 14;
+}
+
+message RegisterSourceRequest {
+  bambuflow.common.v1.SourceType type = 1;
+  string owner_dept = 2;
+  bambuflow.common.v1.Classification default_classification = 3;
+  // 用途与负责人，便于审批
+  string description = 4;
+}
+
+message RegisterSourceResponse {
+  Source source = 1;
+}
+
+message ApproveSourceRequest {
+  string source_id = 1;
+  // 审批依据，必填
+  string basis = 2;
+}
+
+message ApproveSourceResponse {
+  Source source = 1;
+}
+
+message RevokeSourceRequest {
+  string source_id = 1;
+  string reason = 2;
+}
+
+message RevokeSourceResponse {
+  Source source = 1;
+  // 撤销时写入的按数据源的紧急拒绝规则（den_）
+  string denial_id = 2;
+}
+
+message Grant {
+  string source_id = 1;
+  string tenant = 2;
+  string granted_by = 3;
+  google.protobuf.Timestamp granted_at = 4;
+}
+
+message ListGrantsRequest {
+  string source_id = 1;
+}
+
+message ListGrantsResponse {
+  repeated Grant grants = 1;
+}
+
+message CreateGrantRequest {
+  string source_id = 1;
+  string tenant = 2;
+}
+
+message CreateGrantResponse {
+  Grant grant = 1;
+  // false 表示已经授权过，返回已有的授权
+  bool created = 2;
+}
+
+message DeleteGrantRequest {
+  string source_id = 1;
+  string tenant = 2;
+}
+
+message DeleteGrantResponse {}

@@ -1,0 +1,76 @@
+# 对外 API 的命名规则（技术设计文档 13.11），由 vacuum 执行。
+extends: [[spectral:oas, recommended]]
+
+rules:
+  # 示例与联系人信息对内部平台不是必需的，不因为缺少它们而报警。
+  info-contact: off
+  info-license: off
+  oas3-api-servers: off
+  operation-tag-defined: off
+  operation-tags: off
+  oas3-missing-example: off
+  # 设计规定字段用 snake_case（13.11），由下面的 properties-snake-case 检查。
+  camel-case-properties: off
+
+  paths-kebab-case:
+    description: 路径片段用小写 kebab-case，参数用 {snake_case}
+    severity: error
+    given: $.paths[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^(/(v[0-9]+|[a-z0-9]+(-[a-z0-9]+)*|\\{[a-z][a-z0-9_]*\\}))+$"
+
+  properties-snake-case:
+    description: JSON 字段用 snake_case
+    severity: error
+    given: $..properties[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+
+  enum-values-snake-case:
+    description: 枚举值用小写 snake_case
+    severity: error
+    given: $..enum[*]
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+
+  answer-id-prefix:
+    description: answer_id 带 ans_ 前缀
+    severity: error
+    given: $..properties.answer_id
+    then:
+      - field: pattern
+        function: truthy
+      - field: pattern
+        function: pattern
+        functionOptions:
+          match: "^\\^ans_"
+
+  conversation-id-prefix:
+    description: conversation_id 带 conv_ 前缀
+    severity: error
+    given: $..properties.conversation_id
+    then:
+      - field: pattern
+        function: truthy
+      - field: pattern
+        function: pattern
+        functionOptions:
+          match: "^\\^conv_"
+
+  batch-id-prefix:
+    description: batch_id 带 bat_ 前缀
+    severity: error
+    given: $..properties.batch_id
+    then:
+      - field: pattern
+        function: truthy
+      - field: pattern
+        function: pattern
+        functionOptions:
+          match: "^\\^bat_"

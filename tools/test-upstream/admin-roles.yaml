@@ -1,0 +1,8 @@
+# 测试环境的平台角色映射（只用于开发与 CI）：平台角色 → 平台身份库里的群组（gateway 详设 4.2，governance 详设 9.1）。
+# 群组与账号见 gen_ldif.py；生产按部署配置清单填写（Helm 的 gateway.adminRoles）。
+roles:
+  platform_admin: [platform-admins]
+  platform_operator: [platform-ops]
+  infosec: [infosec]
+  data_owner: [data-owners]
+  auditor: [platform-audit]

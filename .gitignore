@@ -1,0 +1,21 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+/bin/
+# 设计文档的本地副本（PDF + markdown），不入 git
+/docs/design/
+# 编码助手的运行时文件与个人设置
+.claude/*.lock
+.claude/settings.local.json
+# 每次 make eval 的报告；入库的只有基线（baseline.*）
+golden/*/reports/report.*
+# 本机配置（外部 LLM 密钥等），见 .env.local.example
+.env.local
+# 编码助手创建的临时 git 工作树
+.claude/worktrees/
+# make helm-smoke 下载的第三方 chart
+tools/helm-smoke/charts/

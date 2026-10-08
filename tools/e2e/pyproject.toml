@@ -1,0 +1,25 @@
+# 端到端测试：在 compose 网络里运行（make e2e），不随 make test 执行。
+[project]
+name = "bambuflow-e2e"
+version = "0"
+requires-python = ">=3.12"
+dependencies = [
+    "bambuflow-contracts",
+    "grpcio>=1.84.0",
+    "httpx>=0.28",
+    "pyjwt[crypto]>=2.10",
+    "pytest>=8.4",
+    "ldap3>=2.9",
+    "psycopg[binary]>=3.2",
+    "minio>=7.2",
+    # 公开检索评测集的原文件是 parquet（retrieval_bench）
+    "pyarrow>=21",
+    # 共享盘样例的 span 回指原文：按页码与区域从原 PDF 取文字比对（test_fileshare）
+    "pymupdf>=1.26",
+]
+
+[tool.uv.sources]
+bambuflow-contracts = { workspace = true }
+
+[tool.uv]
+package = false

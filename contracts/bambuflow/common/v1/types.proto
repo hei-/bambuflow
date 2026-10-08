@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package bambuflow.common.v1;
+
+// 多个契约共用的类型。
+
+// 密级（技术设计文档 8.2）。编号从低到高，比较编号即可判断是否超出用户密级。
+enum Classification {
+  CLASSIFICATION_UNSPECIFIED = 0;
+  CLASSIFICATION_PUBLIC = 1; // 公开
+  CLASSIFICATION_INTERNAL = 2; // 内部
+  CLASSIFICATION_CONFIDENTIAL = 3; // 机密
+  CLASSIFICATION_RESTRICTED = 4; // 受限
+}
+
+// 来源类型（技术设计文档 13.9 citations.source_type）。
+enum SourceType {
+  SOURCE_TYPE_UNSPECIFIED = 0;
+  SOURCE_TYPE_WIKI = 1;
+  SOURCE_TYPE_MAIL = 2;
+  SOURCE_TYPE_FILE = 3;
+  SOURCE_TYPE_IMAGE = 4;
+  SOURCE_TYPE_TABLE = 5;
+  SOURCE_TYPE_LOG = 6;
+  SOURCE_TYPE_DB = 7;
+}
+
+// Span 是块在原文中的位置，引用靠它定位。字符区间以解析后的文档全文为准，左闭右开。
+message Span {
+  int32 char_start = 1;
+  int32 char_end = 2;
+  // 原文中的行号（从 1 开始），文本类来源才有。
+  optional int32 line_start = 3;
+  optional int32 line_end = 4;
+  // 页码（从 1 开始），分页文档才有。
+  optional int32 page = 5;
+  // 块在页面（或图片）上的区域，用于引用高亮；PDF 以点为单位、原点在页面左上角，图片以像素为单位。
+  // 版面类来源（PDF、扫描件、图片）才有；一块跨多个区域时取外接矩形。
+  BoundingBox bbox = 6;
+}
+
+// BoundingBox 是左上角 (x0, y0) 与右下角 (x1, y1) 围成的矩形。
+message BoundingBox {
+  float x0 = 1;
+  float y0 = 2;
+  float x1 = 3;
+  float y1 = 4;
+}
+
+// Filters 是调用方给出的结构化过滤条件。它们与权限必含条件以 AND 拼接，只能缩小范围（retrieval 详设 5.3）。
+message Filters {
+  repeated string source_ids = 1;
+  // 以下都是受控词表编码，按原样匹配。要包含某个编码的下级时，由持有词表的调用方展开后传入（governance 详设 6.1：
+  // 词表下发给 orchestrator 等，retrieval 不持有词表）。
+  repeated string doc_types = 2;
+  repeated string depts = 3;
+  // 含任一主题即可。
+  repeated string topic_codes = 4;
+  // 生效日期范围，YYYY-MM-DD，闭区间；为空表示不限。
+  string effective_from = 5;
+  string effective_to = 6;
+  repeated ValidityStatus validity_statuses = 7;
+}
+
+// 效力状态（入库管道详设第 7 节）。
+enum ValidityStatus {
+  VALIDITY_STATUS_UNSPECIFIED = 0;
+  VALIDITY_STATUS_EFFECTIVE = 1;
+  VALIDITY_STATUS_PENDING = 2;
+  VALIDITY_STATUS_REPEALED = 3;
+}
+
+// DocMetadata 是文档级的受控元数据与效力信息（入库管道详设第 7 节），列举与计数按它筛选。
+message DocMetadata {
+  // 受控词表编码；取不到或归一不上时为空，并列在 missing 里。
+  string doc_type = 1;
+  string dept = 2;
+  repeated string topic_codes = 3;
+  // YYYY-MM-DD。
+  string effective_date = 4;
+  ValidityStatus validity_status = 5;
+  // 取不到的字段名：doc_type、dept、topic_codes、effective_date、validity_status。
+  repeated string missing = 6;
+  // 归一所用的词表快照版本。
+  string vocabulary_version = 7;
+}
+
+// Degradation 记录一个被跳过或降级的环节，如 stage = "dense"、reason = "timeout"。
+message Degradation {
+  string stage = 1;
+  string reason = 2;
+}
+
+// 图谱的实体类型（入库管道详设第 7 节“实体与关系”）。
+enum EntityType {
+  ENTITY_TYPE_UNSPECIFIED = 0;
+  ENTITY_TYPE_ORG = 1; // 机构、部门、团队
+  ENTITY_TYPE_PRODUCT = 2; // 产品
+  ENTITY_TYPE_POLICY_CLAUSE = 3; // 制度与制度条款
+  ENTITY_TYPE_SYSTEM = 4; // 系统、服务、平台
+  ENTITY_TYPE_ROLE = 5; // 人员角色（岗位，不是具体的人）
+}
+
+// 图谱的关系类型。方向是“主体 → 客体”，如 清算核心服务 DEPENDS_ON 账户系统。
+enum RelationType {
+  RELATION_TYPE_UNSPECIFIED = 0;
+  RELATION_TYPE_DEPENDS_ON = 1; // 依赖、调用
+  RELATION_TYPE_BELONGS_TO = 2; // 属于、隶属
+  RELATION_TYPE_RESPONSIBLE_FOR = 3; // 负责、归口管理
+  RELATION_TYPE_CITES = 4; // 引用（依据、按照某制度）
+  RELATION_TYPE_APPLIES_TO = 5; // 适用于
+}

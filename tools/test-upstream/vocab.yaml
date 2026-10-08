@@ -1,0 +1,22 @@
+# 开发与 CI 用的受控词表（governance 详设 6.1）：由 governance vocab-load 写入，生产由各归口部门在 console 维护。
+# 编码一旦使用就不删除、不改义，只能停用并指定替代编码。
+doc_type:
+  - {code: DT-POLICY, name: 制度, synonyms: [管理办法, 办法, 实施细则, 细则, 制度, 规定, 政策, 规范]}
+  - {code: DT-PROCEDURE, name: 流程, synonyms: [流程, 规程, 操作规程], parent: DT-POLICY}
+  - {code: DT-NOTICE, name: 通知, synonyms: [通知, 公告, 通告]}
+  - {code: DT-MANUAL, name: 手册, synonyms: [手册, 员工手册, 操作手册, 指引, 指南, 须知, 常见问题]}
+  - {code: DT-MINUTES, name: 会议纪要, synonyms: [纪要, 会议纪要]}
+  - {code: DT-RULE, name: 规定, status: deprecated, replaced_by: DT-POLICY}
+dept:
+  - {code: DEPT-CREDIT, name: 信贷管理部, synonyms: [信贷部, 信贷管理部]}
+  - {code: DEPT-RISK, name: 风险管理部, synonyms: [风险部, 风控部, 风险管理部]}
+  - {code: DEPT-OPS, name: 运营管理部, synonyms: [运营部, 运营管理部]}
+  - {code: DEPT-HR, name: 人力资源部, synonyms: [人力资源部, 人力部]}
+  - {code: DEPT-COMPLIANCE, name: 合规部, synonyms: [合规部, 法律合规部]}
+topic:
+  - {code: TOPIC-CREDIT, name: 信贷, synonyms: [信贷, 授信, 贷款]}
+  - {code: TOPIC-RETAIL-CREDIT, name: 零售信贷, synonyms: [零售信贷, 个人贷款, 个人消费贷款, 消费贷款, 住房贷款, 个人经营贷款], parent: TOPIC-CREDIT}
+  - {code: TOPIC-AML, name: 反洗钱, synonyms: [反洗钱, 可疑交易, 洗钱]}
+  - {code: TOPIC-RISK-LIMIT, name: 风险限额, synonyms: [风险限额, 限额管理, 限额]}
+  - {code: TOPIC-STAFF, name: 员工管理, synonyms: [请假, 考勤, 员工, 休假]}
+  - {code: TOPIC-SAFETY, name: 安全管理, synonyms: [消防, 安全检查, 安全]}

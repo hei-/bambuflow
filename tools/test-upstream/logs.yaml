@@ -1,0 +1,15 @@
+# 日志数据源的测试配置（P3-I3，只用于开发与 CI）：订阅哪个主题、哪些服务和级别入库、服务归哪些运维组。
+# 生产由运维按服务归属维护（部署配置清单），主题接公司日志平台。
+# 服务归属的运维组只有运维值班账号在里面（tools/test-upstream/gen_ldif.py），评测集的提问身份看不到这些日志。
+topic: logs:app
+# 默认 30 天（技术设计文档 5.5），到期按天整份删除
+retention_days: 30
+classification: internal
+services:
+  payments-svc:
+    groups: [group:sre-oncall]
+    levels: [ERROR, WARN]
+  core-batch:
+    # sam 不在这个组里：同一租户内按服务归属区分可见范围
+    groups: [group:sre-core]
+    levels: [ERROR]

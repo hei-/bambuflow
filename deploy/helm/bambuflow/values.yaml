@@ -1,0 +1,154 @@
+# 默认值只含与环境无关的部分；环境相关的地址由各环境的 values 文件给出（见 values-prod.yaml），
+# 密钥与口令一律来自 Vault，不进 values（技术设计文档 12.6、部署配置清单）。
+image:
+  registry: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# 集群的默认存储类为空时留空
+storageClass: ""
+
+vault:
+  addr: ""
+  role: ""
+  # webhook 的角色：只能读写 <kvMount>/webhooks/*（订阅的签名密钥），与在线服务的角色分开
+  webhookRole: ""
+  kvMount: secret
+  authMount: kubernetes
+
+# 入口控制器与监控所在的命名空间（NetworkPolicy 按它放行）
+networkPolicy:
+  ingressNamespace: ""
+  monitoringNamespace: monitoring
+  # 入库平面（indexing）所在的命名空间：indexing 要取管理 Principal 的验签公钥（gateway:8081）
+  ingestNamespace: ""
+
+otel:
+  endpoint: ""
+
+# 平台事件流（Redis Streams platform:events）：qa/batch、indexing 写入，webhook 消费，必须是同一个 Redis；
+# 口令 BF_REDIS_PASSWORD 经 Vault 注入
+events:
+  redisAddr: ""
+
+# 租户配置（gateway 详设 1.3；governance 分发租户配置前由部署方在这里给出）：键是租户名，
+# 值是 tenant.yaml 除 tenant 以外的字段（rollout、member_groups、pilot_groups、bound_clients、mcp_agents、mcp_tools、
+# auditor_groups：可回放本租户任何人回答的审计岗群组；quota：租户这一层的限制，gateway 详设 5.1）。
+# quota 的 max_concurrency 为在线并发上限，daily_tokens 为每日 token 配额；不填时取保守默认值（20 路、200 万 token），
+# 用尽后当日只提供仅检索。
+tenants: {}
+
+# 授权策略数据（config/policy 的 data.json）：每个租户一项（没有的租户一律拒绝），内容为租户策略：
+# denied_sources（策略禁止的数据源）、地域限定（source_regions）、可看 PII 的群组等。
+# 租户可访问的数据源不在这里，以 governance 为唯一事实来源（/v1/admin/sources/{src_id}/grants）
+policyData: {}
+
+# replicas 是 HPA 的下限
+gateway:
+  replicas: 2
+  maxReplicas: 6
+  # 对外根地址（https，不带路径）：MCP 的资源标识为 <publicUrl>/mcp，写进受保护资源元数据（gateway 详设 7.2）
+  publicUrl: ""
+  platformIssuer: ""
+  platformClients: console
+  # 限流计数（gateway 详设 5.1）；口令 BF_REDIS_PASSWORD 经 Vault 注入
+  redisAddr: ""
+  # 每个用户同时打开的 SSE 流上限（gateway 详设第 6 节，部署配置清单：3 路）
+  userStreams: 3
+  # 租户每日 token 配额按这个时区的自然日计数
+  quotaTimezone: Asia/Shanghai
+  # 管理接口的 RBAC（gateway 详设 4.2）：平台角色 → 平台身份库里的群组。角色为 platform_admin（平台管理员）、
+  # platform_operator（平台运维）、infosec（信息安全）、data_owner（数据属主，按本人部门限定范围）、auditor（审计岗）；
+  # 不配置的角色没有人拥有，对应的管理接口一律 403
+  adminRoles: {}
+  # 审计桶须开启对象锁（技术设计文档 8.3），gateway 启动时检查，没开就不启动
+  audit:
+    s3Endpoint: ""
+    bucket: bambuflow-audit
+    retentionDays: 2555
+    # 审计本地队列：审计桶不可用时能积压多久取决于它（每天问答量 × 每条约 1 KB）
+    storageSize: 10Gi
+  resources:
+    requests: {cpu: 500m, memory: 512Mi}
+    limits: {memory: 1Gi}
+
+retrieval:
+  replicas: 2
+  maxReplicas: 10
+  embedderUrl: ""
+  # 精排模型服务；留空则不精排
+  rerankerUrl: ""
+  resources:
+    requests: {cpu: "1", memory: 1Gi}
+    limits: {memory: 2Gi}
+
+# 入库平面的 indexing（不在本 chart 里）：governance 经它把紧急拒绝规则写进拒绝名单，gateway 把索引版本的管理接口转给它（host:port）。
+# indexing 的 BF_PRINCIPAL_JWKS_URL 指向本 release 的 gateway:8081，入库平面的网络策略要放行 gateway、governance → indexing:9090
+indexing:
+  addr: ""
+
+# ConfigService：向 orchestrator 下发受控词表快照（governance 详设 7.1）；管理接口（紧急拒绝规则等）经 gateway 调用。
+# 数据库连接串与审计桶凭证经 Vault 注入
+governance:
+  replicas: 2
+  maxReplicas: 4
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+orchestrator:
+  replicas: 2
+  maxReplicas: 10
+  llmUrl: ""
+  llmModel: ""
+  nliUrl: ""
+  # 厂商专有的请求参数（JSON），如推理模型要关闭思考：{"thinking":{"type":"disabled"}}
+  llmExtraBody: ""
+  # 会话与 agent 中间状态（orchestrator 详设第 10 节）；口令 BF_REDIS_PASSWORD 经 Vault 注入。
+  # 回答记录与反馈存元数据库的 orchestrator schema，连接串 BF_PG_DSN 经 Vault 注入（bambuflow/orchestrator）；
+  # 升级前执行 python -m bambuflow_orchestrator migrate
+  redisAddr: ""
+  # 每副本同时处理的回答数（详设 11.4），超过后按 answer > mcp > batch 排队；随副本规格调整
+  maxConcurrency: 30
+  # 结构化数据实时查询 sql_query（orchestrator 详设 6.3）的视图目录：tenants（开放的租户）、roles（数据库角色 → 权限 token）、
+  # views（白名单视图：name、title、description、classification、terms、columns）。为空时不开放。
+  # 数据平台只读查询服务的默认实现直连只读账号，连接串 BF_SQL_DSN 经 Vault 注入（bambuflow/orchestrator）
+  sqlCatalog: {}
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 2Gi}
+
+# 异步批量问答（技术设计文档 13.5）：逐条换发 Principal 后以调用目的 batch 调 orchestrator；
+# 数据库连接串与 Redis 口令经 Vault 注入（bambuflow/batch）
+batch:
+  replicas: 2
+  maxReplicas: 4
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+# evaluation 常驻服务（evaluation 详设第 2 节）：A/B 分析（/v1/admin/experiments/{exp_id}/analysis）与在线质量趋势
+# （/v1/admin/quality-trends）；读 governance 的实验与 orchestrator 的回答记录（服务间接口）。
+# 在线抽样评审的结果存元数据库的 evaluation schema，连接串 BF_PG_DSN 经 Vault 注入（bambuflow/evaluation）；
+# 升级前执行 python -m bambuflow_evaluation migrate。
+# guardSchedule：每天检查运行中实验的护栏、触发即停止；onlineSchedule：每天抽样评审前一天的回答（CronJob，按集群时区）
+evaluation:
+  replicas: 2
+  maxReplicas: 2
+  guardSchedule: "0 1 * * *"
+  onlineSchedule: "0 2 * * *"
+  # 在线抽样评审的租户；判定用的 NLI 服务与模型须与线上校验器不同（evaluation 详设 6.1）
+  onlineTenants: []
+  nliUrl: ""
+  judgeModel: ""
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 512Mi}
+
+# Webhook 投递（技术设计文档 13.7）：消费平台事件流、按订阅签名投递；数据库连接串与 Redis 口令经 Vault 注入（bambuflow/webhook）
+webhook:
+  replicas: 2
+  maxReplicas: 4
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}

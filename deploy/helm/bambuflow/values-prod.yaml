@@ -1,0 +1,59 @@
+# 生产环境的 values 模板：地址按部署配置清单填写（N1 平台授权服务、N4 LLM 网关、N5 模型服务、N7 集群与镜像仓库）。
+# values.schema.json 拒绝测试 realm、开发口令和本地地址，CI 用它校验（make helm-check）。
+image:
+  registry: registry.corp.example/bambuflow
+  tag: 0.1.0
+
+vault:
+  addr: https://vault.corp.example
+  role: bambuflow-online
+  webhookRole: bambuflow-webhook
+
+# 示例租户：按部署配置清单与业务线的上线计划填写
+tenants:
+  credit:
+    rollout: pilot
+    member_groups: [credit-staff]
+    pilot_groups: [credit-pilot]
+    bound_clients: []
+    quota: {max_concurrency: 20, daily_tokens: 2000000}
+
+policyData:
+  tenants:
+    credit: {}
+
+networkPolicy:
+  ingressNamespace: ingress-nginx
+  ingestNamespace: ingest
+
+otel:
+  endpoint: http://otel-collector.observability:4317
+
+events:
+  redisAddr: redis.corp.example:6379
+
+gateway:
+  publicUrl: https://rag.corp.example
+  platformIssuer: https://sso.corp.example/realms/bambuflow
+  redisAddr: redis.corp.example:6379
+  # 平台角色 → 公司目录里的群组（按部署配置清单填写）
+  adminRoles:
+    platform_admin: [rag-platform-admins]
+    platform_operator: [rag-platform-ops]
+    infosec: [infosec-team]
+    data_owner: [data-owners]
+    auditor: [internal-audit]
+  audit:
+    s3Endpoint: https://s3.corp.example
+
+indexing:
+  addr: bambuflow-indexing.ingest:9090
+
+retrieval:
+  embedderUrl: http://triton.models:8000
+
+orchestrator:
+  llmUrl: https://llm-gateway.corp.example
+  llmModel: corp-private-chat
+  nliUrl: http://triton.models:8000
+  redisAddr: redis.corp.example:6379

@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// EmergencyDenialAdminService 是紧急拒绝规则的管理接口（governance 详设 4.2、7.2），由 governance 实现，
+// gateway 的 GET/POST /v1/admin/emergency-denials 调用，调用方须带管理 Principal（信息安全或数据属主）。
+// 规则只能新增：解除一条规则算放宽，走变更单，所以这里没有删除接口。
+service EmergencyDenialAdminService {
+  // 新的在前。
+  rpc ListEmergencyDenials(ListEmergencyDenialsRequest) returns (ListEmergencyDenialsResponse);
+  // 登记一条规则并下发到索引库的拒绝名单，检索在过滤与返回前复核两处生效。同一对象已有规则时返回已有的。
+  rpc CreateEmergencyDenial(CreateEmergencyDenialRequest) returns (CreateEmergencyDenialResponse);
+}
+
+enum DenialScope {
+  DENIAL_SCOPE_UNSPECIFIED = 0;
+  // 按数据源：该源的全部文档任何人都检索不到
+  DENIAL_SCOPE_SOURCE = 1;
+  // 按文档
+  DENIAL_SCOPE_DOCUMENT = 2;
+  // 按租户：该租户的任何人都检索不到任何文档
+  DENIAL_SCOPE_TENANT = 3;
+}
+
+enum DenialStatus {
+  DENIAL_STATUS_UNSPECIFIED = 0;
+  // 已登记，尚未写进索引库的拒绝名单（索引库不可用）；governance 每 10 秒重试，并记错误日志
+  DENIAL_STATUS_PENDING = 1;
+  // 已写进拒绝名单，检索已生效
+  DENIAL_STATUS_ACTIVE = 2;
+}
+
+message EmergencyDenial {
+  // den_ 前缀
+  string denial_id = 1;
+  DenialScope scope = 2;
+  // 数据源 ID、文档 ID 或租户名
+  string target = 3;
+  string reason = 4;
+  string created_by = 5;
+  google.protobuf.Timestamp created_at = 6;
+  DenialStatus status = 7;
+  // 写进拒绝名单的时间；尚未生效时为空
+  google.protobuf.Timestamp applied_at = 8;
+}
+
+message CreateEmergencyDenialRequest {
+  DenialScope scope = 1;
+  string target = 2;
+  // 原因（如内部工单号），必填
+  string reason = 3;
+}
+
+message CreateEmergencyDenialResponse {
+  EmergencyDenial denial = 1;
+  // false 表示同一对象已有规则，返回的是已有的那一条
+  bool created = 2;
+}
+
+message ListEmergencyDenialsRequest {
+  // 1–200，0 时取 50
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListEmergencyDenialsResponse {
+  repeated EmergencyDenial denials = 1;
+  // 没有下一页时为空
+  string next_page_token = 2;
+}

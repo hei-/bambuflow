@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bambuflow
+description: 企业级 RAG 平台的在线服务（P0 骨架：gateway、retrieval、orchestrator）
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

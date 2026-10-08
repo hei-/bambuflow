@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AuditAdminService 是审计查询（技术设计文档 13.2，governance 详设 7.2），由 governance 实现，
+// gateway 的 GET /v1/admin/audit 调用，只给审计岗；每次查询本身写 governance 的变更审计。
+// 数据来自 gateway 送到审计桶的入口审计段：谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档。
+service AuditAdminService {
+  rpc QueryAudit(QueryAuditRequest) returns (QueryAuditResponse);
+}
+
+message QueryAuditRequest {
+  // 按用户（平台账号）筛选；为空不限
+  string sub = 1;
+  // 按文档筛选：文档出现在候选、上下文、展示的块或列出的文档里；为空不限
+  string doc_id = 2;
+  // 时间范围（含两端），必填，跨度不超过 31 天
+  google.protobuf.Timestamp from = 3;
+  google.protobuf.Timestamp to = 4;
+  // 1–200，0 时取 50
+  int32 page_size = 5;
+  string page_token = 6;
+}
+
+message QueryAuditResponse {
+  // 按时间先后
+  repeated AuditRecord records = 1;
+  // 没有下一页时为空
+  string next_page_token = 2;
+}
+
+// AuditRecord 是一条入口审计（gateway 详设 8.1、8.2）。
+message AuditRecord {
+  google.protobuf.Timestamp time = 1;
+  string trace_id = 2;
+  string answer_id = 3;
+  string batch_id = 4;
+  string sub = 5;
+  string tenant = 6;
+  // 代用户调用的业务系统或 agent
+  string actor = 7;
+  // 接口名，如 answers、search、admin-emergency-denials-create
+  string endpoint = 8;
+  int32 status = 9;
+  // 被拒绝的原因（对外错误类型）
+  string reason = 10;
+  int64 latency_ms = 11;
+  repeated string candidate_chunk_ids = 12;
+  repeated string context_chunk_ids = 13;
+  repeated string shown_chunk_ids = 14;
+  repeated string listed_doc_ids = 15;
+  // 按文档查询时，文档出现在哪几类里：candidate、context、shown、listed
+  repeated string matched_in = 16;
+  // 管理接口才有：方法与路径
+  string admin_method = 17;
+  string admin_path = 18;
+}

@@ -1,0 +1,15 @@
+go 1.26.8
+
+use (
+	./contracts/gen/go
+	./libs/platform-go
+	./libs/textseg
+	./services/gateway
+	./services/governance
+	./services/indexing
+	./services/ingestion/connectors
+	./services/qa/batch
+	./services/retrieval
+	./tools
+	./tools/devtools
+)

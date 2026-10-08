@@ -1,0 +1,5 @@
+# 测试用白名单
+file docs/rules.md 金集
+file examples/
+context 行内 执行内
+context 行内 运行内

@@ -1,0 +1,6 @@
+id: fs-risk-limit-monitor
+title: 2026 年第三季度风险限额监控表
+owner: bob
+classification: confidential
+acl: [group:risk-dept]
+updated_at: 2026-10-08T00:00:00Z

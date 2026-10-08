@@ -1,0 +1,26 @@
+# 开发工具容器（见 deploy/toolbox/Dockerfile）。由 Makefile 调用，不需要手动启动。
+name: bambuflow-toolbox
+
+services:
+  toolbox:
+    build:
+      context: ../..
+      dockerfile: deploy/toolbox/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+    # 并行的工作树各用自己的标签（BF_TOOLBOX_TAG），避免互相覆盖镜像与虚拟环境；下载缓存共用
+    image: bambuflow-toolbox:${BF_TOOLBOX_TAG:-dev}
+    volumes:
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+      - uv-cache:/root/.cache/uv
+      - venv:/opt/venv
+      - tools:/root/.cache/bambuflow-tools
+
+volumes:
+  go-mod:
+  go-build:
+  uv-cache:
+  venv:
+    name: bambuflow-toolbox_venv-${BF_TOOLBOX_TAG:-dev}
+  tools:

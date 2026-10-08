@@ -1,0 +1,5 @@
+# OCR 镜像的依赖（只装在 ocr/Dockerfile 里，不进 uv 工作区：PaddlePaddle 约 200 MB，其他服务与开发环境用不到）。
+# 生成 requirements.txt（按 sha256 固定）：
+#   make run CMD='cd services/ingestion/processing/ocr && uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 --index-url https://pypi.org/simple --override overrides.txt -o requirements.txt' OUT='services/ingestion/processing/ocr/requirements.txt'
+paddlepaddle==3.3.1
+paddleocr==3.7.0

@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package bambuflow.config.v1;
+
+// ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
+// 现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
+// 快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+service ConfigService {
+  // GetSnapshot 取某个服务当前生效的快照。
+  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
+}
+
+message GetSnapshotRequest {
+  // 调用方服务名（processing、orchestrator 等），决定快照里放哪些对象。
+  string service = 1;
+}
+
+message GetSnapshotResponse {
+  // 快照内容的摘要；用到快照的结果（如文档元数据、回答的 why）记下它，回放时据此还原。
+  string snapshot_version = 1;
+  // 受控词表（governance 详设 6.1）：平台统一的文档类型、发文部门、主题三套。retrieval 的快照里没有。
+  repeated Vocabulary vocabularies = 2;
+  // 租户可访问的数据源（source_grants 中已审批、未撤销的数据源），只在 retrieval 的快照里。
+  // 这是租户授权的唯一来源：没有授权的数据源不能检索（技术设计文档 9.1）。
+  repeated SourceGrant source_grants = 3;
+  // 运行中的 A/B 实验，只在 orchestrator 的快照里；每个租户至多一个（governance 详设 3.1）。
+  repeated RunningExperiment experiments = 4;
+}
+
+// RunningExperiment 是 orchestrator 分组与替换配置需要的部分（orchestrator 详设 12.3）。
+message RunningExperiment {
+  string exp_id = 1;
+  string tenant = 2;
+  // 进入实验组的用户比例：5、20 或 50
+  int32 traffic_percent = 3;
+  // 实验组的句支持度门槛与引用覆盖率门槛；不填沿用基线
+  optional double support_threshold = 4;
+  optional double min_coverage = 5;
+}
+
+message SourceGrant {
+  string tenant = 1;
+  string source_id = 2;
+}
+
+message Vocabulary {
+  // doc_type、dept、topic 之一。
+  string name = 1;
+  repeated VocabularyTerm terms = 2;
+}
+
+message VocabularyTerm {
+  // 稳定编码；一旦使用就不删除、不改义，只能停用。
+  string code = 1;
+  string name = 2;
+  // 入库归一与查询映射都按名称和同义词匹配。
+  repeated string synonyms = 3;
+  // 上级编码；按上级查询时包含所有下级。
+  string parent = 4;
+  TermStatus status = 5;
+  // 停用时必填：替代它的编码。
+  string replaced_by = 6;
+}
+
+enum TermStatus {
+  TERM_STATUS_UNSPECIFIED = 0;
+  TERM_STATUS_ACTIVE = 1;
+  TERM_STATUS_DEPRECATED = 2;
+}

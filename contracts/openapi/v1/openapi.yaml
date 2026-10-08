@@ -1,0 +1,2838 @@
+openapi: 3.1.0
+info:
+  title: bambuflow 对外 API
+  version: 1.0.0
+  description: |
+    企业级 RAG 平台的对外接口，字段以技术设计文档 13.9 为准，命名规范见 13.11。
+    调用方必须代表终端用户：Authorization 为用户令牌，或业务系统经令牌交换取得、代表该用户的令牌。
+    租户不出现在路径和请求体里：业务系统的客户端登记时绑定一个租户，请求自动属于该租户；
+    console 等平台级客户端用请求头 Bambuflow-Tenant 在用户所属的租户中选择，用户只属于一个租户时可以省略。
+    任何情况下用户都必须是该租户的成员，否则返回 403。
+servers:
+  - url: /
+security:
+  - bearer: []
+
+paths:
+  /v1/answers:
+    post:
+      operationId: create_answer
+      summary: 问答
+      description: |
+        返回回答契约。回答中的每一句都已通过逐句校验；证据不足、拒答等业务结果以 200 加 status 返回。
+        请求里 stream 为 true 时改以 SSE（text/event-stream）按句返回，事件见 answer_event；
+        鉴权、租户与各类错误在开始输出前判定，与非流式相同。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+      requestBody:
+        description: 问题与可选的过滤条件。
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/answer_request"
+      responses:
+        "200":
+          description: 回答契约；stream 为 true 时是 SSE 事件流。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/answer"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/answer_event"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "413": { $ref: "#/components/responses/problem" }
+        "422": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/limited_or_quota_exceeded" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+        "504": { $ref: "#/components/responses/problem" }
+
+  /v1/answers/{answer_id}:
+    get:
+      operationId: get_answer
+      summary: 回放
+      description: |
+        按 answer_id 取回当时的回答与 why，用于审计或反馈时查看。只有提问人本人和本租户的审计岗可看，
+        其他人与不存在的回答一律返回 404。引用与列表项按调用者当前的权限重新复核：不可见的引用、
+        依据里含有不可见引用的句子（综合句、计算句可能写着那份文档的事实，所以只要引用了一条就去掉）、
+        无权的列表项都从返回里去掉，统计口径同步调整；去掉后没有剩下有依据的句子时 status 为
+        insufficient_evidence。流式回答的完整结果也从这里取回；中途断开、没有收到 final 的回答没有记录。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+        - $ref: "#/components/parameters/answer_id"
+      responses:
+        "200":
+          description: 记录下来的回答
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/answer_replay"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+        "504": { $ref: "#/components/responses/problem" }
+
+  /v1/answers/{answer_id}/feedback:
+    post:
+      operationId: create_answer_feedback
+      summary: 反馈
+      description: |
+        对一次回答反馈有用、有误或引用不对，挂在该回答下，回流到评估（技术设计文档 F8）。
+        只有提问人本人可以提交，其他人与不存在的回答一律返回 404。必须带 Idempotency-Key：
+        同一个键重复提交返回原来的反馈，内容不同返回 409 idempotency_conflict。MCP 不提供反馈。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+        - $ref: "#/components/parameters/answer_id"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 反馈内容。
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/feedback_request"
+      responses:
+        "200":
+          description: 已记录的反馈
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/feedback"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "413": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+        "504": { $ref: "#/components/responses/problem" }
+
+  /v1/search:
+    post:
+      operationId: search
+      summary: 仅检索
+      description: 返回已按权限过滤、已排序的证据列表，不调用大模型。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+      requestBody:
+        description: 问题、可选的过滤条件与返回条数。
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/search_request"
+      responses:
+        "200":
+          description: 检索结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/search_result"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "413": { $ref: "#/components/responses/problem" }
+        "422": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+        "504": { $ref: "#/components/responses/problem" }
+
+  /v1/compat/chat/completions:
+    post:
+      operationId: create_compat_chat_completion
+      summary: 兼容 chat completions 的问答
+      description: |
+        让已有常见 chat completions 客户端的系统快速接入（技术设计文档 13.9）。只是协议适配层：身份、权限、
+        逐句校验与审计和 POST /v1/answers 完全相同，校验不通过的句子不会出现在 content 里。
+        最后一条 user 消息作为问题；前面的消息（含 system）不参与回答，不能覆盖平台规则。
+        完整的回答契约放在扩展字段 rag 里。model 与采样、长度类参数被忽略（模型由租户配置与密级路由决定）；
+        工具调用、n 大于 1、非文本的 response_format、logprobs、多模态输入输出返回 400。
+        stream 为 true 时以 SSE 返回 compat_chat_chunk，正常结束后发送 data: [DONE]；
+        出错时发送 {"error": problem} 后关闭连接，不发送 [DONE]。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+      requestBody:
+        description: 常见的 messages 格式。
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/compat_chat_request"
+      responses:
+        "200":
+          description: chat completion；stream 为 true 时是 SSE 事件流，每个 data 为一个 compat_chat_chunk。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/compat_chat_completion"
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/compat_chat_chunk"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "413": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/limited_or_quota_exceeded" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+        "504": { $ref: "#/components/responses/problem" }
+
+  /v1/batches:
+    post:
+      operationId: create_batch
+      summary: 提交批次
+      description: |
+        异步批量问答（技术设计文档 13.5）。input_file 是 JSONL，每行一个 batch_input_line，最多 10,000 行，custom_id 在批内唯一。
+        批次绑定提交人：执行时每条都按提交人当时的属性重新签发身份，提交后被撤销的权限对后续条目立即生效；
+        提交人停用、不再是租户成员或超过 7 天仍未执行完时，剩余条目失败。
+        批次不占在线问答的限流额度，以低优先级执行。同一 Idempotency-Key 重复提交返回已有批次。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+        - $ref: "#/components/parameters/idempotency_key"
+      requestBody:
+        description: 输入文件与模式。
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/batch_request"
+      responses:
+        "200":
+          description: 已受理的批次
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/batch"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "413": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/documents/{doc_id}/preview:
+    get:
+      operationId: get_document_preview
+      summary: 引用预览
+      description: |
+        按调用者当前权限返回一个块的原文片段与高亮位置（技术设计文档 13.9）。权限在读正文之前判定；
+        无权与不存在都返回 404，不能据此探测文档是否存在。正文已按调用者密级脱敏。
+        传 quote（通常是回答里引用的引文）时，返回它在片段中出现的位置；找不到时 highlights 为空。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+        - name: doc_id
+          in: path
+          required: true
+          description: 文档 ID（取自引用的 doc_id）。
+          schema:
+            type: string
+            maxLength: 256
+        - name: chunk_id
+          in: query
+          required: true
+          description: 要预览的块，必须属于 doc_id 所指的文档（取自引用的 chunk_id）。
+          schema:
+            type: string
+            maxLength: 256
+        - name: quote
+          in: query
+          required: false
+          description: 要高亮的引文。
+          schema:
+            type: string
+            maxLength: 2000
+      responses:
+        "200":
+          description: 片段与高亮位置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/document_preview"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/batches/{batch_id}:
+    get:
+      operationId: get_batch
+      summary: 查询批次状态
+      description: 状态与进度。只有提交人本人可查，其他人返回 404。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+        - $ref: "#/components/parameters/batch_id"
+      responses:
+        "200":
+          description: 批次
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/batch"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/batches/{batch_id}/results:
+    get:
+      operationId: get_batch_results
+      summary: 取批次结果
+      description: |
+        JSONL，每行一个 batch_result_line，按提交顺序，只含已结束的条目。只有提交人本人可取；
+        引用按取结果者当前的权限重新复核，已无权访问的条目以 error（forbidden）返回。
+        传输中途出错时连接被中断，调用方应重新获取，不要把不完整的结果当作全部。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+        - $ref: "#/components/parameters/batch_id"
+      responses:
+        "200":
+          description: 结果文件
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/batch_result_line"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/batches/{batch_id}/cancel:
+    post:
+      operationId: cancel_batch
+      summary: 取消批次
+      description: 取消还没开始执行的条目，正在执行的条目照常结束。只有提交人本人可取消。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/tenant"
+        - $ref: "#/components/parameters/batch_id"
+      responses:
+        "200":
+          description: 取消后的批次
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/batch"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/emergency-denials:
+    get:
+      operationId: list_emergency_denials
+      summary: 紧急拒绝规则列表
+      description: |
+        管理接口（技术设计文档 13.2）：只接受平台级客户端（如 console）上的用户，平台角色由部署配置按平台身份库的群组映射；
+        信息安全、数据属主可查看。新的在前。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/page_size"
+        - $ref: "#/components/parameters/page_token"
+      responses:
+        "200":
+          description: 一页规则
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/emergency_denial_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+    post:
+      operationId: create_emergency_denial
+      summary: 新增紧急拒绝规则
+      description: |
+        按数据源、文档或租户拒绝访问，1 分钟内在检索的过滤与返回前复核两处生效（governance 详设 4.2）。只能新增，
+        解除走变更单，所以没有删除接口。信息安全可按三种范围拒绝；数据属主只能按本部门的数据源拒绝（403 forbidden）。
+        同一对象已有规则时返回已有的那一条（200）。status 为 pending 表示规则已登记、还没写进拒绝名单
+        （索引库暂不可用），平台持续重试并告警。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 规则
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/emergency_denial_request"
+      responses:
+        "200":
+          description: 同一对象已有的规则
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/emergency_denial"
+        "201":
+          description: 新登记的规则
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/emergency_denial"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "413": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/index-versions:
+    get:
+      operationId: list_index_versions
+      summary: 索引版本列表
+      description: |
+        版本列表与清单摘要（入库管道详设 14.4），新的在前；只有平台运维可查看。
+        missing_doc_count 大于 0 表示清单不全（清单里有文档的块记录已不存在），不能切回这个版本。
+        门禁报告尚未接入（评测门禁的结果还没有写回 indexing），暂不返回。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/page_size"
+        - $ref: "#/components/parameters/page_token"
+      responses:
+        "200":
+          description: 一页版本
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/index_version_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/index-versions/{version}/activate:
+    post:
+      operationId: activate_index_version
+      summary: 申请切换或回滚索引版本
+      description: |
+        双人复核：这次调用只创建待复核的操作（202），另一位平台运维调用
+        POST /v1/admin/index-versions/operations/{operation_id}/approve 后才执行；同一版本已有待复核的操作时返回它（200）。
+        只能切到已下线的版本；目标版本清单不全或嵌入模型已下线（与当前线上版本不同）时返回 409 activation_refused。
+        待复核的操作 24 小时后作废。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: version
+          in: path
+          required: true
+          description: 目标索引版本
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9._-]{1,128}$"
+      requestBody:
+        description: 申请
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/activate_index_version_request"
+      responses:
+        "200":
+          description: 同一版本已有的待复核操作
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/operation"
+        "202":
+          description: 已创建待复核的操作
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/operation"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/index-versions/operations/{operation_id}/approve:
+    post:
+      operationId: approve_index_operation
+      summary: 复核并执行
+      description: |
+        另一位平台运维复核待复核的操作，执行前按同样的条件再核对一次。发起人不能复核自己的操作（403 self_approval_forbidden）；
+        操作已执行、已作废或已过期时返回 409 conflict；核对不通过时返回 409 activation_refused，操作记为 failed。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: operation_id
+          in: path
+          required: true
+          description: 操作 ID
+          schema:
+            type: string
+            pattern: "^op_[a-f0-9]+$"
+      responses:
+        "200":
+          description: 已执行的操作
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/operation"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/experiments:
+    get:
+      operationId: list_experiments
+      summary: A/B 实验列表
+      description: |
+        平台管理员查看全部实验（技术设计文档 10.5，governance 详设 7.2），新的在前。A/B 分析结果由 evaluation 提供，不在这里。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/page_size"
+        - $ref: "#/components/parameters/page_token"
+      responses:
+        "200":
+          description: 一页实验
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/experiment_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+    post:
+      operationId: create_experiment
+      summary: 立项并开始实验
+      description: |
+        写明假设、一个主要指标（“有用”反馈率或 insufficient_evidence 比例）、基线值与最小可检测差异，平台据此算出每组需要的
+        用户数（双侧 α = 0.05、检验力 0.8）。实验立即开始，5% 的用户进入实验组；orchestrator 按 user_id 与 exp_id 分组，
+        同一用户始终在同一组，涉及受限级内容的请求退回基线（orchestrator 详设 12.3）。实验组替换的对象本期只开放阈值，
+        至少填一项。同一租户已有运行中的实验时返回 409 conflict。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 实验
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/experiment_request"
+      responses:
+        "201":
+          description: 新开始的实验
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/experiment"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "413": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/experiments/{exp_id}:
+    get:
+      operationId: get_experiment
+      summary: 查看实验
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: exp_id
+          in: path
+          required: true
+          description: 实验 ID
+          schema:
+            type: string
+            pattern: "^exp_[a-f0-9]{24}$"
+      responses:
+        "200":
+          description: 实验
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/experiment"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/experiments/{exp_id}/ramp:
+    post:
+      operationId: ramp_experiment
+      summary: 推进实验流量
+      description: |
+        灰度按 5% → 20% → 50% 推进，只能向上调；已停止的实验或不高于当前值时返回 409 conflict。1 分钟内生效。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: exp_id
+          in: path
+          required: true
+          description: 实验 ID
+          schema:
+            type: string
+            pattern: "^exp_[a-f0-9]{24}$"
+      requestBody:
+        description: 目标流量
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ramp_experiment_request"
+      responses:
+        "200":
+          description: 调整后的实验
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/experiment"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/experiments/{exp_id}/stop:
+    post:
+      operationId: stop_experiment
+      summary: 停止实验
+      description: |
+        所有请求回到基线配置，1 分钟内生效；原因必填。已停止的实验再停返回原样。护栏指标触发时 evaluation 也会请求停止。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: exp_id
+          in: path
+          required: true
+          description: 实验 ID
+          schema:
+            type: string
+            pattern: "^exp_[a-f0-9]{24}$"
+      requestBody:
+        description: 停止原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/stop_experiment_request"
+      responses:
+        "200":
+          description: 已停止的实验
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/experiment"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/experiments/{exp_id}/analysis:
+    get:
+      operationId: get_experiment_analysis
+      summary: A/B 分析
+      description: |
+        由 evaluation 计算（evaluation 详设 7.2）：按用户聚合实验期间的回答记录后比较两组，同一用户的多次问答不独立，
+        不按请求算显著性；上下文有受限级内容、已退回基线的请求不计入。达到每组所需用户数之前只返回进度、不返回结论，
+        避免提前偏看。护栏（拒答率、p95 耗时、每次回答的 token 数）每天检查，任一触发即停止实验。平台管理员可查看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: exp_id
+          in: path
+          required: true
+          description: 实验 ID
+          schema:
+            type: string
+            pattern: "^exp_[a-f0-9]{24}$"
+      responses:
+        "200":
+          description: 分析结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/experiment_analysis"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/quality-trends:
+    get:
+      operationId: get_quality_trends
+      summary: 在线质量趋势
+      description: |
+        在线抽样评审的结果（evaluation 详设 7.1）：每天按租户抽样前一天的回答（每租户至多 200 条，涉及受限级数据、
+        正文未保存的回答不抽），用与线上校验器不同的 NLI 模型判定每句是否被自己的引文支持。没有标准答案，不算正确率。
+        7 天均值比 30 天均值低 3 个点以上时 declining 为 true，并已告警。平台管理员可查看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: tenant
+          in: query
+          required: true
+          description: 租户
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9-]{0,62}$"
+        - name: days
+          in: query
+          required: false
+          description: 最近多少天，默认 30
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+      responses:
+        "200":
+          description: 趋势
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/quality_trends"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/audit:
+    get:
+      operationId: query_audit
+      summary: 审计查询
+      description: |
+        按用户、文档、时间范围查入口审计（技术设计文档 13.2）：谁来过、是否被放行，问答的候选、上下文、展示三类块与列出的文档。
+        只有审计岗可查；查询行为本身也被审计。时间范围必填、跨度不超过 31 天；按文档查询时返回文档出现在哪几类里（matched_in）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: sub
+          in: query
+          required: false
+          description: 用户（平台账号）
+          schema:
+            type: string
+        - name: doc_id
+          in: query
+          required: false
+          description: 文档 ID：出现在候选、上下文、展示的块或列出的文档里即命中
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          description: 起始时间（RFC 3339，含）
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: 结束时间（RFC 3339，含）
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/page_size"
+        - $ref: "#/components/parameters/page_token"
+      responses:
+        "200":
+          description: 一页审计记录，按时间先后
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/audit_record_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/sources:
+    post:
+      operationId: register_source
+      summary: 注册数据源
+      description: |
+        平台管理员注册数据源（governance 详设 6.2），状态为 pending，数据源 ID（src_）由平台生成；
+        本部门的数据属主审批后才能授权给租户。受限级数据源还需要信息安全审批，尚未支持，注册时返回 400。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 请求
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/register_source_request"
+      responses:
+        "201":
+          description: 已注册的数据源
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/sources/{src_id}/approve:
+    post:
+      operationId: approve_source
+      summary: 审批数据源
+      description: |
+        数据源所属部门的数据属主审批，记录审批人、时间与依据。注册人不能审批自己注册的数据源（403 self_approval_forbidden）；
+        不是待审批状态时返回 409 conflict；别的部门的数据源与不存在的一样返回 404。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      requestBody:
+        description: 请求
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/approve_source_request"
+      responses:
+        "200":
+          description: 已审批的数据源
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/sources/{src_id}/revoke:
+    post:
+      operationId: revoke_source
+      summary: 撤销数据源
+      description: |
+        只有数据源所属部门的数据属主能撤销。先写按数据源的紧急拒绝规则（在线立即不可见，denial_id），
+        再标为撤销、发出 source.revoked 事件（连接器据此对该源全部文档写删除标记）；撤销后授权不再生效，也不能恢复。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      requestBody:
+        description: 请求
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/revoke_source_request"
+      responses:
+        "200":
+          description: 已撤销的数据源
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/sources/{src_id}/grants:
+    get:
+      operationId: list_source_grants
+      summary: 租户授权列表
+      description: |
+        数据源所属部门的数据属主查看该数据源授权给了哪些租户。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      responses:
+        "200":
+          description: 授权列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source_grant_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+    post:
+      operationId: create_source_grant
+      summary: 授权给租户
+      description: |
+        数据源所属部门的数据属主把已审批的数据源授权给租户，1 分钟内在检索生效；已经授权过时返回已有的授权（200）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      requestBody:
+        description: 请求
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/source_grant_request"
+      responses:
+        "201":
+          description: 新的授权
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source_grant"
+        "200":
+          description: 已有的授权
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source_grant"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+    delete:
+      operationId: delete_source_grant
+      summary: 取消授权
+      description: |
+        数据源所属部门的数据属主取消对某个租户的授权，1 分钟内在检索生效；没有这条授权时返回 404。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+        - name: tenant
+          in: query
+          required: true
+          description: 租户
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9-]*$"
+      responses:
+        "200":
+          description: 已取消的授权
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source_grant"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+webhooks:
+  platform_event:
+    post:
+      operationId: receive_platform_event
+      summary: 平台事件
+      description: |
+        事件订阅（技术设计文档 13.7）。事件体只含事件 ID、类型、时间和对象 ID，不含文档或问答内容。
+        签名：Bambuflow-Webhook-Signature 为一个或多个以逗号分隔的 v1=<hex>，每个是用签名密钥对
+        “Bambuflow-Webhook-Timestamp 的值 + '.' + 原始请求体”做 HMAC-SHA256 的结果；密钥轮换期间同时带新旧两个签名，
+        任一匹配即可。接收方应拒绝时间戳与当前相差超过 5 分钟的请求，并按 event_id 去重（至少投递一次，
+        失败按指数退避重试 24 小时）。返回 2xx 视为送达。
+      parameters:
+        - name: Bambuflow-Webhook-Id
+          in: header
+          required: true
+          description: 事件 ID，与请求体里的 event_id 相同
+          schema:
+            type: string
+            pattern: "^evt_"
+        - name: Bambuflow-Webhook-Timestamp
+          in: header
+          required: true
+          description: 发送时间（Unix 秒），参与签名
+          schema:
+            type: string
+        - name: Bambuflow-Webhook-Signature
+          in: header
+          required: true
+          description: v1=<hex>[,v1=<hex>]
+          schema:
+            type: string
+      requestBody:
+        description: 事件
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/webhook_event"
+      responses:
+        "200":
+          description: 已收到；任何 2xx 都视为送达
+
+components:
+  securitySchemes:
+    bearer:
+      description: 用户令牌，或业务系统经令牌交换取得、代表终端用户的令牌。
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    tenant:
+      name: Bambuflow-Tenant
+      in: header
+      required: false
+      description: |
+        平台级客户端（如 console）选择本次请求的租户；用户只属于一个租户时可省略，属于多个租户而省略时返回 400。
+        绑定了租户的业务系统客户端不需要传；传了且与绑定的租户不一致时返回 403。
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+    batch_id:
+      name: batch_id
+      in: path
+      required: true
+      description: 批次 ID
+      schema:
+        type: string
+        pattern: "^bat_[a-f0-9]+$"
+    answer_id:
+      name: answer_id
+      in: path
+      required: true
+      description: 回答 ID
+      schema:
+        type: string
+        pattern: "^ans_[A-Za-z0-9]{1,64}$"
+    required_idempotency_key:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键；同一用户重复提交同一个键时返回原结果，内容不同时返回 409 idempotency_conflict
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    idempotency_key:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 幂等键；同一提交人重复提交同一个键时返回已有批次，内容不同时返回 409 idempotency_conflict
+      schema:
+        type: string
+        maxLength: 128
+    page_size:
+      name: page_size
+      in: query
+      required: false
+      description: 每页条数，1–200，默认 50
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+    page_token:
+      name: page_token
+      in: query
+      required: false
+      description: 上一页返回的 next_page_token，原样带回
+      schema:
+        type: string
+    traceparent:
+      name: traceparent
+      in: header
+      required: false
+      description: W3C 追踪上下文
+      schema:
+        type: string
+
+  responses:
+    problem:
+      description: 错误（RFC 9457）。无权访问与不存在统一返回 404；错误信息不含内部服务名与堆栈。
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/problem"
+    limited_or_quota_exceeded:
+      description: |
+        问答类接口的 429，按 type 区分：
+        rate_limited 为超出限流（调用方应用、用户问答、租户并发、每用户并发流），带 Retry-After，按它退避重试；
+        quota_exceeded 为租户当日的 token 配额已用尽，不带 Retry-After，不要自动重试：当日（按部署配置的时区）
+        问答类接口都返回这个错误，仅检索 POST /v1/search 照常可用；需要调整配额请联系平台。
+      headers:
+        Retry-After:
+          description: 建议的重试等待秒数；quota_exceeded 不带
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/problem"
+    retryable_problem:
+      description: 可重试的错误，按 Retry-After 退避。
+      headers:
+        Retry-After:
+          description: 建议的重试等待秒数
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/problem"
+
+  schemas:
+    register_source_request:
+      type: object
+      description: 注册数据源。
+      additionalProperties: false
+      required: [type, owner_dept, default_classification]
+      properties:
+        type:
+          type: string
+          enum: [wiki, mail, file, image, table, log, db]
+        owner_dept:
+          type: string
+          description: 数据属主部门
+          minLength: 1
+          maxLength: 64
+        default_classification:
+          type: string
+          description: 源系统默认密级；受限级暂不支持注册
+          enum: [public, internal, confidential, restricted]
+        description:
+          type: string
+          maxLength: 500
+
+    approve_source_request:
+      type: object
+      description: 审批依据。
+      additionalProperties: false
+      required: [basis]
+      properties:
+        basis:
+          type: string
+          description: 审批依据，如内部工单号
+          minLength: 1
+          maxLength: 500
+
+    revoke_source_request:
+      type: object
+      description: 撤销原因。
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    source:
+      type: object
+      description: 一个数据源与它的审批、撤销记录。
+      required: [source_id, type, owner_dept, default_classification, status, created_by, created_at]
+      properties:
+        source_id:
+          type: string
+          pattern: "^src_[A-Za-z0-9]+$"
+        type:
+          type: string
+          enum: [wiki, mail, file, image, table, log, db]
+        owner_dept:
+          type: string
+        default_classification:
+          type: string
+          enum: [public, internal, confidential, restricted]
+        description:
+          type: string
+        status:
+          type: string
+          enum: [pending, active, revoked]
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        approved_by:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        approval_basis:
+          type: string
+        revoked_by:
+          type: string
+        revoked_at:
+          type: string
+          format: date-time
+        revoke_reason:
+          type: string
+        denial_id:
+          type: string
+          description: 只有撤销的响应带：撤销时写入的按数据源的紧急拒绝规则
+          pattern: "^den_[a-f0-9]+$"
+
+    source_grant_request:
+      type: object
+      description: 授权给租户。
+      additionalProperties: false
+      required: [tenant]
+      properties:
+        tenant:
+          type: string
+          pattern: "^[a-z][a-z0-9-]*$"
+
+    source_grant:
+      type: object
+      description: 一条租户授权。
+      required: [source_id, tenant]
+      properties:
+        source_id:
+          type: string
+          pattern: "^src_[A-Za-z0-9]+$"
+        tenant:
+          type: string
+        granted_by:
+          type: string
+        granted_at:
+          type: string
+          format: date-time
+
+    source_grant_list:
+      type: object
+      description: 数据源的全部租户授权。
+      required: [grants]
+      properties:
+        grants:
+          type: array
+          items:
+            $ref: "#/components/schemas/source_grant"
+
+    audit_record:
+      type: object
+      description: 一条入口审计（gateway 详设 8.1、8.2）。
+      required: [time, trace_id, endpoint, status, latency_ms, candidate_chunk_ids, context_chunk_ids, shown_chunk_ids, listed_doc_ids]
+      properties:
+        time:
+          type: string
+          format: date-time
+        trace_id:
+          type: string
+        answer_id:
+          type: string
+          pattern: "^ans_"
+        batch_id:
+          type: string
+          pattern: "^bat_"
+        sub:
+          type: string
+        tenant:
+          type: string
+        actor:
+          type: string
+          description: 代用户调用的业务系统或 agent
+        endpoint:
+          type: string
+        status:
+          type: integer
+        reason:
+          type: string
+          description: 被拒绝的原因（错误类型）
+        latency_ms:
+          type: integer
+        candidate_chunk_ids:
+          type: array
+          items:
+            type: string
+        context_chunk_ids:
+          type: array
+          items:
+            type: string
+        shown_chunk_ids:
+          type: array
+          items:
+            type: string
+        listed_doc_ids:
+          type: array
+          items:
+            type: string
+        matched_in:
+          type: array
+          description: 按文档查询时，文档出现在哪几类里
+          items:
+            type: string
+            enum: [candidate, context, shown, listed]
+        admin_method:
+          type: string
+          description: 管理接口才有
+        admin_path:
+          type: string
+          description: 管理接口才有
+
+    audit_record_list:
+      type: object
+      description: 一页审计记录。
+      required: [records]
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/audit_record"
+        next_page_token:
+          type: string
+          description: 没有下一页时不返回
+
+    index_version:
+      type: object
+      description: 一个索引版本与它的清单摘要。
+      required: [version, status, embedding_model, chunker_version, doc_count, missing_doc_count, created_at]
+      properties:
+        version:
+          type: string
+        status:
+          type: string
+          enum: [pending, live, retired]
+        embedding_model:
+          type: string
+        chunker_version:
+          type: string
+        doc_count:
+          type: integer
+          description: 清单里的文档数
+        missing_doc_count:
+          type: integer
+          description: 清单里块记录已不存在的文档数；大于 0 时不能切回
+        created_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+          description: 最近一次上线的时间；从没上过线时没有
+
+    index_version_list:
+      type: object
+      description: 一页索引版本，新的在前。
+      required: [versions]
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/index_version"
+        next_page_token:
+          type: string
+          description: 没有下一页时不返回
+
+    activate_index_version_request:
+      type: object
+      description: 申请切换的原因。
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          description: 原因，如故障单号
+          minLength: 1
+          maxLength: 500
+
+    operation:
+      type: object
+      description: 需要双人复核的操作（入库管道详设 14.4）。
+      required: [operation_id, action, target_version, live_version, reason, requested_by, requested_at, status, expires_at]
+      properties:
+        operation_id:
+          type: string
+          pattern: "^op_[a-f0-9]+$"
+        action:
+          type: string
+          enum: [activate_index_version]
+        target_version:
+          type: string
+        live_version:
+          type: string
+          description: 申请时的线上版本
+        reason:
+          type: string
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, executed, failed, expired]
+        approved_by:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        failure_reason:
+          type: string
+          description: 未执行的原因（failed、expired）
+        expires_at:
+          type: string
+          format: date-time
+
+    emergency_denial_request:
+      type: object
+      description: 新增紧急拒绝规则的请求。
+      additionalProperties: false
+      required: [scope, target, reason]
+      properties:
+        scope:
+          type: string
+          enum: [source, document, tenant]
+        target:
+          type: string
+          description: 数据源 ID（src_ 前缀）、文档 ID 或租户名
+          minLength: 1
+          maxLength: 512
+        reason:
+          type: string
+          description: 原因，如内部工单号；写入变更审计
+          minLength: 1
+          maxLength: 500
+
+    experiment_overrides:
+      type: object
+      description: 实验组替换的对象，不填的沿用基线；本期只开放阈值。
+      properties:
+        support_threshold:
+          type: number
+          minimum: 0.3
+          maximum: 0.9
+          description: 句支持度门槛
+        min_coverage:
+          type: number
+          minimum: 0.5
+          maximum: 1
+          description: 引用覆盖率门槛
+
+    experiment_request:
+      type: object
+      description: 立项内容。
+      required: [tenant, hypothesis, primary_metric, baseline_rate, min_detectable_effect, overrides]
+      additionalProperties: false
+      properties:
+        tenant:
+          type: string
+          description: 实验所在租户
+        hypothesis:
+          type: string
+          maxLength: 1000
+          description: 假设与预期效果
+        primary_metric:
+          type: string
+          enum: [useful_rate, insufficient_evidence_rate]
+          description: 唯一的主要指标
+        baseline_rate:
+          type: number
+          exclusiveMinimum: 0
+          exclusiveMaximum: 1
+          description: 主要指标的当前值
+        min_detectable_effect:
+          type: number
+          exclusiveMinimum: 0
+          description: 希望检测出的最小变化（绝对值）
+        overrides:
+          $ref: "#/components/schemas/experiment_overrides"
+
+    ramp_experiment_request:
+      type: object
+      description: 目标流量。
+      required: [traffic_percent]
+      additionalProperties: false
+      properties:
+        traffic_percent:
+          type: integer
+          minimum: 20
+          maximum: 50
+          description: 进入实验组的用户比例，只能是 20 或 50，且大于当前值
+
+    stop_experiment_request:
+      type: object
+      description: 停止原因。
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: 原因
+
+    experiment:
+      type: object
+      description: 一个 A/B 实验。
+      required: [exp_id, tenant, hypothesis, primary_metric, baseline_rate, min_detectable_effect, sample_size_per_arm,
+                 traffic_percent, overrides, status, created_by, created_at]
+      properties:
+        exp_id:
+          type: string
+          pattern: "^exp_[a-f0-9]{24}$"
+        tenant:
+          type: string
+        hypothesis:
+          type: string
+        primary_metric:
+          type: string
+          enum: [useful_rate, insufficient_evidence_rate]
+        baseline_rate:
+          type: number
+        min_detectable_effect:
+          type: number
+        sample_size_per_arm:
+          type: integer
+          description: 每组需要的用户数；达到前 A/B 分析只显示进度
+        traffic_percent:
+          type: integer
+          minimum: 5
+          maximum: 50
+          description: 进入实验组的用户比例：5、20 或 50
+        overrides:
+          $ref: "#/components/schemas/experiment_overrides"
+        status:
+          type: string
+          enum: [running, stopped]
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        stopped_by:
+          type: string
+          description: 停止人；护栏触发时为 evaluation。运行中不返回
+        stopped_at:
+          type: string
+          format: date-time
+        stop_reason:
+          type: string
+
+    experiment_list:
+      type: object
+      description: 一页实验，新的在前。
+      required: [experiments]
+      properties:
+        experiments:
+          type: array
+          items:
+            $ref: "#/components/schemas/experiment"
+        next_page_token:
+          type: string
+          description: 没有下一页时不返回
+
+    experiment_arm_summary:
+      type: object
+      description: 一组的汇总。
+      required: [arm, users, answers, metric_users, metric_mean, refused_rate, p95_latency_ms, mean_tokens]
+      properties:
+        arm:
+          type: string
+          enum: [control, treatment]
+        users:
+          type: integer
+          description: 有回答的用户数
+        answers:
+          type: integer
+          description: 回答数
+        metric_users:
+          type: integer
+          description: 参与主要指标计算的用户数（“有用”反馈率只计有反馈的用户）
+        metric_mean:
+          type: number
+          description: 主要指标：先按用户算，再对用户取平均
+        refused_rate:
+          type: number
+          description: 拒答率（护栏）
+        p95_latency_ms:
+          type: integer
+          description: p95 耗时（护栏）
+        mean_tokens:
+          type: number
+          description: 每次回答的 token 数，代表单次成本（护栏）
+
+    experiment_analysis:
+      type: object
+      description: A/B 分析结果。
+      required: [experiment, control, treatment, progress, guardrails, data_since, data_until]
+      properties:
+        experiment:
+          $ref: "#/components/schemas/experiment"
+        control:
+          $ref: "#/components/schemas/experiment_arm_summary"
+        treatment:
+          $ref: "#/components/schemas/experiment_arm_summary"
+        progress:
+          type: number
+          description: 两组参与主要指标的用户数中较少的一组除以每组所需用户数，封顶 1
+        guardrails:
+          type: array
+          description: 护栏检查；两组回答数都不少于 100 才判定是否超出
+          items:
+            type: object
+            description: 一项护栏
+            required: [name, control, treatment, breached]
+            properties:
+              name:
+                type: string
+                enum: [refused_rate, p95_latency_ms, mean_tokens]
+              control:
+                type: number
+              treatment:
+                type: number
+              breached:
+                type: boolean
+                description: 实验组超出允许范围（拒答率高 2 个点以上，或 p95、成本高 20% 以上）
+        conclusion:
+          type: object
+          description: 达到样本量后才返回
+          required: [delta, ci_low, ci_high, p_value, significant, improved]
+          properties:
+            delta:
+              type: number
+              description: 实验组减对照组的主要指标差值
+            ci_low:
+              type: number
+              description: 95% 置信区间下限
+            ci_high:
+              type: number
+              description: 95% 置信区间上限
+            p_value:
+              type: number
+            significant:
+              type: boolean
+              description: p < 0.05
+            improved:
+              type: boolean
+              description: 差值方向是改善（“有用”反馈率升高，或 insufficient_evidence 比例降低）
+        data_since:
+          type: string
+          format: date-time
+        data_until:
+          type: string
+          format: date-time
+
+    quality_trends:
+      type: object
+      description: 一个租户的在线质量趋势。
+      required: [tenant, days, groundedness_7d, groundedness_30d, declining]
+      properties:
+        tenant:
+          type: string
+        days:
+          type: array
+          description: 按日期从旧到新；没有抽样的日子不出现
+          items:
+            type: object
+            description: 一天的抽样评审结果
+            required: [day, sampled, sentences, groundedness, citation_precision, judge_model]
+            properties:
+              day:
+                type: string
+                format: date
+              sampled:
+                type: integer
+                description: 抽到并评审的回答数
+              sentences:
+                type: integer
+              groundedness:
+                type: number
+                description: 句子被自己的引文支持的比例
+              citation_precision:
+                type: number
+                description: 引文支持所在句子的比例
+              judge_model:
+                type: string
+                description: 判定用的 NLI 模型
+              computed_at:
+                type: string
+                format: date-time
+        groundedness_7d:
+          type: number
+          description: 最近 7 天的 Groundedness 均值
+        groundedness_30d:
+          type: number
+          description: 最近 30 天的 Groundedness 均值
+        declining:
+          type: boolean
+          description: 7 天均值比 30 天均值低 3 个点以上
+
+    emergency_denial:
+      type: object
+      description: 一条紧急拒绝规则（只能新增，解除走变更单）。
+      required: [denial_id, scope, target, reason, created_by, created_at, status]
+      properties:
+        denial_id:
+          type: string
+          pattern: "^den_[a-f0-9]+$"
+        scope:
+          type: string
+          enum: [source, document, tenant]
+        target:
+          type: string
+        reason:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          description: pending：已登记、还没写进拒绝名单（平台持续重试并告警）；active：检索已生效
+          enum: [pending, active]
+        applied_at:
+          type: string
+          format: date-time
+          description: 写进拒绝名单的时间；pending 时没有
+
+    emergency_denial_list:
+      type: object
+      description: 一页紧急拒绝规则，新的在前。
+      required: [denials]
+      properties:
+        denials:
+          type: array
+          items:
+            $ref: "#/components/schemas/emergency_denial"
+        next_page_token:
+          type: string
+          description: 没有下一页时不返回
+
+    question:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      description: 用户问题，不超过 2000 字。
+
+    filters:
+      type: object
+      description: 结构化过滤条件，只能收紧权限范围。
+      additionalProperties: false
+      properties:
+        source_ids:
+          type: array
+          items:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+        doc_types:
+          type: array
+          description: 文档类型编码（受控词表）。以下各项都只能收窄范围；编码按原样匹配。
+          items:
+            type: string
+        depts:
+          type: array
+          description: 发文部门编码（受控词表）。
+          items:
+            type: string
+        topic_codes:
+          type: array
+          description: 主题编码（受控词表），含任一即可。
+          items:
+            type: string
+        effective_from:
+          type: string
+          format: date
+          description: 生效日期下限（含）。没有生效日期的文档不满足任何日期条件。
+        effective_to:
+          type: string
+          format: date
+          description: 生效日期上限（含）。
+        validity_statuses:
+          type: array
+          items:
+            type: string
+            enum: [effective, pending, repealed]
+
+    answer_request:
+      description: 问答请求。
+      type: object
+      required: [question]
+      additionalProperties: false
+      properties:
+        question:
+          $ref: "#/components/schemas/question"
+        filters:
+          $ref: "#/components/schemas/filters"
+        max_citations:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 8
+        stream:
+          type: boolean
+          default: false
+          description: true 时以 SSE 按句返回（技术设计文档 13.11：用 stream 参数开关，不单独设流式接口）。
+        conversation_id:
+          type: string
+          pattern: "^conv_[A-Za-z0-9]{1,64}$"
+          description: |
+            会话 ID。首轮不传，回答里返回新的会话 ID；之后每轮带上它。会话 24 小时无新提问即过期，
+            过期或不属于当前用户的会话按新会话处理（返回新的 ID），不报错。
+
+    answer:
+      description: 回答契约（技术设计文档 13.9）。
+      type: object
+      required: [answer_id, trace_id, status, answer, sentences, blocks, citations, why, answer_kind]
+      properties:
+        answer_id:
+          type: string
+          pattern: "^ans_[A-Za-z0-9]+$"
+          description: 回答 ID，用于回放和反馈。
+        trace_id:
+          type: string
+          description: 追踪 ID，只用于排查。
+        status:
+          type: string
+          enum: [answered, evidence_only, insufficient_evidence, refused]
+        answer:
+          type: string
+          description: 含 [S#] 引用标记的回答文本。
+        sentences:
+          type: array
+          items:
+            $ref: "#/components/schemas/sentence"
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/block"
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/citation"
+        why:
+          $ref: "#/components/schemas/why"
+        answer_kind:
+          $ref: "#/components/schemas/answer_kind"
+        conversation_id:
+          type: string
+          pattern: "^conv_[A-Za-z0-9]{1,64}$"
+          description: 本轮所属的会话，下一轮请求带上它。
+
+    answer_replay:
+      description: 回放结果：回答契约（按调用者当前权限调整过）加上记录时的信息。answer_id、trace_id 是当时的值。
+      allOf:
+        - $ref: "#/components/schemas/answer"
+        - type: object
+          required: [created_at, body_withheld, access]
+          properties:
+            question:
+              type: string
+              description: 已做 PII 掩码的问题原文；body_withheld 为 true 时不返回。
+            created_at:
+              type: string
+              format: date-time
+            body_withheld:
+              type: boolean
+              description: |
+                回答涉及受限级数据，按密级规定没有保存正文：只有 status、answer_kind、why 中的版本号与
+                引用的块和文档标识，句子、引文与标题为空。
+            access:
+              type: string
+              enum: [asker, auditor]
+              description: 调用者以提问人本人还是审计岗身份查看。
+
+    feedback_request:
+      description: 反馈请求。
+      type: object
+      required: [rating]
+      additionalProperties: false
+      properties:
+        rating:
+          $ref: "#/components/schemas/feedback_rating"
+        sentence_index:
+          type: integer
+          minimum: 0
+          description: 指向原回答（POST /v1/answers 返回的 sentences）中的一句；不指向具体句子时不传。
+        comment:
+          type: string
+          maxLength: 500
+          description: 可选的简短说明；保存前做 PII 掩码。
+
+    feedback_rating:
+      type: string
+      enum: [useful, wrong, bad_citation]
+      description: 有用、有误、引用不对。
+
+    feedback:
+      description: 已记录的反馈。
+      type: object
+      required: [feedback_id, answer_id, rating, created_at]
+      properties:
+        feedback_id:
+          type: string
+          pattern: "^fb_[A-Za-z0-9]+$"
+        answer_id:
+          type: string
+          pattern: "^ans_[A-Za-z0-9]+$"
+        rating:
+          $ref: "#/components/schemas/feedback_rating"
+        sentence_index:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+
+    answer_kind:
+      type: string
+      enum: [fact, enumeration, count, summary]
+      description: |
+        回答类型：普通事实问答、列举（“有哪些”）、计数（“有多少”）、主题汇总（“主要讲了什么”，基于各文档的摘要分组归纳）。
+        前端据此选择展示方式。
+
+    answer_event:
+      description: |
+        SSE 事件流中一个事件的 data（JSON），事件名在 event 字段：
+        meta（answer_meta）首先发送；citation（citation）在某个引用第一次被句子使用时发送，总是先于引用它的 sentence；
+        sentence（stream_sentence）每句通过校验后发送，按生成顺序；final（answer_final）最后发送；
+        error（problem）出错时发送，之后关闭连接。未通过校验的句子不会出现在流里。
+        覆盖率不足时已发送的句子不撤回，final 的 status 为 insufficient_evidence；
+        status 为 evidence_only 时，句子之外的证据也以 citation 发送。没有收到 final 就断开，说明回答未完成。
+        等待期间每 15 秒发送一个 SSE 注释行作为心跳。不支持断点续传，完整结果按 answer_id 取回。
+      oneOf:
+        - $ref: "#/components/schemas/answer_meta"
+        - $ref: "#/components/schemas/citation"
+        - $ref: "#/components/schemas/stream_sentence"
+        - $ref: "#/components/schemas/answer_final"
+        - $ref: "#/components/schemas/problem"
+
+    answer_meta:
+      description: meta 事件，字段含义同回答契约里的同名字段。
+      type: object
+      required: [answer_id, trace_id]
+      properties:
+        answer_id:
+          type: string
+          pattern: "^ans_[A-Za-z0-9]+$"
+        trace_id:
+          type: string
+        conversation_id:
+          type: string
+          pattern: "^conv_[A-Za-z0-9]{1,64}$"
+          description: 会话 ID，流式时随 meta 先发，与非流式回答里的 conversation_id 相同。
+
+    stream_sentence:
+      description: sentence 事件：一条已通过校验的陈述，字段同 sentence，start、end 按已发送的句子累加。
+      allOf:
+        - $ref: "#/components/schemas/sentence"
+        - type: object
+          required: [block_type]
+          properties:
+            block_type:
+              type: string
+              enum: [heading, paragraph, list_item, step, table, note, scope]
+              description: 所属块的类型，前端据此按块拼装版式。
+            scope:
+              $ref: "#/components/schemas/scope"
+
+    answer_final:
+      description: final 事件。
+      type: object
+      required: [status, why, answer_kind]
+      properties:
+        status:
+          type: string
+          enum: [answered, evidence_only, insufficient_evidence, refused]
+        why:
+          $ref: "#/components/schemas/why"
+        answer_kind:
+          $ref: "#/components/schemas/answer_kind"
+
+    sentence:
+      description: 一条已通过校验的陈述。
+      type: object
+      required: [text, start, end, claim_type, ref_ids, support, block_id]
+      properties:
+        text:
+          type: string
+        start:
+          type: integer
+          description: 在 answer 中的起始字符位置（含）。
+        end:
+          type: integer
+          description: 在 answer 中的结束字符位置（不含）。
+        claim_type:
+          type: string
+          enum: [quote, synthesis, calculation, list_item, none]
+        ref_ids:
+          type: array
+          items:
+            type: integer
+        support:
+          type: number
+          minimum: 0
+          maximum: 1
+        block_id:
+          type: string
+        calc:
+          $ref: "#/components/schemas/calculation"
+        document:
+          $ref: "#/components/schemas/listed_document"
+
+    listed_document:
+      description: 列表项（claim_type 为 list_item）列出的文档。列表项的依据是文档本身，不带原文引文。
+      type: object
+      required: [doc_id, doc_version, title, source_uri]
+      properties:
+        doc_id:
+          type: string
+        doc_version:
+          type: integer
+        title:
+          type: string
+        source_uri:
+          type: string
+        doc_type:
+          type: string
+        dept:
+          type: string
+        topic_codes:
+          type: array
+          items:
+            type: string
+        effective_date:
+          type: string
+          format: date
+        validity_status:
+          type: string
+          enum: [effective, pending, repealed]
+
+    calculation:
+      description: 计算句（claim_type 为 calculation）的算式：各输入取自哪条引用、取值多少，结果由程序算出。
+      type: object
+      required: [inputs, results]
+      properties:
+        inputs:
+          type: array
+          items:
+            type: object
+            required: [var, ref_id, value, unit]
+            properties:
+              var:
+                type: string
+              ref_id:
+                type: integer
+              value:
+                type: string
+                description: 十进制数的字符串形式。
+              unit:
+                type: string
+        results:
+          type: array
+          items:
+            type: object
+            required: [name, expr, value]
+            properties:
+              name:
+                type: string
+              expr:
+                type: string
+              value:
+                type: string
+                description: 填入句子的结果：数值，或比较结论的固定措辞（如“超过”）。
+
+    block:
+      description: 回答的版式块（技术设计文档 7.9）；块里的陈述仍逐句校验。
+      type: object
+      required: [block_id, block_type, order, sentence_indexes]
+      properties:
+        block_id:
+          type: string
+        block_type:
+          type: string
+          enum: [heading, paragraph, list_item, step, table, note, scope]
+        parent_block_id:
+          type: string
+        order:
+          type: integer
+        sentence_indexes:
+          type: array
+          items:
+            type: integer
+        scope:
+          $ref: "#/components/schemas/scope"
+
+    scope:
+      description: 统计口径说明：每个列举、计数回答必有一个（block_type 为 scope 的块）。
+      type: object
+      required: [filters_text, total_is_exact, shown, basis]
+      properties:
+        filters_text:
+          type: string
+          description: 筛选条件的文字描述。
+        total_count:
+          type: integer
+          description: 符合条件、你有权查看的文档总数；没能完整统计时不给。
+        total_is_exact:
+          type: boolean
+          description: 为假时总数是下限（超过 10,000），与无权文档无关。
+        shown:
+          type: integer
+          description: 回答里列出的文档数。
+        metadata_gaps:
+          type: string
+          description: 元数据缺口说明，如有文档未标注类型、可能也符合条件。
+        basis:
+          type: string
+          description: 统计口径的固定说明。
+
+    span:
+      description: 块在原文中的位置；字符区间以解析后的文档全文为准，左闭右开。
+      type: object
+      required: [char_start, char_end]
+      properties:
+        char_start:
+          type: integer
+        char_end:
+          type: integer
+        line_start:
+          type: integer
+        line_end:
+          type: integer
+        page:
+          type: integer
+        bbox:
+          description: PDF、扫描件页面上的区域（点，原点在左上角），用于在原文上高亮。
+          type: object
+          required: [x0, y0, x1, y1]
+          properties:
+            x0:
+              type: number
+            y0:
+              type: number
+            x1:
+              type: number
+            y1:
+              type: number
+
+    document_preview:
+      description: 引用预览。
+      type: object
+      required: [trace_id, index_version, doc_id, doc_version, chunk_id, title, heading_path, text, span, source_uri, source_type, classification, highlights]
+      properties:
+        trace_id:
+          type: string
+        index_version:
+          type: string
+        doc_id:
+          type: string
+        doc_version:
+          type: integer
+        chunk_id:
+          type: string
+        title:
+          type: string
+        heading_path:
+          type: array
+          items:
+            type: string
+        text:
+          type: string
+          description: 块的正文，已按调用者密级脱敏。
+        span:
+          $ref: "#/components/schemas/span"
+        source_uri:
+          type: string
+        source_type:
+          $ref: "#/components/schemas/source_type"
+        owner:
+          type: string
+        classification:
+          $ref: "#/components/schemas/classification"
+        highlights:
+          type: array
+          description: quote 在 text 中的位置（按字符计，左闭右开）。
+          items:
+            type: object
+            required: [start, end]
+            properties:
+              start:
+                type: integer
+              end:
+                type: integer
+
+    classification:
+      description: 密级，从低到高：公开、内部、机密、受限。
+      type: string
+      enum: [public, internal, confidential, restricted]
+
+    source_type:
+      description: 来源类型。
+      type: string
+      enum: [wiki, mail, file, image, table, log, db]
+
+    citation:
+      description: 引用。
+      type: object
+      required: [ref_id, chunk_id, doc_id, doc_version, title, quote, span, source_uri, classification, source_type]
+      properties:
+        ref_id:
+          type: integer
+        chunk_id:
+          type: string
+        doc_id:
+          type: string
+        doc_version:
+          type: integer
+        title:
+          type: string
+        quote:
+          type: string
+          description: 所引块原文的子串。
+        span:
+          $ref: "#/components/schemas/span"
+        source_uri:
+          type: string
+        owner:
+          type: string
+        classification:
+          $ref: "#/components/schemas/classification"
+        source_type:
+          $ref: "#/components/schemas/source_type"
+        injection_flag:
+          type: boolean
+          description: 所引内容入库时检测到可疑指令（提示词注入）。它不会是任何一句的唯一依据；前端应在来源处标出“可疑内容”。
+
+    degradation:
+      description: 被跳过或降级的环节，如 stage = dense、reason = timeout。
+      type: object
+      required: [stage, reason]
+      properties:
+        stage:
+          type: string
+        reason:
+          type: string
+
+    why:
+      type: object
+      description: 影响这次回答的每个版本号和降级项。
+      properties:
+        retrievers:
+          type: array
+          items:
+            type: string
+        index_version:
+          type: string
+        policy_version:
+          type: string
+        embedding_model:
+          type: string
+        generation_model:
+          type: string
+        prompt_version:
+          type: string
+        nli_model:
+          type: string
+        support_threshold:
+          type: number
+        rerank_model:
+          type: string
+          description: 精排模型版本；未精排时为空，原因见 degraded。
+        calculator_version:
+          type: string
+          description: 计算句所用的计算器版本；回答里没有计算句时为空。
+        inferred_filters:
+          $ref: "#/components/schemas/filters"
+        intent:
+          type: string
+          enum: [single_hop, multi_hop, relation, listing, out_of_scope, structured]
+          description: |
+            意图路由的结果：单跳、多跳与比较（多步检索，最多 3 轮）、关系、枚举计数与主题汇总、超出范围（不检索，status 为 refused）、
+            结构化（问业务数据，多步检索里可调用只读查询，结果以 source_type 为 db 的引用给出）。
+        based_on_summaries:
+          type: boolean
+          description: |
+            回答基于文档摘要归纳（主题汇总）：要点引用的是入库时生成的摘要，摘要本身的错误会传到结论里，可点开引用查看原文。
+        experiment_id:
+          type: string
+          description: 请求所在的 A/B 实验；租户没有运行中的实验时不返回
+        experiment_arm:
+          type: string
+          enum: [control, treatment, excluded]
+          description: |
+            分组：按用户与实验计算，同一用户始终在同一组。excluded 表示分在实验组、但上下文有受限级内容，已退回基线配置。
+        agent_rounds:
+          type: array
+          description: 多步检索每一轮的子问题与检索调用；单跳时为空。
+          items:
+            $ref: "#/components/schemas/agent_round"
+        graph_path:
+          type: array
+          description: 被引用的证据由图召回找到时的遍历路径，解释为什么找到这条证据；每个带路径的引用一条。
+          items:
+            $ref: "#/components/schemas/graph_path"
+        degraded:
+          type: array
+          items:
+            $ref: "#/components/schemas/degradation"
+
+    graph_path:
+      description: 一条引用的图遍历路径。
+      type: object
+      required: [ref_id, chunk_id, edges]
+      properties:
+        ref_id:
+          type: integer
+        chunk_id:
+          type: string
+        edges:
+          type: array
+          description: 实体 → 关系 → 实体，1–2 条边，最后一条边的证据就是所引的块。
+          items:
+            $ref: "#/components/schemas/graph_edge"
+
+    graph_edge:
+      description: 图谱中的一条关系，方向是主体 → 客体；实体名称已按调用者密级脱敏。
+      type: object
+      required: [from_entity, from_type, relation_type, to_entity, to_type]
+      properties:
+        from_entity:
+          type: string
+        from_type:
+          $ref: "#/components/schemas/entity_type"
+        relation_type:
+          type: string
+          description: 依赖、属于、负责、引用、适用于。
+          enum: [depends_on, belongs_to, responsible_for, cites, applies_to]
+        to_entity:
+          type: string
+        to_type:
+          $ref: "#/components/schemas/entity_type"
+
+    entity_type:
+      description: 实体类型：机构与团队、产品、制度条款、系统、岗位。
+      type: string
+      enum: [org, product, policy_clause, system, role]
+
+    agent_round:
+      description: 多步检索的一轮：本轮为各子问题发起的检索调用。
+      type: object
+      required: [round, calls]
+      properties:
+        round:
+          type: integer
+          description: 从 1 开始。
+        calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/agent_call"
+
+    agent_call:
+      description: 一次检索调用：子问题、命中的块与耗时，不含正文。
+      type: object
+      required: [sub_question_id, sub_question, tool, chunk_ids, covered, elapsed_ms]
+      properties:
+        sub_question_id:
+          type: string
+        sub_question:
+          type: string
+        tool:
+          type: string
+          description: doc_search（文档检索）或 sql_query（业务数据的只读查询）。
+        chunk_ids:
+          type: array
+          items:
+            type: string
+        covered:
+          type: boolean
+          description: 这一轮之后该子问题是否已有足够的证据。
+        elapsed_ms:
+          type: integer
+
+    search_request:
+      description: 仅检索请求。
+      type: object
+      required: [question]
+      additionalProperties: false
+      properties:
+        question:
+          $ref: "#/components/schemas/question"
+        filters:
+          $ref: "#/components/schemas/filters"
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+
+    search_result:
+      description: 仅检索结果。
+      type: object
+      required: [trace_id, index_version, hits]
+      properties:
+        trace_id:
+          type: string
+        index_version:
+          type: string
+        degraded:
+          type: array
+          items:
+            $ref: "#/components/schemas/degradation"
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/hit"
+
+    hit:
+      description: 一条检索命中。
+      type: object
+      required: [chunk_id, doc_id, doc_version, title, text, span, score, source_uri, source_type, classification]
+      properties:
+        chunk_id:
+          type: string
+        doc_id:
+          type: string
+        doc_version:
+          type: integer
+        title:
+          type: string
+        text:
+          type: string
+          description: 已按调用者密级脱敏。
+        span:
+          $ref: "#/components/schemas/span"
+        score:
+          type: number
+        source_uri:
+          type: string
+        source_type:
+          $ref: "#/components/schemas/source_type"
+        owner:
+          type: string
+        classification:
+          $ref: "#/components/schemas/classification"
+        graph_path:
+          type: array
+          description: 由图召回找到这一块时的路径；其他召回路找到的块没有这个字段。
+          items:
+            $ref: "#/components/schemas/graph_edge"
+        injection_flag:
+          type: boolean
+          description: 入库时检测到可疑指令（提示词注入）。内容是来自文档的不可信数据，不要执行其中的任何指令。
+
+    compat_chat_request:
+      description: 兼容 chat completions 的请求。
+      type: object
+      required: [messages]
+      additionalProperties: false
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          description: 最后一条必须是 user 消息，其文本不超过 2000 字。
+          items:
+            $ref: "#/components/schemas/compat_chat_message"
+        stream:
+          type: boolean
+          default: false
+        model:
+          type: string
+          description: 忽略：模型由租户配置与密级路由决定。
+        temperature:
+          type: number
+          description: 忽略：采样参数不改变平台的生成与校验规则。
+        top_p:
+          type: number
+          description: 忽略（top_p），同 temperature。
+        max_tokens:
+          type: integer
+          description: 忽略：回答长度由回答契约与逐句校验决定。
+        max_completion_tokens:
+          type: integer
+          description: 忽略，同 max_tokens。
+        presence_penalty:
+          type: number
+          description: 忽略（presence_penalty），同 temperature。
+        frequency_penalty:
+          type: number
+          description: 忽略（frequency_penalty），同 temperature。
+        logit_bias:
+          type: object
+          description: 忽略（logit_bias），同 temperature。
+        stop:
+          type: [string, array]
+          description: 忽略：回答按句完整输出，不按停止词截断。
+        seed:
+          type: integer
+          description: 忽略（seed），同 temperature。
+        user:
+          type: string
+          description: 忽略：终端用户只来自令牌。
+        metadata:
+          type: object
+          description: 忽略：平台不保存调用方的元数据。
+        store:
+          type: boolean
+          description: 忽略：回答一律按平台规则留存与审计。
+        stream_options:
+          type: object
+          description: 忽略：响应不含 token 用量。
+        parallel_tool_calls:
+          type: boolean
+          description: 忽略：不支持工具调用，这个开关没有作用。
+        reasoning_effort:
+          type: string
+          description: 忽略：推理方式由平台决定。
+        service_tier:
+          type: string
+          description: 忽略：优先级由平台按接口决定。
+        n:
+          type: integer
+          description: 只接受 1，其他值返回 400。
+        tools:
+          type: array
+          description: 不支持工具调用，传入即返回 400。
+          items:
+            type: object
+        tool_choice:
+          type: [string, object]
+          description: 不支持，同 tools。
+        functions:
+          type: array
+          description: 不支持，同 tools（旧写法）。
+          items:
+            type: object
+        function_call:
+          type: [string, object]
+          description: 不支持，同 tool_choice（旧写法）。
+        response_format:
+          type: object
+          description: 只接受 type 为 text，结构化输出见扩展字段 rag。
+        logprobs:
+          type: boolean
+          description: 只接受 false：回答经逐句校验后输出，没有逐 token 概率。
+        top_logprobs:
+          type: integer
+          description: 不支持，同 logprobs。
+        modalities:
+          type: array
+          description: 只接受 ["text"]。
+          items:
+            type: string
+        audio:
+          type: object
+          description: 不支持音频输出，传入即返回 400。
+        prediction:
+          type: object
+          description: 不支持预填回答，传入即返回 400。
+
+    compat_chat_message:
+      description: 一条消息；role 为 tool、function 的消息不支持。
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [system, developer, user, assistant]
+        content:
+          description: 文本，或只含 text 部分的数组。
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                required: [type, text]
+                properties:
+                  type:
+                    type: string
+                    enum: [text]
+                  text:
+                    type: string
+        name:
+          type: string
+
+    compat_chat_completion:
+      description: chat completion；id 即 answer_id，完整的回答契约在 rag。
+      type: object
+      required: [id, object, created, model, choices, rag]
+      properties:
+        id:
+          type: string
+          pattern: "^ans_[A-Za-z0-9]+$"
+        object:
+          type: string
+          const: chat.completion
+        created:
+          type: integer
+          description: Unix 秒。
+        model:
+          type: string
+          description: 固定为 bambuflow；实际使用的生成模型见 rag.why.generation_model。
+        choices:
+          type: array
+          items:
+            type: object
+            required: [index, message, finish_reason]
+            properties:
+              index:
+                type: integer
+              message:
+                type: object
+                required: [role, content]
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                  content:
+                    type: string
+                    description: 含 [S#] 引用标记的回答文本，与 rag.answer 相同。
+              finish_reason:
+                type: string
+                enum: [stop]
+        rag:
+          $ref: "#/components/schemas/answer"
+
+    compat_chat_chunk:
+      description: |
+        流式块。依次为：带 role 与 rag.meta 的首块；每个引用第一次被使用时一个带 rag.citation、不带文本的块；
+        每句一个带 delta.content 与 rag.sentence 的块（块之间先补换行）；最后一个带 finish_reason 与 rag.final 的块。
+      type: object
+      required: [id, object, created, model, choices, rag]
+      properties:
+        id:
+          type: string
+          pattern: "^ans_[A-Za-z0-9]+$"
+        object:
+          type: string
+          const: chat.completion.chunk
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            required: [index, delta, finish_reason]
+            properties:
+              index:
+                type: integer
+              delta:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                  content:
+                    type: string
+              finish_reason:
+                type: [string, "null"]
+                enum: [stop, null]
+        rag:
+          type: object
+          description: 每块只带其中一项，内容同 /v1/answers 的 SSE 事件。
+          properties:
+            meta:
+              $ref: "#/components/schemas/answer_meta"
+            citation:
+              $ref: "#/components/schemas/citation"
+            sentence:
+              $ref: "#/components/schemas/stream_sentence"
+            final:
+              $ref: "#/components/schemas/answer_final"
+
+    batch_request:
+      description: 提交批次的表单。
+      type: object
+      required: [input_file]
+      properties:
+        input_file:
+          type: string
+          contentMediaType: application/x-ndjson
+          contentSchema:
+            $ref: "#/components/schemas/batch_input_line"
+          description: JSONL 输入文件，每行一个 batch_input_line（contentSchema 描述的是一行），最多 10,000 行。
+        mode:
+          type: string
+          enum: [answer, evidence_only]
+          default: answer
+          description: answer 为问答；evidence_only（仅检索）尚未开放，提交返回 400。
+
+    batch_input_line:
+      description: 输入文件的一行。
+      type: object
+      required: [custom_id, question]
+      additionalProperties: false
+      properties:
+        custom_id:
+          type: string
+          pattern: "^[A-Za-z0-9_.:-]{1,64}$"
+          description: 调用方自定的条目 ID，批内唯一，结果按它对应。
+        question:
+          $ref: "#/components/schemas/question"
+        filters:
+          $ref: "#/components/schemas/filters"
+
+    batch:
+      description: 批次状态与进度。
+      type: object
+      required: [batch_id, status, mode, counts, created_at]
+      properties:
+        batch_id:
+          type: string
+          pattern: "^bat_[a-f0-9]+$"
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+          description: completed 为至少一条成功；failed 为没有一条成功；cancelled 为被取消。
+        mode:
+          type: string
+          enum: [answer, evidence_only]
+        counts:
+          type: object
+          required: [total, succeeded, failed, cancelled]
+          properties:
+            total:
+              type: integer
+            succeeded:
+              type: integer
+            failed:
+              type: integer
+            cancelled:
+              type: integer
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: 结果保留到此时（结束后 7 天），之后不可再取。
+
+    batch_result_line:
+      description: 结果文件的一行：answer 与 error 二者有一。
+      type: object
+      required: [custom_id]
+      properties:
+        custom_id:
+          type: string
+        answer:
+          $ref: "#/components/schemas/answer"
+        error:
+          type: object
+          required: [type, title]
+          properties:
+            type:
+              type: string
+              description: 对外错误类型，如 forbidden、invalid_request、service_unavailable、deadline_exceeded。
+            title:
+              type: string
+
+    webhook_event:
+      description: Webhook 事件体。
+      type: object
+      required: [event_id, type, occurred_at, object_id]
+      properties:
+        event_id:
+          type: string
+          pattern: "^evt_"
+        type:
+          type: string
+          description: 事件名（对象.动作，技术设计文档 13.11）：batch.completed、batch.failed、index.version.live。
+        occurred_at:
+          type: string
+          format: date-time
+        object_id:
+          type: string
+          description: batch.* 为 batch_id，index.version.live 为索引版本号。
+
+    problem:
+      description: 错误（RFC 9457 problem+json）。可重试的错误另带 Retry-After 响应头。
+      type: object
+      required: [type, title, status, trace_id]
+      properties:
+        type:
+          type: string
+          enum:
+            - invalid_request
+            - unauthenticated
+            - user_identity_required
+            - forbidden
+            - answers_not_enabled
+            - not_found
+            - idempotency_conflict
+            - payload_too_large
+            - unsupported_filter
+            - rate_limited
+            - quota_exceeded
+            - service_unavailable
+            - deadline_exceeded
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        trace_id:
+          type: string

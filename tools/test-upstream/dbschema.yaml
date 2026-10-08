@@ -1,0 +1,12 @@
+# 关系型数据库数据源的测试配置（P3-I4，只用于开发与 CI）：演示库见 tools/devtools/cmd/seed-dbschema/demo.sql。
+# 生产由数据属主维护白名单与角色映射（部署配置清单）；只读账号的连接串来自 Vault，不进配置文件。
+database: bankdemo
+classification: internal
+# 白名单：只同步这些视图的表结构与字段说明，行数据不入索引
+views:
+  - bankdemo.v_loan_balance
+  - bankdemo.v_branch_daily
+# 视图的 SELECT 授权 → 权限 token；没有映射的角色不给任何人权限
+roles:
+  report_ops: [group:sre-oncall]
+  report_finance: [group:sre-core]

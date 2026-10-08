@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package bambuflow.config.v1;
+
+import "bambuflow/admin/v1/experiment_admin.proto";
+
+// ExperimentControlService 是 governance 给 evaluation 的服务间接口（evaluation 详设 7.2）：
+// 读实验做 A/B 分析，护栏指标触发时停止实验。不带用户 Principal，靠服务网格的 mTLS 与网络策略只放行 evaluation
+// （技术设计文档 12.6）；平台管理员的实验管理走 bambuflow.admin.v1.ExperimentAdminService。
+service ExperimentControlService {
+  rpc GetExperiment(GetExperimentRequest) returns (GetExperimentResponse);
+  rpc ListRunningExperiments(ListRunningExperimentsRequest) returns (ListRunningExperimentsResponse);
+  // 护栏触发即停止（技术设计文档 10.5 第 5 步）；停止人记为 evaluation。已停止的原样返回。
+  rpc StopForGuardrail(StopForGuardrailRequest) returns (StopForGuardrailResponse);
+}
+
+message GetExperimentRequest {
+  string exp_id = 1;
+}
+
+message GetExperimentResponse {
+  bambuflow.admin.v1.Experiment experiment = 1;
+}
+
+message ListRunningExperimentsRequest {}
+
+message ListRunningExperimentsResponse {
+  repeated bambuflow.admin.v1.Experiment experiments = 1;
+}
+
+message StopForGuardrailRequest {
+  string exp_id = 1;
+  // 触发的护栏与数值，写进停止原因与变更审计
+  string reason = 2;
+}
+
+message StopForGuardrailResponse {
+  bambuflow.admin.v1.Experiment experiment = 1;
+}

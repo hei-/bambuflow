@@ -1,0 +1,61 @@
+{{- /*
+Vault 注入（技术设计文档 12.6，部署配置清单）：
+- Vault Secrets Operator 把 <kvMount>/bambuflow/<组件> 同步为 Secret <release>-<组件>，各服务以 envFrom 读取；
+  LLM 网关密钥单独放在 bambuflow/orchestrator-llm（键 api_key），以文件挂载给 orchestrator（BF_LLM_API_KEY_FILE），不进环境变量；
+  orchestrator 的数据库连接串（回答记录与反馈）与 Redis 口令在 bambuflow/orchestrator；
+  qa/batch、webhook 的数据库连接串与 Redis 口令分别在 bambuflow/batch、bambuflow/webhook；
+  evaluation 的数据库连接串（在线抽样评审的结果）在 bambuflow/evaluation，常驻服务与在线抽样评审的 CronJob 共用；
+  密钥在 Vault 里轮换后，Operator 在 refreshAfter 内更新 Secret 并滚动重启对应工作负载。
+- Operator 以 <release>-vault-sync 这个 ServiceAccount 经 Kubernetes 认证登录 Vault，角色为 vault.role。
+运行期还要直接访问 Vault 的组件（gateway、webhook）另由 Vault Agent 注入令牌，见 services.yaml；
+webhook 用单独的角色 vault.webhookRole，只能读写 <kvMount>/webhooks/*（订阅的签名密钥）。
+*/ -}}
+{{- $v := .Values -}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-vault-sync
+automountServiceAccountToken: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  address: {{ $v.vault.addr | quote }}
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  vaultConnectionRef: {{ .Release.Name }}
+  method: kubernetes
+  mount: {{ $v.vault.authMount | quote }}
+  kubernetes:
+    role: {{ $v.vault.role | quote }}
+    serviceAccount: {{ .Release.Name }}-vault-sync
+{{- range $name, $target := dict "gateway" "gateway:StatefulSet" "retrieval" "retrieval:Deployment" "orchestrator" "orchestrator:Deployment" "orchestrator-llm" "orchestrator:Deployment" "governance" "governance:Deployment" "batch" "batch:Deployment" "evaluation" "evaluation:Deployment" "webhook" "webhook:Deployment" }}
+{{- $ctx := dict "root" $ "component" $name }}
+{{- $kind := index (splitList ":" $target) 1 }}
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  vaultAuthRef: {{ $.Release.Name }}
+  type: kv-v2
+  mount: {{ $v.vault.kvMount | quote }}
+  path: bambuflow/{{ $name }}
+  refreshAfter: 1h
+  destination:
+    name: {{ include "bambuflow.name" $ctx }}
+    create: true
+  rolloutRestartTargets:
+    - kind: {{ $kind }}
+      name: {{ include "bambuflow.name" (dict "root" $ "component" (index (splitList ":" $target) 0)) }}
+{{- end }}

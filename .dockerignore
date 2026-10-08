@@ -1,0 +1,12 @@
+# 构建上下文会上传到远端；只排除本地生成物和未入库的大文件，.git 保留（terms-check、兼容性检查要用）。
+.venv
+**/__pycache__
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+docs/design
+.claude
+.DS_Store
+bin
+# 本机配置，含外部 LLM 密钥，不能进入任何镜像
+.env.local

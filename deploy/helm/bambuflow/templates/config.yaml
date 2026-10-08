@@ -1,0 +1,34 @@
+{{- /* 租户配置与管理接口的角色映射（gateway）、授权策略数据（retrieval 的 data.json）、sql_query 的视图目录（orchestrator），
+内容来自 values 的 tenants、gateway.adminRoles、policyData、orchestrator.sqlCatalog */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-tenants
+data:
+  {{- range $t, $cfg := .Values.tenants }}
+  {{ $t }}.yaml: |
+    {{- toYaml (merge (dict "tenant" $t) $cfg) | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-policy-data
+data:
+  data.json: {{ toJson .Values.policyData | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-admin-roles
+data:
+  admin-roles.yaml: |
+    {{- toYaml (dict "roles" .Values.gateway.adminRoles) | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-sql-catalog
+data:
+  sql-catalog.yaml: |
+    {{- toYaml .Values.orchestrator.sqlCatalog | nindent 4 }}

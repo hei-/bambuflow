@@ -1,0 +1,233 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "bambuflow values",
+  "description": "环境相关的值必须显式给出；测试 realm、开发口令、模拟服务和本地地址不能出现在部署用的 values 里。",
+  "type": "object",
+  "definitions": {
+    "noDev": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [
+        {"not": {"pattern": "dev-only"}},
+        {"not": {"pattern": "[Mm][Oo][Cc][Kk]"}}
+      ]
+    },
+    "url": {
+      "allOf": [
+        {"$ref": "#/definitions/noDev"},
+        {"pattern": "^https?://[^/]+"},
+        {"not": {"pattern": "/realms/corp-idp"}},
+        {"not": {"pattern": "^https?://(keycloak|localhost|127\\.0\\.0\\.1|llm|nli|embedder)(:|/|$)"}}
+      ]
+    },
+    "resources": {
+      "type": "object",
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": {"type": "object"},
+        "limits": {"type": "object"}
+      }
+    },
+    "redisAddr": {"allOf": [{"$ref": "#/definitions/noDev"}, {"pattern": "^[^/:]+:[0-9]+$"}, {"not": {"pattern": "^(redis|localhost|127\\.0\\.0\\.1):"}}]},
+    "replicas": {"type": "integer", "minimum": 2, "description": "HPA 下限；至少 2 个，PDB 才能在驱逐时保住一个"},
+    "maxReplicas": {"type": "integer", "minimum": 2}
+  },
+  "required": ["image", "vault", "networkPolicy", "otel", "events", "tenants", "policyData", "indexing", "gateway", "retrieval", "governance", "orchestrator", "batch", "evaluation", "webhook"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["registry", "tag", "pullPolicy"],
+      "properties": {
+        "registry": {"$ref": "#/definitions/noDev"},
+        "tag": {"$ref": "#/definitions/noDev"},
+        "pullPolicy": {"enum": ["Always", "IfNotPresent"]}
+      }
+    },
+    "vault": {
+      "type": "object",
+      "required": ["addr", "role", "webhookRole", "kvMount", "authMount"],
+      "properties": {
+        "addr": {"$ref": "#/definitions/url"},
+        "role": {"$ref": "#/definitions/noDev"},
+        "webhookRole": {"$ref": "#/definitions/noDev"},
+        "kvMount": {"type": "string", "minLength": 1},
+        "authMount": {"type": "string", "minLength": 1}
+      }
+    },
+    "tenants": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["rollout", "member_groups"],
+        "properties": {
+          "rollout": {"enum": ["pilot", "general"]},
+          "member_groups": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "pilot_groups": {"type": "array", "items": {"type": "string"}},
+          "auditor_groups": {"type": "array", "items": {"type": "string"}},
+          "bound_clients": {"type": "array", "items": {"type": "string"}},
+          "mcp_agents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["client_id", "purpose", "owner"],
+              "additionalProperties": false,
+              "properties": {
+                "client_id": {"type": "string", "minLength": 1},
+                "purpose": {"type": "string", "minLength": 1},
+                "owner": {"type": "string", "minLength": 1},
+                "rps": {"type": "integer", "minimum": 1}
+              }
+            }
+          },
+          "mcp_tools": {
+            "type": "array",
+            "items": {"enum": ["ask", "search_documents", "list_documents", "count_documents", "get_document_excerpt"]}
+          },
+          "quota": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "max_concurrency": {"type": "integer", "minimum": 1},
+              "daily_tokens": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "policyData": {
+      "type": "object",
+      "required": ["tenants"],
+      "properties": {"tenants": {"type": "object", "minProperties": 1}}
+    },
+    "networkPolicy": {
+      "type": "object",
+      "required": ["ingressNamespace", "monitoringNamespace", "ingestNamespace"],
+      "properties": {
+        "ingressNamespace": {"type": "string", "minLength": 1},
+        "monitoringNamespace": {"type": "string", "minLength": 1},
+        "ingestNamespace": {"type": "string", "minLength": 1}
+      }
+    },
+    "otel": {
+      "type": "object",
+      "required": ["endpoint"],
+      "properties": {"endpoint": {"$ref": "#/definitions/url"}}
+    },
+    "events": {
+      "type": "object",
+      "required": ["redisAddr"],
+      "properties": {"redisAddr": {"$ref": "#/definitions/redisAddr"}}
+    },
+    "indexing": {
+      "type": "object",
+      "required": ["addr"],
+      "properties": {
+        "addr": {"allOf": [{"$ref": "#/definitions/noDev"}, {"pattern": "^[^/:]+:[0-9]+$"}, {"not": {"pattern": "^(indexing|localhost|127\\.0\\.0\\.1):"}}]}
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "publicUrl", "platformIssuer", "platformClients", "redisAddr", "userStreams", "quotaTimezone", "adminRoles", "audit", "resources"],
+      "properties": {
+        "replicas": {"$ref": "#/definitions/replicas"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "publicUrl": {"allOf": [{"$ref": "#/definitions/url"}, {"pattern": "^https://[^/]+$"}]},
+        "platformIssuer": {"allOf": [{"$ref": "#/definitions/url"}, {"pattern": "/realms/[^/]+$"}]},
+        "platformClients": {"type": "string", "minLength": 1},
+        "redisAddr": {"$ref": "#/definitions/redisAddr"},
+        "userStreams": {"type": "integer", "minimum": 1},
+        "quotaTimezone": {"type": "string", "pattern": "^(UTC|[A-Z][A-Za-z_]+(/[A-Za-z0-9_+-]+)+)$"},
+        "adminRoles": {
+          "type": "object",
+          "propertyNames": {"enum": ["platform_admin", "platform_operator", "infosec", "data_owner", "auditor"]},
+          "additionalProperties": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        },
+        "audit": {
+          "type": "object",
+          "required": ["s3Endpoint", "bucket", "retentionDays", "storageSize"],
+          "properties": {
+            "s3Endpoint": {"allOf": [{"$ref": "#/definitions/url"}, {"not": {"pattern": "^https?://rustfs(:|/|$)"}}]},
+            "bucket": {"type": "string", "minLength": 3},
+            "retentionDays": {"type": "integer", "minimum": 365},
+            "storageSize": {"type": "string", "pattern": "^[0-9]+[GT]i$"}
+          }
+        },
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "retrieval": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "embedderUrl", "resources"],
+      "properties": {
+        "replicas": {"$ref": "#/definitions/replicas"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "embedderUrl": {"$ref": "#/definitions/url"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "governance": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "resources"],
+      "properties": {
+        "replicas": {"$ref": "#/definitions/replicas"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "orchestrator": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "llmUrl", "llmModel", "nliUrl", "redisAddr", "maxConcurrency", "resources"],
+      "properties": {
+        "replicas": {"$ref": "#/definitions/replicas"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "llmUrl": {"$ref": "#/definitions/url"},
+        "llmModel": {"$ref": "#/definitions/noDev"},
+        "nliUrl": {"$ref": "#/definitions/url"},
+        "redisAddr": {"$ref": "#/definitions/redisAddr"},
+        "maxConcurrency": {"type": "integer", "minimum": 1},
+        "sqlCatalog": {
+          "type": "object",
+          "properties": {
+            "tenants": {"type": "array", "items": {"type": "string"}},
+            "roles": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+            "views": {"type": "array", "items": {"type": "object", "required": ["name", "columns"]}}
+          }
+        },
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "batch": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "resources"],
+      "properties": {
+        "replicas": {"$ref": "#/definitions/replicas"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "guardSchedule", "onlineSchedule", "onlineTenants", "nliUrl", "judgeModel", "resources"],
+      "properties": {
+        "replicas": {"$ref": "#/definitions/replicas"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "guardSchedule": {"type": "string", "minLength": 9},
+        "onlineSchedule": {"type": "string", "minLength": 9},
+        "onlineTenants": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"}},
+        "nliUrl": {"type": "string"},
+        "judgeModel": {"type": "string"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "resources"],
+      "properties": {
+        "replicas": {"$ref": "#/definitions/replicas"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    }
+  }
+}

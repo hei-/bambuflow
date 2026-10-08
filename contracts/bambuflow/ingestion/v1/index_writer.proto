@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package bambuflow.ingestion.v1;
+
+import "bambuflow/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// IndexWriterService 由 indexing 实现，processing 调用（入库管道详设 14.3）。只有 indexing 写索引。
+// P0 里块的正文与向量直接放在请求中；文档量变大后再加对象存储引用字段（兼容改动）。
+service IndexWriterService {
+  // WriteDocument 把一份文档的全部块写入当前的待发布版本。同一份内容重复写入是幂等的。
+  rpc WriteDocument(WriteDocumentRequest) returns (WriteDocumentResponse);
+  // TombstoneDocument 给文档打删除标记，对线上版本立即生效（入库管道详设第 9 节）。
+  // 删除标记在文档级、不分版本：回滚不会让已删除的文档复活。
+  rpc TombstoneDocument(TombstoneDocumentRequest) returns (TombstoneDocumentResponse);
+  // UpdateAcl 只更新文档的权限与密级（快速通道，入库管道详设第 9 节）：不重算向量、不进待发布版本，
+  // 对线上立即生效。
+  rpc UpdateAcl(UpdateAclRequest) returns (UpdateAclResponse);
+}
+
+message UpdateAclRequest {
+  string source_id = 1;
+  string doc_id = 2;
+  // 展开后的权限 token；为空表示没有人可见（源端 ACL 拉取失败时也按此处理，权限只收紧不放宽）
+  repeated string acl_tokens = 3;
+  bambuflow.common.v1.Classification classification = 4;
+  // 源端权限变化的时间；早于已记录的权限变化时视为乱序到达的旧事件，不生效。
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+message UpdateAclResponse {
+  AclResult result = 1;
+}
+
+enum AclResult {
+  ACL_RESULT_UNSPECIFIED = 0;
+  ACL_RESULT_UPDATED = 1;
+  ACL_RESULT_UNCHANGED = 2;
+  ACL_RESULT_NOT_FOUND = 3;
+  ACL_RESULT_STALE = 4;
+}
+
+message TombstoneDocumentRequest {
+  string source_id = 1;
+  string doc_id = 2;
+  // 源端删除的时间；早于已入库内容的产生时间时视为过期的删除（文档已在源端重新创建），不生效。
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message TombstoneDocumentResponse {
+  TombstoneResult result = 1;
+}
+
+enum TombstoneResult {
+  TOMBSTONE_RESULT_UNSPECIFIED = 0;
+  TOMBSTONE_RESULT_TOMBSTONED = 1;
+  // 已经是删除标记（重复事件），没有变化
+  TOMBSTONE_RESULT_UNCHANGED = 2;
+  TOMBSTONE_RESULT_NOT_FOUND = 3;
+  // 删除时间早于已入库内容的产生时间，不生效
+  TOMBSTONE_RESULT_STALE = 4;
+}
+
+message WriteDocumentRequest {
+  // doc_id + content_hash + pipeline_version，重复调用返回同一结果
+  string idempotency_key = 1;
+  string source_id = 2;
+  string doc_id = 3;
+  // 内容摘要变化时 indexing 把 doc_version 加 1；只有 ACL 变化不加
+  string content_hash = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+  string title = 6;
+  string source_uri = 7;
+  bambuflow.common.v1.SourceType source_type = 8;
+  string owner = 9;
+  bambuflow.common.v1.Classification classification = 10;
+  // 展开后的权限 token（如 group:credit-l2、user:alice）；为空表示没有人可见
+  repeated string acl_tokens = 11;
+  repeated Chunk chunks = 12;
+  string embedding_model_version = 13;
+  string chunker_version = 14;
+  string pipeline_version = 15;
+  bambuflow.common.v1.DocMetadata metadata = 16;
+  // 从本文档抽取的实体关系（入库管道详设第 7 节），每条都以本文档的一个块为证据。
+  // 整体替换这份文档当前内容版本的关系：内容没变的重复写入也会用它覆盖（抽取器升级后重跑即可补齐）。
+  // 为空表示没有关系（未抽取、抽取失败或日志类数据），不是“保留原有关系”。
+  repeated Relation relations = 17;
+  // 增强产出的摘要与关键词（入库管道详设第 7 节）。随内容版本写入，内容没变的重复写入不改动已有的摘要块；
+  // 不设表示没有生成（增强失败不阻塞入库，下次重处理时补上）。
+  Enrichment enrichment = 18;
+}
+
+// Enrichment 是文档级与章节级的摘要和关键词。
+message Enrichment {
+  // 文档级摘要块（documents.summary_chunk_id）：与正文块同样带 chunk_id、span 与向量，权限与密级随所属文档，
+  // 可以被引用；span 覆盖它所概括的原文范围。不进普通召回，供主题汇总类问题归纳（K2 详设第 6 节）。
+  Chunk summary_chunk = 1;
+  // 文档级关键词，计入摘要块的关键词索引。
+  repeated string keywords = 2;
+  // 章节级摘要与关键词，按父块（章节）一份。
+  repeated SectionSummary sections = 3;
+  // 生成摘要的实现及其版本（如 extractive-1）；抽检不合格时按它重新生成。
+  string summarizer_version = 4;
+}
+
+message SectionSummary {
+  // 章节的父块 ID，必须是本请求 chunks 里某块的 parent_chunk_id。
+  string parent_chunk_id = 1;
+  repeated string heading_path = 2;
+  string summary = 3;
+  repeated string keywords = 4;
+}
+
+// Entity 是关系一端的实体。indexing 按（类型，归一化名称）合并同一实体。
+message Entity {
+  bambuflow.common.v1.EntityType type = 1;
+  // 规范名称，如受控词表里的部门名称
+  string name = 2;
+  // 原文里的其他说法（如“信贷部”之于“信贷管理部”），实体链接时一并匹配
+  repeated string aliases = 3;
+}
+
+message Relation {
+  Entity subject = 1;
+  bambuflow.common.v1.RelationType relation_type = 2;
+  Entity object = 3;
+  // 证据块：必须是本请求 chunks 里的一块。图召回返回的就是它，回答因此仍引用原文
+  string evidence_chunk_id = 4;
+  // (0, 1]
+  float confidence = 5;
+  // 抽取器及其版本（如 rules-1）；抽检不合格时按它暂停发布这一版本的关系
+  string extractor_version = 6;
+}
+
+message Chunk {
+  // {source}:{doc_id}#{anchor}，anchor 为“标题路径 + 归一化文本”的哈希前 16 位
+  string chunk_id = 1;
+  string parent_chunk_id = 2;
+  repeated string heading_path = 3;
+  string text = 4;
+  string text_hash = 5;
+  // 必填：引用靠它定位；缺失或越界的块整份文档拒收
+  bambuflow.common.v1.Span span = 6;
+  repeated float embedding = 7;
+  // 入库时检测到可疑指令（提示词注入，入库管道详设第 7 节）。带标记的块照常可检索，但在线不能成为任何陈述的唯一依据。
+  bool injection_flag = 8;
+}
+
+message WriteDocumentResponse {
+  WriteResult result = 1;
+  int64 doc_version = 2;
+  int32 written_chunks = 3;
+  // 写入的待发布版本
+  string index_version = 4;
+}
+
+enum WriteResult {
+  WRITE_RESULT_UNSPECIFIED = 0;
+  WRITE_RESULT_WRITTEN = 1;
+  // 内容与已入库版本相同，只更新了权限与元数据
+  WRITE_RESULT_UNCHANGED = 2;
+  // 发生时间早于已入库版本（乱序到达的旧事件），或早于文档的删除时间（删除优先），不写
+  WRITE_RESULT_STALE_VERSION = 3;
+  // 待发布版本已换嵌入模型，需要用新模型重算向量
+  WRITE_RESULT_MODEL_MISMATCH = 4;
+}

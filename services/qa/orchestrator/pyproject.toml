@@ -1,0 +1,33 @@
+# orchestrator（orchestrator 详设）：把问题变成带引用、可回放的回答。
+[project]
+name = "bambuflow-orchestrator"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "bambuflow-contracts",
+    "bambuflow-grounding",
+    "bambuflow-vocabulary",
+    "bambuflow-platform",
+    "grpcio>=1.84.0",
+    "httpx>=0.28",
+    "opentelemetry-api>=1.38",
+    # 会话与 agent 中间状态（详设第 10 节）；与 processing 用同一个客户端库
+    "redis>=5.2",
+    # 回答记录与反馈（回放、反馈接口）存元数据库；连接池用于并发请求
+    "psycopg[binary,pool]>=3.2",
+    # sql_query 的视图目录（部署配置，YAML）；与 evaluation 用同一个库
+    "pyyaml>=6.0",
+]
+
+[tool.uv.sources]
+bambuflow-contracts = { workspace = true }
+bambuflow-grounding = { workspace = true }
+bambuflow-vocabulary = { workspace = true }
+bambuflow-platform = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bambuflow_orchestrator"]

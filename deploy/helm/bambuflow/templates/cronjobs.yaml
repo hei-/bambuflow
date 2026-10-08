@@ -1,0 +1,84 @@
+{{- /*
+evaluation 的两个每天任务（evaluation 详设 7.1、7.2）：
+- evaluation-guard：检查运行中实验的拒答率、p95 耗时与单次成本，任一超出允许范围即请 governance 停止实验（技术设计文档 10.5 第 5 步）；
+  只调服务间接口，没有密钥。
+- evaluation-online：按租户抽样评审前一天的回答，结果写元数据库的 evaluation schema（连接串在 Secret <release>-evaluation）；
+  判定用的 NLI 与线上校验器不同（evaluation 详设 6.1）。
+Pod 的 name 标签与常驻服务分开：不被 Service 选中，网络策略单独放行它们访问 governance 与 orchestrator。
+上一次没跑完不重叠执行；失败由 Job 重试两次，仍失败时等下一天并告警（Job 失败指标）。
+*/ -}}
+{{- $v := .Values -}}
+{{- $jobs := dict
+  "evaluation-guard" (dict "schedule" $v.evaluation.guardSchedule "args" (list "guard") "secret" false
+    "env" (dict
+      "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)))
+  "evaluation-online" (dict "schedule" $v.evaluation.onlineSchedule "args" (list "online-sample") "secret" true
+    "env" (dict
+      "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)
+      "BF_NLI_URL" $v.evaluation.nliUrl
+      "BF_EVAL_NLI_MODEL" $v.evaluation.judgeModel
+      "BF_ONLINE_TENANTS" (join "," $v.evaluation.onlineTenants)))
+-}}
+{{- range $name, $job := $jobs }}
+{{- $ctx := dict "root" $ "component" $name }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            {{- include "bambuflow.labels" $ctx | nindent 12 }}
+        spec:
+          serviceAccountName: {{ include "bambuflow.name" $ctx }}
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: {{ index $job.args 0 }}
+              image: "{{ $v.image.registry }}/evaluation:{{ $v.image.tag }}"
+              imagePullPolicy: {{ $v.image.pullPolicy }}
+              args: {{ toJson $job.args }}
+              env:
+                {{- range $k, $val := $job.env }}
+                - name: {{ $k }}
+                  value: {{ $val | quote }}
+                {{- end }}
+              {{- if $job.secret }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "bambuflow.name" (dict "root" $ "component" "evaluation") }}
+              {{- end }}
+              resources:
+                {{- toYaml $v.evaluation.resources | nindent 16 }}
+              securityContext:
+                runAsUser: 65532
+                runAsGroup: 65532
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+{{- end }}

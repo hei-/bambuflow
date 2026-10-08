@@ -1,0 +1,22 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/bambu-ai/bambuflow/contracts/gen/go
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.12
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go:v1.6.2
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/protocolbuffers/python:v36.2
+    out: gen/python/src
+  - remote: buf.build/protocolbuffers/pyi:v36.2
+    out: gen/python/src
+  - remote: buf.build/grpc/python:v1.84.0
+    out: gen/python/src
+  # gRPC 存根的类型文件（_pb2_grpc.pyi），让 mypy 严格模式能检查调用方
+  - remote: buf.build/community/nipunn1313-mypy-grpc:v5.1.0
+    out: gen/python/src

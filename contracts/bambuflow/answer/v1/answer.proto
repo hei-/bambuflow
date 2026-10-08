@@ -1,0 +1,410 @@
+syntax = "proto3";
+
+package bambuflow.answer.v1;
+
+import "bambuflow/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// AnswerService 由 orchestrator 实现，gateway 把 POST /v1/answers 转成这里的调用。
+// 回答契约以技术设计文档 13.9 为准；出现在回答里的每一句都已通过逐句校验。
+service AnswerService {
+  rpc Answer(AnswerRequest) returns (AnswerResponse);
+  // 按句流式返回（orchestrator 详设第 3 节、9.3）：meta 先发；每句通过校验后先发它首次用到的 citation，再发 sentence；
+  // 最后是 final。句子按生成顺序发送，未通过校验的句子不出现在流里。出错时以 gRPC 状态结束流，
+  // 由 gateway 转成 SSE 的 error 事件。
+  rpc StreamAnswer(StreamAnswerRequest) returns (stream StreamAnswerResponse);
+  // 回放（技术设计文档 13.1，gateway 详设 4.1）：按 answer_id 取回当时的回答与 why。只有提问人本人和同一租户的审计岗可看，
+  // 其他人一律 NOT_FOUND（不区分无权与不存在）；引用与列表项按调用者当前的权限重新复核，不可见的部分从返回里去掉。
+  rpc GetAnswer(GetAnswerRequest) returns (GetAnswerResponse);
+  // 反馈（技术设计文档 F8、13.1）：有用 / 有误 / 引用不对，挂在对应回答下。只有提问人本人可提交，其他人一律 NOT_FOUND；
+  // 同一提交人重复使用同一幂等键时返回已有反馈，内容不同时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
+  rpc CreateFeedback(CreateFeedbackRequest) returns (CreateFeedbackResponse);
+}
+
+message AnswerRequest {
+  // 不超过 2000 字。
+  string question = 1;
+  bambuflow.common.v1.Filters filters = 2;
+  // 默认 8。
+  int32 max_citations = 3;
+  // 多轮时带上一轮返回的 conversation_id（conv_ 前缀）；首轮为空，由 orchestrator 生成（详设 10.1）。
+  // 会话不属于当前用户或已过期时按新会话处理，不报错（详设 10.4）。
+  string conversation_id = 4;
+}
+
+// 流式与一元调用的参数相同，校验规则也相同。
+message StreamAnswerRequest {
+  AnswerRequest request = 1;
+}
+
+// 流中的一个事件。
+message StreamAnswerResponse {
+  oneof event {
+    AnswerMeta meta = 1;
+    Citation citation = 2;
+    SentenceEvent sentence = 3;
+    AnswerFinal final = 4;
+  }
+}
+
+message AnswerMeta {
+  string answer_id = 1;
+  string trace_id = 2;
+  string conversation_id = 3;
+}
+
+// 一句已通过校验的陈述。start、end 是它在最终 answer 中的位置，按已发送的句子累加。
+message SentenceEvent {
+  Sentence sentence = 1;
+  // 所属块的类型，前端据此按块拼装版式。
+  BlockType block_type = 2;
+  // 所属块是统计口径块时的内容；口径块先于列表项推送（K2 详设第 7 节）。
+  Scope scope = 3;
+}
+
+// 覆盖率不足时已发送的句子不撤回，status 为 insufficient_evidence（orchestrator 详设 9.4）。
+// status 为 evidence_only 时，句子之外的证据在 final 之前以 citation 发送。
+message AnswerFinal {
+  Status status = 1;
+  Why why = 2;
+  // 只供 gateway 写入审计，不返回给终端用户。
+  AuditBlocks audit = 3;
+  AnswerKind answer_kind = 4;
+  TokenUsage usage = 5;
+}
+
+// AuditBlocks 是一次回答涉及的三类块（技术设计文档 8.3，评估报告 K12）：
+// 检索返回的候选、送入模型的上下文、最终展示（被引用）的块。审计据此追溯“用户看到过什么”。
+message AuditBlocks {
+  repeated string candidate_chunk_ids = 1;
+  repeated string context_chunk_ids = 2;
+  repeated string shown_chunk_ids = 3;
+  // 枚举、计数类回答推送出的文档与统计到的总数（K2 详设第 8 节：清单类回答更容易被用来摸底，审计要更细）；
+  // 筛选条件见 Why.inferred_filters。
+  repeated string listed_doc_ids = 4;
+  int64 total_count = 5;
+}
+
+// TokenUsage 是这次回答实际消耗的 LLM token（规划、改写、生成等全部调用之和），只供 gateway 计入租户配额，不返回给终端用户。
+message TokenUsage {
+  int64 prompt_tokens = 1;
+  int64 completion_tokens = 2;
+}
+
+message AnswerResponse {
+  // 对外 ID，前缀 ans_；与 trace_id 分开，前者用于回放和反馈，后者只用于排查。
+  string answer_id = 1;
+  string trace_id = 2;
+  Status status = 3;
+  // 含 [S#] 引用标记的回答文本。
+  string answer = 4;
+  repeated Sentence sentences = 5;
+  repeated Block blocks = 6;
+  repeated Citation citations = 7;
+  Why why = 8;
+  // 只供 gateway 写入审计，不返回给终端用户。
+  AuditBlocks audit = 9;
+  AnswerKind answer_kind = 10;
+  // 本轮所属的会话，下一轮带上它（orchestrator 详设 10.1）。
+  string conversation_id = 11;
+  TokenUsage usage = 12;
+}
+
+// 回答类型（K2 详设第 7 节），供前端选择展示方式、供评测分桶。
+enum AnswerKind {
+  ANSWER_KIND_UNSPECIFIED = 0;
+  ANSWER_KIND_FACT = 1;
+  ANSWER_KIND_ENUMERATION = 2;
+  ANSWER_KIND_COUNT = 3;
+  // 主题汇总：圈定一批文档后基于各文档的摘要块分组归纳（K2 详设第 6 节）。
+  ANSWER_KIND_SUMMARY = 4;
+}
+
+// 业务结果，不是错误：除 answered 外都以 HTTP 200 返回（技术设计文档 13.10）。
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_ANSWERED = 1;
+  STATUS_EVIDENCE_ONLY = 2;
+  STATUS_INSUFFICIENT_EVIDENCE = 3;
+  STATUS_REFUSED = 4;
+}
+
+message Sentence {
+  string text = 1;
+  // 在 answer 中的字符区间，左闭右开。
+  int32 start = 2;
+  int32 end = 3;
+  ClaimType claim_type = 4;
+  // 引用编号，对应 Citation.ref_id，即文本中 [S#] 的 #。
+  repeated int32 ref_ids = 5;
+  // 校验得到的支持度，0–1。
+  double support = 6;
+  string block_id = 7;
+  // 本句每个引用对应的原文片段（逐句校验所用的引文）。同一块被多句引用时各句的引文可能不同，
+  // Citation.quote 只是首次引用时的那一段；评测按这里逐句判定 Groundedness（evaluation 详设 6.1）。
+  repeated RefQuote quotes = 8;
+  // 计算句（claim_type = calculation）的算式：各输入取自哪条引用、取值多少，结果由程序算出（K7 详设 3.4）。
+  Calculation calc = 9;
+  // 列表项（claim_type = list_item）列出的文档：列表项的依据是“这份文档存在且符合条件”，
+  // 引用的是文档本身而不是某段原文（K2 详设第 8 节），所以不带 ref_ids。
+  ListedDocument document = 10;
+}
+
+message ListedDocument {
+  string doc_id = 1;
+  int64 doc_version = 2;
+  string title = 3;
+  string source_uri = 4;
+  bambuflow.common.v1.DocMetadata metadata = 5;
+}
+
+message Calculation {
+  repeated CalcInput inputs = 1;
+  repeated CalcResult results = 2;
+}
+
+message CalcInput {
+  string var = 1;
+  int32 ref_id = 2;
+  // 十进制数的字符串形式，避免浮点误差。
+  string value = 3;
+  string unit = 4;
+}
+
+message CalcResult {
+  // 句子里的占位符名。
+  string name = 1;
+  string expr = 2;
+  // 填入句子的结果：数值，或比较结论的固定措辞（如“超过”）。
+  string value = 3;
+}
+
+message RefQuote {
+  int32 ref_id = 1;
+  string quote = 2;
+}
+
+// 陈述类型（陈述校验增强详设第 2 节）。模型标注的类型只决定用哪种方法校验，不决定是否校验。
+enum ClaimType {
+  CLAIM_TYPE_UNSPECIFIED = 0;
+  CLAIM_TYPE_QUOTE = 1;
+  CLAIM_TYPE_SYNTHESIS = 2;
+  CLAIM_TYPE_CALCULATION = 3;
+  CLAIM_TYPE_LIST_ITEM = 4;
+  CLAIM_TYPE_NONE = 5;
+}
+
+// Block 是回答的版式结构（技术设计文档 7.9）；块里的陈述仍逐句校验。
+message Block {
+  string block_id = 1;
+  BlockType block_type = 2;
+  string parent_block_id = 3;
+  int32 order = 4;
+  // 所含陈述在 sentences 中的下标。
+  repeated int32 sentence_indexes = 5;
+  // block_type 为 scope 时的统计口径。
+  Scope scope = 6;
+}
+
+// Scope 是统计口径说明（K2 详设第 7 节）：每个枚举、计数回答必有一个。
+message Scope {
+  // 筛选条件的人话描述，如“发文部门为信贷管理部、文档类型为制度”。
+  string filters_text = 1;
+  // 与计数接口返回值逐字一致；拿不到完整计数时不给（K2 详设第 9 节）。
+  int64 total_count = 2;
+  bool total_is_exact = 3;
+  // 回答里实际列出的数量。
+  int32 shown = 4;
+  // 元数据缺口说明，如“另有 3 份文档未标注文档类型，可能也属于制度”；没有缺口时为空。
+  string metadata_gaps = 5;
+  // 固定措辞“仅统计你有权查看的文档”，不提无权文档的存在与数量（K2 详设第 8 节）。
+  string basis = 6;
+}
+
+enum BlockType {
+  BLOCK_TYPE_UNSPECIFIED = 0;
+  BLOCK_TYPE_HEADING = 1;
+  BLOCK_TYPE_PARAGRAPH = 2;
+  BLOCK_TYPE_LIST_ITEM = 3;
+  BLOCK_TYPE_STEP = 4;
+  BLOCK_TYPE_TABLE = 5;
+  BLOCK_TYPE_NOTE = 6;
+  BLOCK_TYPE_SCOPE = 7;
+}
+
+message Citation {
+  int32 ref_id = 1;
+  string chunk_id = 2;
+  string doc_id = 3;
+  int64 doc_version = 4;
+  string title = 5;
+  // 所引块原文的子串。
+  string quote = 6;
+  bambuflow.common.v1.Span span = 7;
+  string source_uri = 8;
+  string owner = 9;
+  bambuflow.common.v1.Classification classification = 10;
+  bambuflow.common.v1.SourceType source_type = 11;
+  // 所引的块入库时检测到可疑指令：它只能与其他依据一起支撑句子，不能是唯一依据（orchestrator 详设 7.4、9.2）；
+  // 前端在来源处标出“可疑内容”。
+  bool injection_flag = 12;
+}
+
+// Why 记录影响这次回答的每个版本号和降级项，用于回放和审计。
+message Why {
+  // 产出被引用证据的召回路，如 dense。
+  repeated string retrievers = 1;
+  string index_version = 2;
+  string policy_version = 3;
+  string embedding_model = 4;
+  string generation_model = 5;
+  string prompt_version = 6;
+  // 逐句校验用的 NLI 模型版本与支持度阈值。
+  string nli_model = 7;
+  double support_threshold = 8;
+  repeated bambuflow.common.v1.Degradation degraded = 9;
+  // 精排模型版本；未精排时为空，原因见 degraded。
+  string rerank_model = 10;
+  // 计算句所用的计算器版本，回放时用同一版本重算（K7 详设 3.4）；回答里没有计算句时为空。
+  string calculator_version = 11;
+  // 从问题推断出的筛选条件（K2 详设第 5 节第 1 步）；没有推断时为空。
+  bambuflow.common.v1.Filters inferred_filters = 12;
+  // 意图路由的结果（orchestrator 详设 5.3），决定走哪条处理路径。
+  Intent intent = 13;
+  // agent 路径每一轮的子问题与工具调用（详设 6.6），回放时据此核对检索过程；单跳时为空。
+  repeated AgentRound agent_rounds = 14;
+  // 被引用的证据由图召回找到时的遍历路径（技术设计文档 6.3），解释“为什么找到这条证据”；
+  // 每个带路径的引用一条，按 ref_id 排序。没有图召回证据时为空。
+  repeated GraphPath graph_path = 15;
+  // 回答基于文档摘要归纳（主题汇总，K2 详设第 6 节“已知局限”）：结论引用的是入库时生成的摘要块，
+  // 摘要本身的错误会传到结论里；前端据此提示可点开引用查看原文。
+  bool based_on_summaries = 16;
+  // 请求所在的 A/B 实验与分组（orchestrator 详设 12.3）；租户没有运行中的实验时为空。
+  string experiment_id = 17;
+  ExperimentArm experiment_arm = 18;
+}
+
+// A/B 分组：按 user_id 与实验 id 哈希，同一用户在同一实验中始终在同一组。
+enum ExperimentArm {
+  EXPERIMENT_ARM_UNSPECIFIED = 0;
+  // 基线配置
+  EXPERIMENT_ARM_CONTROL = 1;
+  // 实验配置
+  EXPERIMENT_ARM_TREATMENT = 2;
+  // 分在实验组，但上下文里有受限级内容，退回基线配置；不计入 A/B 分析
+  EXPERIMENT_ARM_EXCLUDED = 3;
+}
+
+message GraphPath {
+  int32 ref_id = 1;
+  string chunk_id = 2;
+  // 实体 → 关系 → 实体，1–2 条边，最后一条边的证据就是所引的块。
+  repeated GraphEdge edges = 3;
+}
+
+// GraphEdge 与 retrieval 契约里的同名消息字段相同：对外的回答契约不引用内部服务契约，所以单独定义。
+message GraphEdge {
+  // 已按调用者密级脱敏。
+  string from_entity = 1;
+  bambuflow.common.v1.EntityType from_type = 2;
+  bambuflow.common.v1.RelationType relation_type = 3;
+  string to_entity = 4;
+  bambuflow.common.v1.EntityType to_type = 5;
+}
+
+enum Intent {
+  INTENT_UNSPECIFIED = 0;
+  // 一轮检索加生成。
+  INTENT_SINGLE_HOP = 1;
+  // 多跳与比较：agent 路径，最多 3 轮。
+  INTENT_MULTI_HOP = 2;
+  // 问单个关系（“由哪个团队负责”）：走单跳路径，检索时提高图召回的权重。
+  INTENT_RELATION = 3;
+  // 枚举、计数与主题汇总：清单路径（K2 详设）。
+  INTENT_LISTING = 4;
+  // 闲聊、投资建议等：不检索，直接 refused。
+  INTENT_OUT_OF_SCOPE = 5;
+  // 问业务数据（数量、统计、明细，不是文档数量）：agent 路径，可调用只读 sql_query（orchestrator 详设 6.3）。
+  INTENT_STRUCTURED = 6;
+}
+
+message AgentRound {
+  // 从 1 开始。
+  int32 round = 1;
+  repeated AgentCall calls = 2;
+}
+
+// 一次工具调用。只记子问题、命中的块与耗时，不含正文（详设 6.6）。
+message AgentCall {
+  string sub_question_id = 1;
+  string sub_question = 2;
+  // 如 doc_search。
+  string tool = 3;
+  repeated string chunk_ids = 4;
+  // 本轮之后这个子问题是否已有足够的证据（详设 6.2 的充分性判断）。
+  bool covered = 5;
+  int32 elapsed_ms = 6;
+}
+
+message GetAnswerRequest {
+  string answer_id = 1;
+  // 调用者是否以审计岗身份查看：由 gateway 按租户配置的审计岗群组判定（gateway 详设 4.1）。
+  // 为 false 时只有提问人本人能看到。
+  bool as_auditor = 2;
+}
+
+// 回放时调用者凭什么看到这条回答，gateway 据此写审计。
+enum ReplayAccess {
+  REPLAY_ACCESS_UNSPECIFIED = 0;
+  // 提问人本人。
+  REPLAY_ACCESS_ASKER = 1;
+  // 审计岗。
+  REPLAY_ACCESS_AUDITOR = 2;
+}
+
+message GetAnswerResponse {
+  // 记录下来的回答契约（不含 audit），已按调用者当前的权限去掉不可见的引用、依赖它们的句子与列表项；
+  // answer_id、trace_id、conversation_id 是当时的值。
+  AnswerResponse answer = 1;
+  // 已做 PII 掩码的问题原文；body_withheld 时为空。
+  string question = 2;
+  google.protobuf.Timestamp created_at = 3;
+  // 回答涉及受限级数据：按密级路由不保存正文（技术设计文档 8.6），只有 status、answer_kind、why 中的版本号
+  // 与引用的块和文档标识，句子与引文为空。
+  bool body_withheld = 4;
+  ReplayAccess access = 5;
+}
+
+message CreateFeedbackRequest {
+  string answer_id = 1;
+  FeedbackRating rating = 2;
+  // 指向原回答（Answer 返回的 sentences）中的某一句；不指向具体句子时不填。
+  optional int32 sentence_index = 3;
+  // 可选的简短说明，不超过 500 字；保存前做 PII 掩码。
+  string comment = 4;
+  // 调用方的 Idempotency-Key，必填，不超过 128 字符。
+  string idempotency_key = 5;
+}
+
+enum FeedbackRating {
+  FEEDBACK_RATING_UNSPECIFIED = 0;
+  // 有用。
+  FEEDBACK_RATING_USEFUL = 1;
+  // 有误。
+  FEEDBACK_RATING_WRONG = 2;
+  // 引用不对。
+  FEEDBACK_RATING_BAD_CITATION = 3;
+}
+
+message CreateFeedbackResponse {
+  Feedback feedback = 1;
+}
+
+message Feedback {
+  // 前缀 fb_。
+  string feedback_id = 1;
+  string answer_id = 2;
+  FeedbackRating rating = 3;
+  optional int32 sentence_index = 4;
+  google.protobuf.Timestamp created_at = 5;
+}

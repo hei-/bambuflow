@@ -1,0 +1,24 @@
+%% 由此文件生成 docs/diagrams/answer-flow.png（README 引用图片：部分环境看不了 GitHub 的 mermaid 渲染）。
+%% 修改后重新生成：npx -p @mermaid-js/mermaid-cli mmdc -i docs/diagrams/answer-flow.mmd -o docs/diagrams/answer-flow.png -s 2 -b white
+sequenceDiagram
+  autonumber
+  participant C as 调用方
+  participant G as gateway
+  participant O as orchestrator
+  participant R as retrieval
+  participant L as LLM 网关
+  participant N as NLI
+  C->>G: POST /v1/answers(外部令牌)
+  G->>G: 认证 / 租户成员校验 / 限流与配额 / 写入口审计
+  G->>O: Answer(内部 Principal，5 分钟)
+  O->>O: 意图路由(单跳 / 多步检索 / 清单 / 结构化 / 超出范围)
+  O->>R: Search(同一个 Principal)
+  R->>R: 权限过滤下推 / 多路召回 / 融合 / 精排 / 返回前复核
+  R-->>O: 候选证据(已按密级脱敏)
+  O->>L: 生成(证据区隔离，每行一个陈述)
+  loop 逐句
+    O->>N: 引文 → 句子 的支持度
+    O->>R: CheckAccess(引用的块)
+  end
+  O-->>G: 通过校验的句子 / 引用 / why
+  G-->>C: 回答(SSE 或一次返回)

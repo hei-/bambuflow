@@ -1,0 +1,79 @@
+# Helm 冒烟测试（make helm-smoke）用的 values：依赖服务指向 compose 栈（模拟 LLM、开发用 Keycloak），
+# 不满足生产 schema，安装时加 --skip-schema-validation。生产 values 见 deploy/helm/bambuflow/values-prod.yaml。
+image:
+  registry: localhost:27500/bambuflow
+  tag: smoke
+  pullPolicy: Always
+
+vault:
+  addr: http://vault:8200
+  role: bambuflow-online
+  webhookRole: bambuflow-webhook
+
+networkPolicy:
+  ingressNamespace: smoke
+  monitoringNamespace: monitoring
+
+otel:
+  endpoint: http://jaeger:4317
+
+events:
+  redisAddr: redis:6379
+
+tenants:
+  credit: {rollout: general, member_groups: [credit-l2], pilot_groups: [], bound_clients: []}
+  ops: {rollout: general, member_groups: [all-staff], pilot_groups: [], bound_clients: []}
+
+policyData:
+  tenants:
+    credit: {}
+    ops: {denied_sources: [src_evalcredit]}
+
+# compose 栈里的 indexing（紧急拒绝规则经它写拒绝名单）
+indexing:
+  addr: indexing:9090
+
+gateway:
+  replicas: 2
+  platformIssuer: http://keycloak:8080/realms/bambuflow
+  # MCP 受保护资源元数据里的对外地址；冒烟测试在集群内访问
+  publicUrl: http://smoke-gateway.bambuflow:8080
+  redisAddr: redis:6379
+  audit:
+    s3Endpoint: http://rustfs:9000
+    retentionDays: 1
+    storageSize: 1Gi
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+retrieval:
+  replicas: 2
+  # 模型服务地址由 smoke.sh 按 compose 栈的设置填入（模拟模型或真实模型）
+  embedderUrl: ""
+  rerankerUrl: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 1Gi}
+
+orchestrator:
+  replicas: 2
+  llmUrl: http://llm:8000
+  llmModel: mock-chat-1
+  nliUrl: ""
+  redisAddr: redis:6379
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+batch:
+  replicas: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+
+webhook:
+  replicas: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}

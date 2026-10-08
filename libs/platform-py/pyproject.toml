@@ -1,0 +1,25 @@
+# Python 服务的平台基础库：Principal 验签、gRPC 拦截器、日志脱敏、OTel（与 libs/platform-go 对应）。
+[project]
+name = "bambuflow-platform"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "bambuflow-contracts",
+    "grpcio>=1.84.0",
+    "httpx>=0.28",
+    "pyjwt[crypto]>=2.10",
+    "opentelemetry-api>=1.38",
+    "opentelemetry-sdk>=1.38",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.38",
+    "opentelemetry-instrumentation-grpc>=0.59b0",
+]
+
+[tool.uv.sources]
+bambuflow-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bambuflow_platform"]

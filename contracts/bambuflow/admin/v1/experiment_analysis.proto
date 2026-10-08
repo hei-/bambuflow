@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "bambuflow/admin/v1/experiment_admin.proto";
+import "google/protobuf/timestamp.proto";
+
+// ExperimentAnalysisService 是 A/B 分析的管理接口（evaluation 详设 7.2、8.2），由 evaluation 实现，
+// gateway 的 GET /v1/admin/experiments/{exp_id}/analysis 调用，调用方须带管理 Principal（平台管理员）。
+service ExperimentAnalysisService {
+  rpc GetExperimentAnalysis(GetExperimentAnalysisRequest) returns (GetExperimentAnalysisResponse);
+}
+
+message GetExperimentAnalysisRequest {
+  string exp_id = 1;
+}
+
+message GetExperimentAnalysisResponse {
+  ExperimentAnalysis analysis = 1;
+}
+
+// 一个组的汇总。上下文有受限级内容、退回基线的请求（excluded）不计入任何一组。
+message ArmSummary {
+  // control 或 treatment
+  string arm = 1;
+  // 有回答的用户数与回答数
+  int64 users = 2;
+  int64 answers = 3;
+  // 主要指标：先按用户算（同一用户的多次问答不独立），再对用户取平均；
+  // “有用”反馈率只计有反馈的用户，metric_users 是参与计算的用户数
+  int64 metric_users = 4;
+  double metric_mean = 5;
+  // 护栏：拒答率、p95 耗时、每次回答的 token 数（单次成本）
+  double refused_rate = 6;
+  int64 p95_latency_ms = 7;
+  double mean_tokens = 8;
+}
+
+message GuardrailCheck {
+  // refused_rate、p95_latency_ms、mean_tokens
+  string name = 1;
+  double control = 2;
+  double treatment = 3;
+  // 实验组超过对照组的允许范围；两组回答数都不少于 100 才判定
+  bool breached = 4;
+}
+
+// 达到样本量后才给出的结论（达到前只显示进度，避免提前偏看）。
+message Conclusion {
+  // 实验组减对照组的主要指标差值与 95% 置信区间
+  double delta = 1;
+  double ci_low = 2;
+  double ci_high = 3;
+  // 按用户聚合后的 Welch 检验（大样本用正态近似）
+  double p_value = 4;
+  bool significant = 5;
+  // 差值方向对主要指标是改善（“有用”反馈率升高、insufficient_evidence 比例降低）
+  bool improved = 6;
+}
+
+message ExperimentAnalysis {
+  Experiment experiment = 1;
+  ArmSummary control = 2;
+  ArmSummary treatment = 3;
+  // 两组参与主要指标的用户数中较少的一组除以每组所需用户数，封顶 1
+  double progress = 4;
+  repeated GuardrailCheck guardrails = 5;
+  // 没有达到样本量时为空
+  Conclusion conclusion = 6;
+  // 计入的回答记录的时间范围
+  google.protobuf.Timestamp data_since = 7;
+  google.protobuf.Timestamp data_until = 8;
+}

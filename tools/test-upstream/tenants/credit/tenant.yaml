@@ -1,0 +1,16 @@
+# 测试租户（只用于开发与 CI）：信贷业务线，已全量上线
+tenant: credit
+rollout: general
+member_groups: [credit-l2]
+pilot_groups: []
+# 审计岗：可以回放本租户任何人的回答（gateway 详设 4.1）
+auditor_groups: [credit-audit]
+bound_clients: []
+# 测试用 MCP agent：e2e 经 Keycloak 管理 API 建同名客户端（tools/e2e/e2e_tests/test_mcp.py）；
+# e2e-agent-unregistered 只在 Keycloak 里有，没有在这里登记，用来验证“未登记即拒绝”
+mcp_agents:
+  - client_id: e2e-agent
+    purpose: 端到端测试
+    owner: 平台组
+# 开发与 CI 放宽租户限制（并发 1000 路、每日 1 万亿 token），避免 e2e 与评测连续请求被限；生产按租户申请配置
+quota: {max_concurrency: 1000, daily_tokens: 1000000000000}

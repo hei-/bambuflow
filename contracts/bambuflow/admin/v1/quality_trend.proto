@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// QualityTrendService 是在线抽样评审结果的管理接口（evaluation 详设 7.1、8.2），由 evaluation 实现，
+// gateway 的 GET /v1/admin/quality-trends 调用，调用方须带管理 Principal（平台管理员）。
+service QualityTrendService {
+  rpc GetQualityTrends(GetQualityTrendsRequest) returns (GetQualityTrendsResponse);
+}
+
+message GetQualityTrendsRequest {
+  string tenant = 1;
+  // 最近多少天，1–90，0 时取 30
+  int32 days = 2;
+}
+
+message GetQualityTrendsResponse {
+  string tenant = 1;
+  // 按日期从旧到新；没有抽样的日子不出现
+  repeated DailyQuality days = 2;
+  // 最近 7 天与 30 天的 Groundedness 均值（按天平均）
+  double groundedness_7d = 3;
+  double groundedness_30d = 4;
+  // 7 天均值比 30 天均值低 3 个点以上（evaluation 详设 7.1 的告警条件）
+  bool declining = 5;
+}
+
+message DailyQuality {
+  // YYYY-MM-DD（UTC）
+  string day = 1;
+  // 抽到并评审的回答数；涉及受限级数据、正文未保存的回答不抽
+  int32 sampled = 2;
+  int32 sentences = 3;
+  // 句子被自己的引文支持（判定 NLI 达到阈值）的比例
+  double groundedness = 4;
+  // 引文支持所在句子的比例
+  double citation_precision = 5;
+  // 判定用的 NLI 模型（与线上校验器不同，evaluation 详设 6.1）
+  string judge_model = 6;
+  google.protobuf.Timestamp computed_at = 7;
+}

@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package bambuflow.answer.v1;
+
+import "bambuflow/answer/v1/answer.proto";
+import "google/protobuf/timestamp.proto";
+
+// AnswerRecordService 导出回答记录给 evaluation 做 A/B 分析与在线抽样评审（evaluation 详设 7.1、7.2），由 orchestrator 实现。
+// 服务间接口：不带用户 Principal，靠服务网格的 mTLS 与网络策略只放行 evaluation（技术设计文档 12.6）。
+// 提问人只给假名（同一租户内稳定），不导出用户 ID 与问题原文。
+service AnswerRecordService {
+  // 按创建时间从旧到新。
+  rpc ListAnswerRecords(ListAnswerRecordsRequest) returns (ListAnswerRecordsResponse);
+}
+
+message ListAnswerRecordsRequest {
+  string tenant = 1;
+  // 只要这个实验的记录；为空时不按实验筛选
+  string experiment_id = 2;
+  // [since, until)，跨度不超过 31 天
+  google.protobuf.Timestamp since = 3;
+  google.protobuf.Timestamp until = 4;
+  // true 时带上回答正文（在线抽样评审用）；涉及受限级数据、正文未保存的记录始终不带
+  bool include_answer = 5;
+  // 1–1000，0 时取 500
+  int32 page_size = 6;
+  string page_token = 7;
+}
+
+message ListAnswerRecordsResponse {
+  repeated AnswerRecord records = 1;
+  // 没有下一页时为空
+  string next_page_token = 2;
+}
+
+message AnswerRecord {
+  string answer_id = 1;
+  // 提问人的假名：租户与 user_id 的摘要，A/B 按它聚合
+  string user_key = 2;
+  google.protobuf.Timestamp created_at = 3;
+  Status status = 4;
+  string experiment_id = 5;
+  ExperimentArm experiment_arm = 6;
+  // 从收到请求到回答完整的耗时
+  int64 latency_ms = 7;
+  TokenUsage usage = 8;
+  // 提问人的反馈：useful、wrong、bad_citation，可能有多条
+  repeated string feedback = 9;
+  // 正文未保存（涉及受限级数据）
+  bool body_withheld = 10;
+  // include_answer 且正文已保存时才有
+  AnswerResponse answer = 11;
+}
