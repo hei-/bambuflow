@@ -174,16 +174,18 @@ func insertChunk(ctx context.Context, tx pgx.Tx, r *ingestionv1.WriteDocumentReq
 		return false, err
 	}
 	tag, err := tx.Exec(ctx, `
-		INSERT INTO idx.chunks (chunk_id, doc_version, doc_id, parent_chunk_id, heading_path, text, text_hash, span, embedding, embedding_model, chunker_version, kind, injection_flag, tsv)
+		INSERT INTO idx.chunks (chunk_id, doc_version, doc_id, parent_chunk_id, heading_path, text, text_hash, span, embedding, embedding_model, chunker_version, kind, injection_flag, tsv,
+			pii_ciphertext, pii_wrapped_key, pii_key_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
 			setweight(to_tsvector('simple', $14), 'A') || setweight(to_tsvector('simple', $15), 'B') ||
-			setweight(to_tsvector('simple', $16), 'C'))
+			setweight(to_tsvector('simple', $16), 'C'), $17, NULLIF($18, ''), NULLIF($19, ''))
 		ON CONFLICT DO NOTHING`,
 		c.GetChunkId(), docVersion, r.GetDocId(), c.GetParentChunkId(),
 		// 第一个标题之前的正文没有标题路径：空切片要写成空数组，不能是 NULL
 		nonNil(c.GetHeadingPath()), c.GetText(), c.GetTextHash(),
 		span, pgvector.NewVector(c.GetEmbedding()), r.GetEmbeddingModelVersion(), r.GetChunkerVersion(), kind, c.GetInjectionFlag(),
-		words(r.GetTitle()), words(second), words(c.GetText()))
+		words(r.GetTitle()), words(second), words(c.GetText()),
+		c.GetPii().GetCiphertext(), c.GetPii().GetWrappedKey(), c.GetPii().GetKeyId())
 	if err != nil {
 		return false, err
 	}
@@ -374,6 +376,10 @@ func Publish(ctx context.Context, pool *pgxpool.Pool) (string, int64, error) {
 		}
 		if docs == 0 {
 			return errors.New("待发布版本里没有文档，拒绝发布")
+		}
+		// 全量重建的版本必须写完全部在用文档才能上线（换模型后旧文档带不进来，缺的就会从线上消失）
+		if err := checkRebuildComplete(ctx, tx, version); err != nil {
+			return err
 		}
 		tag, err := tx.Exec(ctx, `
 			INSERT INTO idx.version_docs (version, doc_id, doc_version)

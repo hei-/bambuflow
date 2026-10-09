@@ -1,10 +1,70 @@
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable
-from typing import ClassVar as _ClassVar, Optional as _Optional
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
+from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
+
+class TermRemap(_message.Message):
+    __slots__ = ("vocabulary", "from_code", "to_code")
+    VOCABULARY_FIELD_NUMBER: _ClassVar[int]
+    FROM_CODE_FIELD_NUMBER: _ClassVar[int]
+    TO_CODE_FIELD_NUMBER: _ClassVar[int]
+    vocabulary: str
+    from_code: str
+    to_code: str
+    def __init__(self, vocabulary: _Optional[str] = ..., from_code: _Optional[str] = ..., to_code: _Optional[str] = ...) -> None: ...
+
+class RemapTermsRequest(_message.Message):
+    __slots__ = ("remaps",)
+    REMAPS_FIELD_NUMBER: _ClassVar[int]
+    remaps: _containers.RepeatedCompositeFieldContainer[TermRemap]
+    def __init__(self, remaps: _Optional[_Iterable[_Union[TermRemap, _Mapping]]] = ...) -> None: ...
+
+class RemapTermsResponse(_message.Message):
+    __slots__ = ("documents",)
+    DOCUMENTS_FIELD_NUMBER: _ClassVar[int]
+    documents: int
+    def __init__(self, documents: _Optional[int] = ...) -> None: ...
+
+class PurgeDeletedRequest(_message.Message):
+    __slots__ = ("grace_hours",)
+    GRACE_HOURS_FIELD_NUMBER: _ClassVar[int]
+    grace_hours: int
+    def __init__(self, grace_hours: _Optional[int] = ...) -> None: ...
+
+class PurgeDeletedResponse(_message.Message):
+    __slots__ = ("purged",)
+    PURGED_FIELD_NUMBER: _ClassVar[int]
+    purged: int
+    def __init__(self, purged: _Optional[int] = ...) -> None: ...
+
+class ExpireDocumentsRequest(_message.Message):
+    __slots__ = ("retention_days",)
+    class RetentionDaysEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
+    RETENTION_DAYS_FIELD_NUMBER: _ClassVar[int]
+    retention_days: _containers.ScalarMap[str, int]
+    def __init__(self, retention_days: _Optional[_Mapping[str, int]] = ...) -> None: ...
+
+class ExpireDocumentsResponse(_message.Message):
+    __slots__ = ("tombstoned",)
+    class TombstonedEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
+    TOMBSTONED_FIELD_NUMBER: _ClassVar[int]
+    tombstoned: _containers.ScalarMap[str, int]
+    def __init__(self, tombstoned: _Optional[_Mapping[str, int]] = ...) -> None: ...
 
 class AddDenyRulesRequest(_message.Message):
     __slots__ = ("doc_ids", "reason", "source_ids", "tenants")

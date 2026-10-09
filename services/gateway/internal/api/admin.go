@@ -39,7 +39,7 @@ type adminRoute struct {
 	name string
 	// method 与 pattern：pattern 的 {x} 匹配一个非空路径段，取值放在 adminInput.params
 	method, pattern string
-	// owner 是实现方（governance、indexing），写进管理审计
+	// owner 是实现方（governance、indexing、evaluation、processing、connectors），写进管理审计
 	owner string
 	// roles 是允许调用的平台角色，有其一即可
 	roles    []string
@@ -74,6 +74,8 @@ var (
 		"out_of_scope":            {http.StatusForbidden, "forbidden", "无权操作该对象"},
 		"conflict":                {http.StatusConflict, "conflict", "对象的当前状态不允许这个操作"},
 		"activation_refused":      {http.StatusConflict, "activation_refused", "目标版本不能上线：清单不全或嵌入模型已下线"},
+		"stale_base_version":      {http.StatusConflict, "stale_base_version", "生效版本已经变了，请基于最新版本重新提交"},
+		"gate_failed":             {http.StatusConflict, "gate_failed", "评测门禁不满足：须附已通过、覆盖该租户的门禁"},
 	}
 )
 
@@ -219,7 +221,7 @@ func (s *Server) authorizeAdmin(r *http.Request, c *call, rt *adminRoute) (strin
 		return "", problemUnauth
 	}
 	c.sub, c.actor, c.authTime = caller.Username, caller.ClientID, caller.AuthTime
-	if !s.Tenants.PlatformClient(caller.ClientID) {
+	if !s.Tenants().PlatformClient(caller.ClientID) {
 		return "", problemForbidden
 	}
 	if !s.Limits.Allow(c.ctx, s.ClientRule, caller.ClientID) {

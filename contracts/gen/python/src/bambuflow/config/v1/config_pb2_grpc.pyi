@@ -28,8 +28,8 @@ GRPC_VERSION: str
 
 class ConfigServiceStub:
     """ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-    现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-    快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+    retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+    快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
     """
 
     @_typing.overload
@@ -37,23 +37,35 @@ class ConfigServiceStub:
     @_typing.overload
     def __new__(cls, channel: _aio.Channel) -> ConfigServiceAsyncStub: ...
     GetSnapshot: _grpc.UnaryUnaryMultiCallable[_config_pb2.GetSnapshotRequest, _config_pb2.GetSnapshotResponse]
-    """GetSnapshot 取某个服务当前生效的快照。"""
+    """GetSnapshot 取某个服务当前生效的快照（signed_payload 是签过名的快照本体）。"""
+    Watch: _grpc.UnaryStreamMultiCallable[_config_pb2.WatchRequest, _config_pb2.WatchResponse]
+    """Watch 是长连接：只推版本变化的通知，不推内容；连接建立时先推一次当前版本。断线后使用方带上已加载的版本重连。"""
+    Ack: _grpc.UnaryUnaryMultiCallable[_config_pb2.AckRequest, _config_pb2.AckResponse]
+    """Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。"""
+    GetSigningKeys: _grpc.UnaryUnaryMultiCallable[_config_pb2.GetSigningKeysRequest, _config_pb2.GetSigningKeysResponse]
+    """GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。"""
 
 @_typing.type_check_only
 class ConfigServiceAsyncStub(ConfigServiceStub):
     """ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-    现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-    快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+    retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+    快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
     """
 
     def __init__(self, channel: _aio.Channel) -> None: ...
     GetSnapshot: _aio.UnaryUnaryMultiCallable[_config_pb2.GetSnapshotRequest, _config_pb2.GetSnapshotResponse]  # type: ignore[assignment]
-    """GetSnapshot 取某个服务当前生效的快照。"""
+    """GetSnapshot 取某个服务当前生效的快照（signed_payload 是签过名的快照本体）。"""
+    Watch: _aio.UnaryStreamMultiCallable[_config_pb2.WatchRequest, _config_pb2.WatchResponse]  # type: ignore[assignment]
+    """Watch 是长连接：只推版本变化的通知，不推内容；连接建立时先推一次当前版本。断线后使用方带上已加载的版本重连。"""
+    Ack: _aio.UnaryUnaryMultiCallable[_config_pb2.AckRequest, _config_pb2.AckResponse]  # type: ignore[assignment]
+    """Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。"""
+    GetSigningKeys: _aio.UnaryUnaryMultiCallable[_config_pb2.GetSigningKeysRequest, _config_pb2.GetSigningKeysResponse]  # type: ignore[assignment]
+    """GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。"""
 
 class ConfigServiceServicer(metaclass=_abc_1.ABCMeta):
     """ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-    现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-    快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+    retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+    快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
     """
 
     @_abc_1.abstractmethod
@@ -62,6 +74,30 @@ class ConfigServiceServicer(metaclass=_abc_1.ABCMeta):
         request: _config_pb2.GetSnapshotRequest,
         context: _ServicerContext,
     ) -> _typing.Union[_config_pb2.GetSnapshotResponse, _abc.Awaitable[_config_pb2.GetSnapshotResponse]]:
-        """GetSnapshot 取某个服务当前生效的快照。"""
+        """GetSnapshot 取某个服务当前生效的快照（signed_payload 是签过名的快照本体）。"""
+
+    @_abc_1.abstractmethod
+    def Watch(
+        self,
+        request: _config_pb2.WatchRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_abc.Iterator[_config_pb2.WatchResponse], _abc.AsyncIterator[_config_pb2.WatchResponse]]:
+        """Watch 是长连接：只推版本变化的通知，不推内容；连接建立时先推一次当前版本。断线后使用方带上已加载的版本重连。"""
+
+    @_abc_1.abstractmethod
+    def Ack(
+        self,
+        request: _config_pb2.AckRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_config_pb2.AckResponse, _abc.Awaitable[_config_pb2.AckResponse]]:
+        """Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。"""
+
+    @_abc_1.abstractmethod
+    def GetSigningKeys(
+        self,
+        request: _config_pb2.GetSigningKeysRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_config_pb2.GetSigningKeysResponse, _abc.Awaitable[_config_pb2.GetSigningKeysResponse]]:
+        """GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。"""
 
 def add_ConfigServiceServicer_to_server(servicer: ConfigServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

@@ -2,7 +2,7 @@
 
 平台角色来自测试目录的群组（tools/test-upstream/gen_ldif.py、admin-roles.yaml）：
 olga、oscar 平台运维；ivan 信息安全；dana 信贷部数据属主；
-rick 风险管理部数据属主；paul 平台管理员；audra 审计岗。
+rick 风险管理部数据属主；paul、pete 平台管理员；audra 审计岗。
 """
 
 import uuid

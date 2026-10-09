@@ -56,11 +56,23 @@ func (s *PG) LiveVersion(ctx context.Context) (string, string, error) {
 	return version, model, err
 }
 
+// VersionModel 返回给定索引版本的嵌入模型；已丢弃（取消的全量重建）的版本按不存在处理。
+func (s *PG) VersionModel(ctx context.Context, version string) (string, error) {
+	var model string
+	err := s.pool.QueryRow(ctx, `SELECT embedding_model FROM idx.index_versions WHERE version = $1 AND status <> 'discarded'`,
+		version).Scan(&model)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", search.ErrNoLiveIndex
+	}
+	return model, err
+}
+
 // 两路召回共用的选择列与必含条件：只在版本清单列出的 (doc_id, doc_version) 里检索，四个必含条件全部写进 WHERE，
 // 与排序在同一条查询里完成，不存在“先取候选再过滤”导致的漏召回或越权（retrieval 详设 5.4）。
 const (
 	candidateCols = `c.chunk_id, c.doc_id, c.doc_version, c.parent_chunk_id, c.heading_path, c.text, c.span,
-		d.title, d.source_uri, d.source_type, d.owner, a.classification, a.source_id, c.injection_flag`
+		d.title, d.source_uri, d.source_type, d.owner, a.classification, a.source_id, c.injection_flag,
+		c.pii_ciphertext, coalesce(c.pii_wrapped_key, ''), coalesce(c.pii_key_id, '')`
 	candidateFrom = `idx.version_docs vd
 		JOIN idx.chunks c ON c.doc_id = vd.doc_id AND c.doc_version = vd.doc_version
 		JOIN idx.documents d ON d.doc_id = vd.doc_id
@@ -160,7 +172,8 @@ func (s *PG) Edges(ctx context.Context, version string, f search.Filter, entityI
 		c := &e.Evidence
 		err := r.Scan(&e.From.ID, &e.From.Name, &fromType, &relType, &e.To.ID, &e.To.Name, &toType, &confidence,
 			&c.ChunkID, &c.DocID, &c.DocVersion, &c.ParentChunkID, &c.HeadingPath, &c.Text, &span,
-			&c.Title, &c.SourceURI, &sourceType, &c.Owner, &classification, &c.SourceID, &c.InjectionFlag)
+			&c.Title, &c.SourceURI, &sourceType, &c.Owner, &classification, &c.SourceID, &c.InjectionFlag,
+			&c.PII.Ciphertext, &c.PII.WrappedKey, &c.PII.KeyID)
 		if err != nil {
 			return e, err
 		}
@@ -305,7 +318,8 @@ func collect(rows pgx.Rows) ([]search.Candidate, error) {
 		var span []byte
 		var sourceType, classification int16
 		err := r.Scan(&c.ChunkID, &c.DocID, &c.DocVersion, &c.ParentChunkID, &c.HeadingPath, &c.Text, &span,
-			&c.Title, &c.SourceURI, &sourceType, &c.Owner, &classification, &c.SourceID, &c.InjectionFlag)
+			&c.Title, &c.SourceURI, &sourceType, &c.Owner, &classification, &c.SourceID, &c.InjectionFlag,
+			&c.PII.Ciphertext, &c.PII.WrappedKey, &c.PII.KeyID)
 		if err != nil {
 			return c, err
 		}

@@ -7,8 +7,8 @@ from bambuflow.config.v1 import config_pb2 as bambuflow_dot_config_dot_v1_dot_co
 
 class ConfigServiceStub:
     """ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-    现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-    快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+    retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+    快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
     """
 
     def __init__(self, channel):
@@ -22,16 +22,52 @@ class ConfigServiceStub:
                 request_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSnapshotRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSnapshotResponse.FromString,
                 _registered_method=True)
+        self.Watch = channel.unary_stream(
+                '/bambuflow.config.v1.ConfigService/Watch',
+                request_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.WatchRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.WatchResponse.FromString,
+                _registered_method=True)
+        self.Ack = channel.unary_unary(
+                '/bambuflow.config.v1.ConfigService/Ack',
+                request_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.AckRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.AckResponse.FromString,
+                _registered_method=True)
+        self.GetSigningKeys = channel.unary_unary(
+                '/bambuflow.config.v1.ConfigService/GetSigningKeys',
+                request_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysResponse.FromString,
+                _registered_method=True)
 
 
 class ConfigServiceServicer:
     """ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-    现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-    快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+    retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+    快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
     """
 
     def GetSnapshot(self, request, context):
-        """GetSnapshot 取某个服务当前生效的快照。
+        """GetSnapshot 取某个服务当前生效的快照（signed_payload 是签过名的快照本体）。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Watch(self, request, context):
+        """Watch 是长连接：只推版本变化的通知，不推内容；连接建立时先推一次当前版本。断线后使用方带上已加载的版本重连。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Ack(self, request, context):
+        """Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSigningKeys(self, request, context):
+        """GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -45,6 +81,21 @@ def add_ConfigServiceServicer_to_server(servicer, server):
                     request_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSnapshotRequest.FromString,
                     response_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSnapshotResponse.SerializeToString,
             ),
+            'Watch': grpc.unary_stream_rpc_method_handler(
+                    servicer.Watch,
+                    request_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.WatchRequest.FromString,
+                    response_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.WatchResponse.SerializeToString,
+            ),
+            'Ack': grpc.unary_unary_rpc_method_handler(
+                    servicer.Ack,
+                    request_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.AckRequest.FromString,
+                    response_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.AckResponse.SerializeToString,
+            ),
+            'GetSigningKeys': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSigningKeys,
+                    request_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysRequest.FromString,
+                    response_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'bambuflow.config.v1.ConfigService', rpc_method_handlers)
@@ -55,8 +106,8 @@ def add_ConfigServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class ConfigService:
     """ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-    现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-    快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+    retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+    快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
     """
 
     @staticmethod
@@ -76,6 +127,87 @@ class ConfigService:
             '/bambuflow.config.v1.ConfigService/GetSnapshot',
             bambuflow_dot_config_dot_v1_dot_config__pb2.GetSnapshotRequest.SerializeToString,
             bambuflow_dot_config_dot_v1_dot_config__pb2.GetSnapshotResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Watch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/bambuflow.config.v1.ConfigService/Watch',
+            bambuflow_dot_config_dot_v1_dot_config__pb2.WatchRequest.SerializeToString,
+            bambuflow_dot_config_dot_v1_dot_config__pb2.WatchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Ack(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.config.v1.ConfigService/Ack',
+            bambuflow_dot_config_dot_v1_dot_config__pb2.AckRequest.SerializeToString,
+            bambuflow_dot_config_dot_v1_dot_config__pb2.AckResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSigningKeys(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.config.v1.ConfigService/GetSigningKeys',
+            bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysRequest.SerializeToString,
+            bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysResponse.FromString,
             options,
             channel_credentials,
             insecure,

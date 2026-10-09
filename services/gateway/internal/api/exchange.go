@@ -72,7 +72,7 @@ func (p *PrincipalServer) exchange(c *call, req *identityv1.ExchangeRequest) (*i
 		return nil, status.Error(codes.PermissionDenied, "提交人已停用")
 	}
 	// 按提交时的客户端与租户重新判定成员关系：用户被移出租户后，后续条目不再执行
-	t, err := s.Tenants.Resolve(d.Actor, d.Tenant, user.Groups)
+	t, err := s.Tenants().Resolve(d.Actor, d.Tenant, user.Groups)
 	if err != nil || t.Name != d.Tenant || !t.AnswersAllowed(user.Groups) {
 		return nil, status.Error(codes.PermissionDenied, "不再是租户成员")
 	}

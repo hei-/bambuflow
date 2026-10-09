@@ -30,9 +30,10 @@ type streamSentenceJSON struct {
 }
 
 type finalJSON struct {
-	Status     string  `json:"status"`
-	Why        whyJSON `json:"why"`
-	AnswerKind string  `json:"answer_kind"`
+	Status     string          `json:"status"`
+	Why        whyJSON         `json:"why"`
+	AnswerKind string          `json:"answer_kind"`
+	Confidence *confidenceJSON `json:"confidence,omitempty"`
 }
 
 type recvResult struct {
@@ -151,7 +152,8 @@ func (s *Server) relay(c *call, events <-chan recvResult, beat <-chan time.Time,
 		case *answerv1.StreamAnswerResponse_Final:
 			c.blocks, c.usage = ev.Final.GetAudit(), ev.Final.GetUsage()
 			s.observe(c, ev.Final.GetWhy().GetIntent())
-			send("final", finalJSON{Status: enumName(ev.Final.GetStatus()), Why: whyOf(ev.Final.GetWhy()), AnswerKind: answerKind(ev.Final.GetAnswerKind())})
+			send("final", finalJSON{Status: enumName(ev.Final.GetStatus()), Why: whyOf(ev.Final.GetWhy()), AnswerKind: answerKind(ev.Final.GetAnswerKind()),
+				Confidence: confidenceOf(ev.Final.GetConfidence())})
 			return ""
 		}
 		// 其他事件（重复的 meta、以后新增的类型）不转发：对外事件只按 OpenAPI 列出的类型发送

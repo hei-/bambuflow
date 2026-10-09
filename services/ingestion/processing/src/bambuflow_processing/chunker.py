@@ -127,7 +127,8 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip()
 
 
-def _h(s: str) -> str:
+def text_hash(s: str) -> str:
+    """块正文的摘要：向量缓存的键之一（入库管道详设第 8 节）。"""
     return hashlib.sha256(s.encode()).hexdigest()
 
 
@@ -149,17 +150,17 @@ class _Ids:
         bbox: Box | None = None,
     ) -> Chunk:
         path_key = "\n".join(path)
-        anchor = _h(path_key + "\n" + _normalize(text))[:16]
+        anchor = text_hash(path_key + "\n" + _normalize(text))[:16]
         self._seen[anchor] = self._seen.get(anchor, 0) + 1
         if self._seen[anchor] > 1:
             # 同一文档里正文完全相同的块（如重复的免责声明）加序号区分
             anchor = f"{anchor}~{self._seen[anchor]}"
         return Chunk(
             chunk_id=self._prefix + anchor,
-            parent_chunk_id=self._prefix + "p-" + _h(path_key)[:16],
+            parent_chunk_id=self._prefix + "p-" + text_hash(path_key)[:16],
             heading_path=path,
             text=text,
-            text_hash=_h(text),
+            text_hash=text_hash(text),
             start=start,
             end=end,
             line_start=lines[0],

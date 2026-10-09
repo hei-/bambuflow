@@ -49,6 +49,12 @@ gateway:
 indexing:
   addr: bambuflow-indexing.ingest:9090
 
+processingAdmin:
+  addr: bambuflow-processing-admin.ingest:9090
+
+connectorsAdmin:
+  addr: bambuflow-connectors-admin.ingest:9090
+
 retrieval:
   embedderUrl: http://triton.models:8000
 

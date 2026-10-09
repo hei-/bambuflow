@@ -76,6 +76,13 @@ class FeedbackRating(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FEEDBACK_RATING_USEFUL: _ClassVar[FeedbackRating]
     FEEDBACK_RATING_WRONG: _ClassVar[FeedbackRating]
     FEEDBACK_RATING_BAD_CITATION: _ClassVar[FeedbackRating]
+
+class ConfidenceLevel(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    CONFIDENCE_LEVEL_UNSPECIFIED: _ClassVar[ConfidenceLevel]
+    CONFIDENCE_LEVEL_LOW: _ClassVar[ConfidenceLevel]
+    CONFIDENCE_LEVEL_MEDIUM: _ClassVar[ConfidenceLevel]
+    CONFIDENCE_LEVEL_HIGH: _ClassVar[ConfidenceLevel]
 ANSWER_KIND_UNSPECIFIED: AnswerKind
 ANSWER_KIND_FACT: AnswerKind
 ANSWER_KIND_ENUMERATION: AnswerKind
@@ -118,6 +125,10 @@ FEEDBACK_RATING_UNSPECIFIED: FeedbackRating
 FEEDBACK_RATING_USEFUL: FeedbackRating
 FEEDBACK_RATING_WRONG: FeedbackRating
 FEEDBACK_RATING_BAD_CITATION: FeedbackRating
+CONFIDENCE_LEVEL_UNSPECIFIED: ConfidenceLevel
+CONFIDENCE_LEVEL_LOW: ConfidenceLevel
+CONFIDENCE_LEVEL_MEDIUM: ConfidenceLevel
+CONFIDENCE_LEVEL_HIGH: ConfidenceLevel
 
 class AnswerRequest(_message.Message):
     __slots__ = ("question", "filters", "max_citations", "conversation_id")
@@ -170,18 +181,20 @@ class SentenceEvent(_message.Message):
     def __init__(self, sentence: _Optional[_Union[Sentence, _Mapping]] = ..., block_type: _Optional[_Union[BlockType, str]] = ..., scope: _Optional[_Union[Scope, _Mapping]] = ...) -> None: ...
 
 class AnswerFinal(_message.Message):
-    __slots__ = ("status", "why", "audit", "answer_kind", "usage")
+    __slots__ = ("status", "why", "audit", "answer_kind", "usage", "confidence")
     STATUS_FIELD_NUMBER: _ClassVar[int]
     WHY_FIELD_NUMBER: _ClassVar[int]
     AUDIT_FIELD_NUMBER: _ClassVar[int]
     ANSWER_KIND_FIELD_NUMBER: _ClassVar[int]
     USAGE_FIELD_NUMBER: _ClassVar[int]
+    CONFIDENCE_FIELD_NUMBER: _ClassVar[int]
     status: Status
     why: Why
     audit: AuditBlocks
     answer_kind: AnswerKind
     usage: TokenUsage
-    def __init__(self, status: _Optional[_Union[Status, str]] = ..., why: _Optional[_Union[Why, _Mapping]] = ..., audit: _Optional[_Union[AuditBlocks, _Mapping]] = ..., answer_kind: _Optional[_Union[AnswerKind, str]] = ..., usage: _Optional[_Union[TokenUsage, _Mapping]] = ...) -> None: ...
+    confidence: Confidence
+    def __init__(self, status: _Optional[_Union[Status, str]] = ..., why: _Optional[_Union[Why, _Mapping]] = ..., audit: _Optional[_Union[AuditBlocks, _Mapping]] = ..., answer_kind: _Optional[_Union[AnswerKind, str]] = ..., usage: _Optional[_Union[TokenUsage, _Mapping]] = ..., confidence: _Optional[_Union[Confidence, _Mapping]] = ...) -> None: ...
 
 class AuditBlocks(_message.Message):
     __slots__ = ("candidate_chunk_ids", "context_chunk_ids", "shown_chunk_ids", "listed_doc_ids", "total_count")
@@ -206,7 +219,7 @@ class TokenUsage(_message.Message):
     def __init__(self, prompt_tokens: _Optional[int] = ..., completion_tokens: _Optional[int] = ...) -> None: ...
 
 class AnswerResponse(_message.Message):
-    __slots__ = ("answer_id", "trace_id", "status", "answer", "sentences", "blocks", "citations", "why", "audit", "answer_kind", "conversation_id", "usage")
+    __slots__ = ("answer_id", "trace_id", "status", "answer", "sentences", "blocks", "citations", "why", "audit", "answer_kind", "conversation_id", "usage", "confidence")
     ANSWER_ID_FIELD_NUMBER: _ClassVar[int]
     TRACE_ID_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -219,6 +232,7 @@ class AnswerResponse(_message.Message):
     ANSWER_KIND_FIELD_NUMBER: _ClassVar[int]
     CONVERSATION_ID_FIELD_NUMBER: _ClassVar[int]
     USAGE_FIELD_NUMBER: _ClassVar[int]
+    CONFIDENCE_FIELD_NUMBER: _ClassVar[int]
     answer_id: str
     trace_id: str
     status: Status
@@ -231,7 +245,8 @@ class AnswerResponse(_message.Message):
     answer_kind: AnswerKind
     conversation_id: str
     usage: TokenUsage
-    def __init__(self, answer_id: _Optional[str] = ..., trace_id: _Optional[str] = ..., status: _Optional[_Union[Status, str]] = ..., answer: _Optional[str] = ..., sentences: _Optional[_Iterable[_Union[Sentence, _Mapping]]] = ..., blocks: _Optional[_Iterable[_Union[Block, _Mapping]]] = ..., citations: _Optional[_Iterable[_Union[Citation, _Mapping]]] = ..., why: _Optional[_Union[Why, _Mapping]] = ..., audit: _Optional[_Union[AuditBlocks, _Mapping]] = ..., answer_kind: _Optional[_Union[AnswerKind, str]] = ..., conversation_id: _Optional[str] = ..., usage: _Optional[_Union[TokenUsage, _Mapping]] = ...) -> None: ...
+    confidence: Confidence
+    def __init__(self, answer_id: _Optional[str] = ..., trace_id: _Optional[str] = ..., status: _Optional[_Union[Status, str]] = ..., answer: _Optional[str] = ..., sentences: _Optional[_Iterable[_Union[Sentence, _Mapping]]] = ..., blocks: _Optional[_Iterable[_Union[Block, _Mapping]]] = ..., citations: _Optional[_Iterable[_Union[Citation, _Mapping]]] = ..., why: _Optional[_Union[Why, _Mapping]] = ..., audit: _Optional[_Union[AuditBlocks, _Mapping]] = ..., answer_kind: _Optional[_Union[AnswerKind, str]] = ..., conversation_id: _Optional[str] = ..., usage: _Optional[_Union[TokenUsage, _Mapping]] = ..., confidence: _Optional[_Union[Confidence, _Mapping]] = ...) -> None: ...
 
 class Sentence(_message.Message):
     __slots__ = ("text", "start", "end", "claim_type", "ref_ids", "support", "block_id", "quotes", "calc", "document")
@@ -512,3 +527,23 @@ class Feedback(_message.Message):
     sentence_index: int
     created_at: _timestamp_pb2.Timestamp
     def __init__(self, feedback_id: _Optional[str] = ..., answer_id: _Optional[str] = ..., rating: _Optional[_Union[FeedbackRating, str]] = ..., sentence_index: _Optional[int] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+
+class Confidence(_message.Message):
+    __slots__ = ("score", "level", "weights_version", "coverage", "mean_support", "top_rerank", "source_diversity", "conflict")
+    SCORE_FIELD_NUMBER: _ClassVar[int]
+    LEVEL_FIELD_NUMBER: _ClassVar[int]
+    WEIGHTS_VERSION_FIELD_NUMBER: _ClassVar[int]
+    COVERAGE_FIELD_NUMBER: _ClassVar[int]
+    MEAN_SUPPORT_FIELD_NUMBER: _ClassVar[int]
+    TOP_RERANK_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_DIVERSITY_FIELD_NUMBER: _ClassVar[int]
+    CONFLICT_FIELD_NUMBER: _ClassVar[int]
+    score: float
+    level: ConfidenceLevel
+    weights_version: str
+    coverage: float
+    mean_support: float
+    top_rerank: float
+    source_diversity: float
+    conflict: bool
+    def __init__(self, score: _Optional[float] = ..., level: _Optional[_Union[ConfidenceLevel, str]] = ..., weights_version: _Optional[str] = ..., coverage: _Optional[float] = ..., mean_support: _Optional[float] = ..., top_rerank: _Optional[float] = ..., source_diversity: _Optional[float] = ..., conflict: _Optional[bool] = ...) -> None: ...

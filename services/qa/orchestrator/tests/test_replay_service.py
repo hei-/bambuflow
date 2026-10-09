@@ -3,6 +3,7 @@
 import asyncio
 import dataclasses
 import datetime as dt
+import os
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from typing import Any
@@ -11,12 +12,13 @@ import grpc
 import pytest
 
 from bambuflow.answer.v1 import answer_pb2
+from bambuflow.common.v1 import types_pb2
 from bambuflow.identity.v1 import principal_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2, retrieval_pb2_grpc
 from bambuflow_orchestrator import flow, records, server
 from bambuflow_orchestrator.admission import Admission
 from bambuflow_orchestrator.session import Session
-from bambuflow_platform import grpc_server
+from bambuflow_platform import envelope, grpc_server
 
 
 class Retrieval(retrieval_pb2_grpc.RetrievalServiceServicer):
@@ -147,7 +149,11 @@ def _record(store: FakeRecords) -> None:
 
 @asynccontextmanager
 async def service(
-    retrieval: Retrieval, store: FakeRecords, sub: str = "alice", tenant: str = "credit"
+    retrieval: Retrieval,
+    store: FakeRecords,
+    sub: str = "alice",
+    tenant: str = "credit",
+    keys: Any = None,
 ) -> AsyncIterator[server.AnswerService]:
     srv = grpc.aio.server()
     retrieval_pb2_grpc.add_RetrievalServiceServicer_to_server(retrieval, srv)
@@ -160,7 +166,7 @@ async def service(
         async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as ch:
             stub = retrieval_pb2_grpc.RetrievalServiceStub(ch)
             none: Any = None
-            yield server.AnswerService(stub, none, none, none, none, store, Admission())
+            yield server.AnswerService(stub, none, none, none, none, store, Admission(), keys=keys)
     finally:
         grpc_server._caller.reset(token)
         await srv.stop(None)
@@ -298,3 +304,49 @@ def test_record_failure_does_not_fail_answer() -> None:
     assert resp.answer_id == "ans_9" and resp.conversation_id == "conv_1"
     assert ok.rows["ans_9"].asker == "alice" and ok.rows["ans_9"].answer.status == resp.status
     assert _run(go(broken)).status == answer_pb2.STATUS_REFUSED
+
+
+class FakeKeys:
+    key_id = "bambuflow-answers"
+
+    async def data_key(self) -> envelope.DataKey:
+        dek = os.urandom(32)
+        return envelope.DataKey(dek, dek.hex(), self.key_id)
+
+    async def unwrap(self, wrapped: str) -> bytes:
+        return bytes.fromhex(wrapped)
+
+
+def test_restricted_answer_replays_from_encrypted_snapshot() -> None:
+    restricted = _answer()
+    for c in restricted.citations:
+        c.classification = types_pb2.CLASSIFICATION_RESTRICTED
+
+    async def go(keys: Any) -> answer_pb2.GetAnswerResponse:
+        store = FakeRecords()
+        rec = records.build(
+            answer_id="ans_1",
+            tenant="credit",
+            asker="alice",
+            actor="",
+            purpose="answer",
+            question="问题",
+            resp=restricted,
+            listed_restricted=False,
+        )
+        if keys is not None:
+            rec = await records.seal(rec, "问题", restricted, keys)
+        store.rows["ans_1"] = dataclasses.replace(rec, created_at=dt.datetime.now(dt.UTC))
+        async with service(Retrieval({"c1"}), store, keys=keys) as svc:
+            ctx: Any = Ctx()
+            return await svc.GetAnswer(answer_pb2.GetAnswerRequest(answer_id="ans_1"), ctx)
+
+    sealed = _run(go(FakeKeys()))
+    # 解开快照后照常按现在的权限复核：只看得到 c1 支撑的句子
+    assert not sealed.body_withheld and sealed.question == "问题"
+    assert sealed.answer.answer == "甲[S1]。" and [c.chunk_id for c in sealed.answer.citations] == [
+        "c1"
+    ]
+    # 没有加密快照：只有标识与版本
+    plain = _run(go(None))
+    assert plain.body_withheld and plain.answer.answer == "" and plain.question == ""

@@ -3,7 +3,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from bambuflow_processing.worker import Worker
+import grpc
+from bambuflow_processing import pii
+from bambuflow_processing.state import IngestState
+from bambuflow_processing.worker import STREAM, Worker
 from bambuflow_vocabulary import Term, Vocabularies, Vocabulary
 
 from bambuflow.common.v1 import types_pb2
@@ -51,7 +54,41 @@ VOCAB = Vocabularies(
 )
 
 
+class FakeRedis:
+    """IngestState 用到的哈希命令与 XADD。"""
+
+    def __init__(self) -> None:
+        self.h: dict[str, dict[str, Any]] = {}
+        self.streams: dict[str, list[dict[str, Any]]] = {}
+
+    def hset(
+        self, key: str, field: str | None = None, value: Any = None, mapping: Any = None
+    ) -> None:
+        h = self.h.setdefault(key, {})
+        if field is not None:
+            h[field] = value
+        h.update({k: str(v) for k, v in (mapping or {}).items()})
+
+    def hget(self, key: str, field: str) -> Any:
+        return self.h.get(key, {}).get(field)
+
+    def hgetall(self, key: str) -> dict[str, Any]:
+        return dict(self.h.get(key, {}))
+
+    def hdel(self, key: str, field: str) -> None:
+        self.h.get(key, {}).pop(field, None)
+
+    def hincrby(self, key: str, field: str, n: int) -> int:
+        h = self.h.setdefault(key, {})
+        h[field] = int(h.get(field, 0)) + n
+        return int(h[field])
+
+    def xadd(self, stream: str, fields: dict[str, Any]) -> None:
+        self.streams.setdefault(stream, []).append(fields)
+
+
 def make_worker(*args: Any, **kw: Any) -> Worker:
+    kw.setdefault("state", IngestState(FakeRedis(), "p-test"))
     return Worker(*args, vocab=VOCAB, **kw)
 
 
@@ -204,7 +241,7 @@ def test_source_fields_reach_the_index_writer() -> None:
     assert md.validity_status == types_pb2.VALIDITY_STATUS_EFFECTIVE and not md.missing
 
 
-def test_failures_are_not_acked() -> None:
+def test_permanent_failures_go_to_dead_letters() -> None:
     stream = FakeStream(
         [],
         [
@@ -214,16 +251,125 @@ def test_failures_are_not_acked() -> None:
         ],
     )
     raw = FakeRaw({"s3://raw/credit": envelope("credit")})
-    stats = make_worker(stream, raw, FakeEmbedder(), FakeWriter()).run_once()
-    assert stats.failed == ["del", "credit"] and stream.acked == []
+    state = IngestState(FakeRedis(), "p-test")
+    stats = make_worker(stream, raw, FakeEmbedder(), FakeWriter(), state=state).run_once()
+    # 不可重试：不写索引，直接进死信，确认消息不再留在挂起列表
+    assert stats.failed == ["del", "credit"] and stats.dead_lettered == 2
+    assert stream.acked == ["1-0", "2-0"]
+    letters = {d["doc_id"]: d for d in state.dead_letters()}
+    assert (letters["del"]["stage"], letters["del"]["error_code"]) == ("fetch", "unsupported_event")
+    assert (letters["credit"]["error_code"], letters["credit"]["pipeline_version"]) == (
+        "content_mismatch",
+        "p-test",
+    )
+    status = state.status("credit") or {}
+    assert (status["state"], status["error_code"]) == ("dead_letter", "content_mismatch")
 
 
-def test_model_mismatch_is_a_failure() -> None:
-    stream = FakeStream([], [("1-0", event("credit"))])
+class FlakyWriter(FakeWriter):
+    def WriteDocument(self, request: Any, timeout: float) -> Any:
+        raise OSError("连接中断")
+
+
+def test_retryable_failure_stays_pending_until_five_attempts() -> None:
+    state = IngestState(FakeRedis(), "p-test")
+    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
+    writer = FlakyWriter()
+    for attempt in range(1, 6):
+        stream = FakeStream([("1-0", event("credit"))], [])
+        stats = make_worker(stream, raw, FakeEmbedder(), writer, state=state).run_once()
+        assert stats.failed == ["credit"]
+        if attempt < 5:
+            assert stream.acked == [] and not state.dead_letters()
+            status = state.status("credit") or {}
+            assert (status["state"], status["stage"], status["error_code"]) == (
+                "retrying",
+                "write",
+                "io_error",
+            )
+            assert status["attempts"] == str(attempt)
+    assert stream.acked == ["1-0"]
+    assert [d["attempts"] for d in state.dead_letters()] == [5]
+
+
+def test_model_mismatch_waits_for_rebuild_without_dead_letter() -> None:
+    state = IngestState(FakeRedis(), "p-test")
     raw = FakeRaw({"s3://raw/credit": envelope("credit")})
     writer = FakeWriter(index_writer_pb2.WRITE_RESULT_MODEL_MISMATCH)
-    stats = make_worker(stream, raw, FakeEmbedder(), writer).run_once()
-    assert stats.failed == ["credit"] and stream.acked == []
+    for _ in range(7):
+        stream = FakeStream([("1-0", event("credit"))], [])
+        make_worker(stream, raw, FakeEmbedder(), writer, state=state).run_once()
+        assert stream.acked == []
+    status = state.status("credit") or {}
+    assert (status["error_code"], status["state"]) == ("model_mismatch", "retrying")
+    assert not state.dead_letters()
+
+
+class DownEmbedder:
+    model_version = "bge-m3@mock"
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        raise OSError("connection refused")
+
+
+def test_embedding_failures_never_dead_letter() -> None:
+    state = IngestState(FakeRedis(), "p-test")
+    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
+    for _ in range(7):
+        stream = FakeStream([("1-0", event("credit"))], [])
+        make_worker(stream, raw, DownEmbedder(), FakeWriter(), state=state).run_once()
+        assert stream.acked == []
+    status = state.status("credit") or {}
+    assert (status["stage"], status["error_code"], status["state"]) == (
+        "embed",
+        "io_error",
+        "retrying",
+    )
+    assert not state.dead_letters()
+
+
+def test_replay_requeues_event_and_quarantines_after_three() -> None:
+    rdb = FakeRedis()
+    state = IngestState(rdb, "p-test")
+    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
+    stream = FakeStream([], [("1-0", event("credit", content_hash="other"))])
+    make_worker(stream, raw, FakeEmbedder(), FakeWriter(), state=state).run_once()
+    for i in range(3):
+        batch, n = state.replay(state.dead_letters(), STREAM)
+        assert batch.startswith("ing_") and n == 1 and not state.dead_letters()
+        status = state.status("credit") or {}
+        assert (status["state"], status["batch_id"]) == ("queued", batch)
+        # 放回事件流的是原事件
+        pb = rdb.streams[STREAM][-1]["pb"]
+        assert events_pb2.DocumentChanged.FromString(pb).event_id == "evt_credit"
+        stream = FakeStream([], [(f"{i + 2}-0", pb)])
+        make_worker(stream, raw, FakeEmbedder(), FakeWriter(), state=state).run_once()
+        (d,) = state.dead_letters()
+        assert d["replays"] == i + 1 and d["quarantined"] == (i == 2)
+    assert (state.status("credit") or {})["state"] == "quarantined"
+    # 修好后再成功：死信与重放计数清空
+    stream = FakeStream([], [("9-0", event("credit"))])
+    make_worker(stream, raw, FakeEmbedder(), FakeWriter(), state=state).run_once()
+    assert not state.dead_letters()
+    status = state.status("credit") or {}
+    # 成功的仍是重放的那个事件，状态里保留它所在的入库批次
+    assert (status["state"], status["error_code"], status["batch_id"]) == ("written", "", batch)
+
+
+class DownWriter(FakeWriter):
+    def TombstoneDocument(self, request: Any, timeout: float) -> Any:
+        raise grpc.RpcError("indexing 不可用")
+
+
+def test_delete_failures_retry_forever_and_never_dead_letter() -> None:
+    state = IngestState(FakeRedis(), "p-test")
+    for _ in range(7):
+        stream = FakeStream([("1-0", event("gone", events_pb2.CHANGE_TYPE_DELETE))], [])
+        stats = make_worker(
+            stream, FakeRaw({}), FakeEmbedder(), DownWriter(), state=state
+        ).run_once()
+        assert stats.failed == ["gone"] and stream.acked == []
+    assert (state.status("gone") or {})["stage"] == "delete" and not state.dead_letters()
 
 
 def test_pending_messages_retried_once_then_new_ones() -> None:
@@ -299,7 +445,7 @@ def test_binary_document_with_tampered_content_is_not_written() -> None:
     stream = FakeStream([], [("1-0", event("rate", content_hash=env["content_hash"]))])
     writer = FakeWriter()
     stats = make_worker(stream, raw, FakeEmbedder(), writer).run_once()
-    assert stats.failed == ["rate"] and writer.requests == [] and stream.acked == []
+    assert stats.failed == ["rate"] and writer.requests == [] and stats.dead_lettered == 1
 
 
 def test_delete_event_writes_tombstone_without_reading_raw() -> None:
@@ -345,3 +491,38 @@ def test_acl_only_for_binary_document_reads_only_the_envelope() -> None:
     stats = make_worker(stream, raw, FakeEmbedder(), writer).run_once()
     assert stats.acl_updated == 1 and stream.acked == ["1-0"] and writer.requests == []
     assert list(writer.acl_updates[0].acl_tokens) == ["group:credit-l2"]
+
+
+class FakeKeys:
+    key_id = "bambuflow-pii"
+
+    def data_key(self) -> tuple[bytes, str]:
+        return b"k" * 32, "vault:v1:fake"
+
+
+def test_pii_is_masked_in_index_and_originals_are_sealed() -> None:
+    body = (
+        "# 联系人\n\n## 一\n\n客户经理手机 13812345678，邮箱 zhang.san@corp.example。\n\n"
+        "## 二\n\n没有个人信息。\n"
+    )
+    for keys in (FakeKeys(), None):
+        stream = FakeStream([], [("1-0", event("pii"))])
+        writer = FakeWriter()
+        env = envelope("pii") | {"content": body}
+        make_worker(
+            stream, FakeRaw({"s3://raw/pii": env}), FakeEmbedder(), writer, pii_keys=keys
+        ).run_once()
+        chunks = writer.requests[0].chunks
+        (with_pii,) = [c for c in chunks if "138" in c.text]
+        assert "13812345678" not in with_pii.text and "138****5678" in with_pii.text
+        assert "zhang.san" not in with_pii.text
+        assert all(not c.HasField("pii") for c in chunks if c is not with_pii)
+        if keys is None:
+            # 没有密钥服务时只掩码，不保存原值
+            assert not with_pii.HasField("pii")
+            continue
+        assert with_pii.pii.wrapped_key == "vault:v1:fake"
+        originals = [
+            o for _, _, o in pii.unseal(b"k" * 32, with_pii.chunk_id, with_pii.pii.ciphertext)
+        ]
+        assert originals == ["13812345678", "zhang.san"]

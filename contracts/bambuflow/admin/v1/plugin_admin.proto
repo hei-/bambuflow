@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// PluginAdminService 是插件登记（governance 详设 3.1、7.2，技术设计文档 12.4），由 governance 实现，
+// gateway 的 /v1/admin/plugins 调用。插件在目标租户评测集上通过评估后才能被 pipeline.yaml 引用；
+// Tool 插件还要声明读写范围（内核只放行只读调用）并经信息安全评审。
+service PluginAdminService {
+  // 平台管理员与信息安全可看
+  rpc ListPlugins(ListPluginsRequest) returns (ListPluginsResponse);
+  // 平台管理员登记；同名同版本只能登记一次
+  rpc RegisterPlugin(RegisterPluginRequest) returns (RegisterPluginResponse);
+  // 信息安全评审 Tool 插件；登记人不能评审
+  rpc ReviewPlugin(ReviewPluginRequest) returns (ReviewPluginResponse);
+}
+
+// PluginEvaluationService 由 CI 在目标租户评测集上评估插件后写入结果（服务间接口，不经 gateway，
+// 由服务网格只放行 CI 的服务身份）。
+service PluginEvaluationService {
+  rpc RecordEvaluation(RecordEvaluationRequest) returns (RecordEvaluationResponse);
+}
+
+message PluginEvaluation {
+  string tenant = 1;
+  bool passed = 2;
+  // 门禁报告的引用（如评测运行 ID 或报告路径）
+  string report_ref = 3;
+  google.protobuf.Timestamp evaluated_at = 4;
+}
+
+message Plugin {
+  // plg_ 前缀
+  string plugin_id = 1;
+  // connector、parser、chunker、retriever、reranker、model、tool（技术设计文档 12.1 的 7 个扩展点）
+  string kind = 2;
+  string name = 3;
+  string version = 4;
+  // 宿主模块，由 kind 决定：connectors、processing、retrieval、orchestrator
+  string host = 5;
+  string description = 6;
+  // Tool 插件声明的读写范围，只能是 read: 开头
+  repeated string tool_scopes = 7;
+  string registered_by = 8;
+  google.protobuf.Timestamp registered_at = 9;
+  // 各租户最近一次评估
+  repeated PluginEvaluation evaluations = 10;
+  // not_required（非 Tool）、pending、approved、rejected
+  string security_review = 11;
+  string reviewed_by = 12;
+  google.protobuf.Timestamp reviewed_at = 13;
+  string review_note = 14;
+  // 可被 pipeline.yaml 引用的租户：该租户评估通过，且（Tool 插件）安全评审已通过
+  repeated string usable_tenants = 15;
+}
+
+message ListPluginsRequest {
+  // 默认 50，最多 200
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListPluginsResponse {
+  repeated Plugin plugins = 1;
+  string next_page_token = 2;
+}
+
+message RegisterPluginRequest {
+  string kind = 1;
+  // 小写字母、数字与连字符，2–64 个字符
+  string name = 2;
+  // 最多 64 个字符
+  string version = 3;
+  // 必填，最多 500 字
+  string description = 4;
+  // Tool 插件必填，其余不能填
+  repeated string tool_scopes = 5;
+}
+
+message RegisterPluginResponse {
+  Plugin plugin = 1;
+}
+
+message ReviewPluginRequest {
+  string plugin_id = 1;
+  bool approved = 2;
+  // 必填，最多 500 字
+  string note = 3;
+}
+
+message ReviewPluginResponse {
+  Plugin plugin = 1;
+}
+
+message RecordEvaluationRequest {
+  string plugin_id = 1;
+  string tenant = 2;
+  bool passed = 3;
+  string report_ref = 4;
+}
+
+message RecordEvaluationResponse {
+  Plugin plugin = 1;
+}

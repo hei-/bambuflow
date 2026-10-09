@@ -59,6 +59,16 @@ func (s *fakeStore) LiveVersion(context.Context) (string, string, error) {
 	return "ix-1", model, s.call("LiveVersion")
 }
 
+func (s *fakeStore) VersionModel(_ context.Context, version string) (string, error) {
+	if err := s.call("VersionModel:" + version); err != nil {
+		return "", err
+	}
+	if version == "ix-gone" {
+		return "", ErrNoLiveIndex
+	}
+	return model, nil
+}
+
 func (s *fakeStore) Dense(_ context.Context, _ string, f Filter, _ []float32, k int) ([]Candidate, error) {
 	if err := s.call("Dense"); err != nil {
 		return nil, err

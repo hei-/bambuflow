@@ -1,11 +1,13 @@
 """消费 DocumentChanged，解析、分块、向量化后交给 indexing 写入（入库管道详设第 4、6–8 节）。
 
 P0 以一次性方式运行：先重试本消费者挂起未确认的旧消息，再读新消息，读空后退出。
-处理失败的消息不确认，留在挂起列表里等下次重试，并以非零退出码报告。
+处理失败的消息不确认，留在挂起列表里等下次重试，并以非零退出码报告；
+不可重试或重试满 5 次的转入死信后确认（state 模块），权限变更与删除一直重试、不进死信。
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import hashlib
 import json
@@ -22,14 +24,25 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from bambuflow.common.v1 import types_pb2
 from bambuflow.ingestion.v1 import events_pb2, index_writer_pb2
-from bambuflow_processing.blocks import assemble
-from bambuflow_processing.chunker import CHUNKER_VERSION, Chunk, chunk, chunk_parsed
+from bambuflow_platform import envelope
+from bambuflow_processing import pii
+from bambuflow_processing.blocks import ParseError, UnsupportedFormatError, assemble
+from bambuflow_processing.chunker import (
+    CHUNKER_VERSION,
+    Chunk,
+    MissingSpanError,
+    chunk,
+    chunk_parsed,
+    text_hash,
+)
 from bambuflow_processing.enrich import Enricher, Enrichment, SummaryModel
 from bambuflow_processing.graph import ChunkText, Extractor, RelationModel, to_proto
 from bambuflow_processing.injection import Detector, InjectionClassifier
 from bambuflow_processing.metadata import extract
-from bambuflow_processing.ocr import OcrEngine
+from bambuflow_processing.ocr import OcrEngine, OcrError
 from bambuflow_processing.parsers import parse
+from bambuflow_processing.pdf import OcrRequiredError
+from bambuflow_processing.state import Failure, IngestState
 
 STREAM = "ingest:document-changed"
 GROUP = "processing"
@@ -95,10 +108,48 @@ class Stats:
     deleted: int = 0
     acl_updated: int = 0
     failed: list[str] = field(default_factory=list)
+    # failed 中转入死信的条数
+    dead_lettered: int = 0
 
 
 class UnsupportedEventError(Exception):
     pass
+
+
+class ContentMismatchError(ValueError):
+    """文档包或原文与事件的内容摘要不一致。"""
+
+
+class ModelMismatchError(RuntimeError):
+    """待发布版本的嵌入模型与本 worker 的不一致：等模型切换完成再处理。"""
+
+
+def classify(stage: str, e: Exception) -> Failure:
+    """失败分类（技术设计文档 5.6）：格式不支持、文件损坏这类不可重试，网络与模型服务问题可重试。"""
+    msg = str(e)
+    if isinstance(e, grpc.Call):
+        return Failure(stage, f"rpc_{e.code().name.lower()}", msg, True)
+    retryable: dict[type[Exception], str] = {
+        # 没配 OCR 时等配置好再处理（OcrRequiredError 是 ParseError 的子类，要先判断）
+        OcrRequiredError: "ocr_unavailable",
+        OcrError: "ocr_error",
+        ModelMismatchError: "model_mismatch",
+        OSError: "io_error",
+    }
+    permanent: dict[type[Exception], str] = {
+        UnsupportedEventError: "unsupported_event",
+        UnsupportedFormatError: "unsupported_format",
+        ContentMismatchError: "content_mismatch",
+        ParseError: "bad_document",
+        MissingSpanError: "bad_document",
+        ValueError: "bad_document",
+        KeyError: "bad_document",
+    }
+    for kinds, ok in ((retryable, True), (permanent, False)):
+        for kind, code in kinds.items():
+            if isinstance(e, kind):
+                return Failure(stage, code, msg, ok)
+    return Failure(stage, "runtime_error", msg, True)
 
 
 class Worker:
@@ -115,9 +166,17 @@ class Worker:
         relation_model: RelationModel | None = None,
         summary_model: SummaryModel | None = None,
         injection_classifier: InjectionClassifier | None = None,
+        pii_keys: envelope.KeyService | None = None,
+        state: IngestState,
     ) -> None:
         self._stream = stream
+        # 入库状态与死信（入库管道详设第 11 节）
+        self._state = state
+        # 当前文档处理到的阶段，失败时据此记录（fetch、parse、mask、enrich、embed、write）
+        self._stage = ""
         self._raw = raw
+        # PII 原值信封加密的密钥服务；没有时只掩码、不保存原值（原文绝不以明文进索引）
+        self._pii_keys = pii_keys
         self._embedder = embedder
         self._writer = writer
         # 没有配置 OCR 时，含扫描页或图片的文档处理失败并留在队列里，而不是缺页入库
@@ -150,6 +209,7 @@ class Worker:
         if evt.change_type == events_pb2.CHANGE_TYPE_ACL_ONLY:
             self._handle_acl(msg_id, evt, stats)
             return
+        self._stage = "fetch"
         try:
             result = self.handle(evt)
         except (
@@ -160,18 +220,42 @@ class Worker:
             KeyError,
             RuntimeError,
         ) as e:
-            _log.error(
-                "处理失败", extra={"doc_id": evt.doc_id, "event_id": evt.event_id, "reason": str(e)}
-            )
-            stats.failed.append(evt.doc_id)
+            self._fail(msg_id, evt, classify(self._stage, e), stats)
             return
         if result == index_writer_pb2.WRITE_RESULT_WRITTEN:
             stats.written += 1
+            outcome = "written"
         elif result == index_writer_pb2.WRITE_RESULT_UNCHANGED:
             stats.unchanged += 1
+            outcome = "unchanged"
         else:
             stats.stale += 1
+            outcome = "stale"
+        self._state.succeeded(evt, "write", outcome)
         self._stream.ack(msg_id)
+
+    def _fail(
+        self,
+        msg_id: str,
+        evt: events_pb2.DocumentChanged,
+        f: Failure,
+        stats: Stats,
+        fast_path: bool = False,
+    ) -> None:
+        _log.error(
+            "处理失败",
+            extra={
+                "doc_id": evt.doc_id,
+                "event_id": evt.event_id,
+                "stage": f.stage,
+                "code": f.code,
+                "reason": f.message,
+            },
+        )
+        stats.failed.append(evt.doc_id)
+        if self._state.failed(evt, f, fast_path):
+            stats.dead_lettered += 1
+            self._stream.ack(msg_id)
 
     def _handle_delete(self, msg_id: str, evt: events_pb2.DocumentChanged, stats: Stats) -> None:
         """源端删除：交给 indexing 写删除标记，对线上立即生效（入库管道详设第 9 节）。"""
@@ -183,16 +267,19 @@ class Worker:
         try:
             resp = self._writer.TombstoneDocument(req, timeout=30)
         except grpc.RpcError as e:
-            _log.error("写删除标记失败", extra={"doc_id": evt.doc_id, "reason": str(e)})
-            stats.failed.append(evt.doc_id)
+            self._fail(msg_id, evt, classify("delete", e), stats, fast_path=True)
             return
         if resp.result == index_writer_pb2.TOMBSTONE_RESULT_TOMBSTONED:
             stats.deleted += 1
+            outcome = "deleted"
         elif resp.result == index_writer_pb2.TOMBSTONE_RESULT_STALE:
             stats.stale += 1
+            outcome = "stale"
         else:
             # 重复事件或从未入库的文档：没有需要做的，确认消息
             stats.unchanged += 1
+            outcome = "unchanged"
+        self._state.succeeded(evt, "delete", outcome)
         self._stream.ack(msg_id)
 
     def _handle_acl(self, msg_id: str, evt: events_pb2.DocumentChanged, stats: Stats) -> None:
@@ -212,15 +299,18 @@ class Worker:
                 timeout=30,
             )
         except (grpc.RpcError, OSError, ValueError, KeyError) as e:
-            _log.error("更新权限失败", extra={"doc_id": evt.doc_id, "reason": str(e)})
-            stats.failed.append(evt.doc_id)
+            self._fail(msg_id, evt, classify("acl", e), stats, fast_path=True)
             return
         if resp.result == index_writer_pb2.ACL_RESULT_UPDATED:
             stats.acl_updated += 1
+            outcome = "acl_updated"
         elif resp.result == index_writer_pb2.ACL_RESULT_STALE:
             stats.stale += 1
+            outcome = "stale"
         else:
             stats.unchanged += 1
+            outcome = "unchanged"
+        self._state.succeeded(evt, "acl", outcome)
         self._stream.ack(msg_id)
 
     def handle(self, evt: events_pb2.DocumentChanged) -> int:
@@ -229,8 +319,12 @@ class Worker:
             raise UnsupportedEventError(f"不支持的变更类型 {evt.change_type}")
         env: dict[str, Any] = json.loads(self._raw.get(evt.raw_ref))
         if env["content_hash"] != evt.content_hash:
-            raise ValueError("文档包与事件的内容摘要不一致")
-        chunks = self._chunks(evt, env)
+            raise ContentMismatchError("文档包与事件的内容摘要不一致")
+        self._stage = "parse"
+        parsed = self._chunks(evt, env)
+        self._stage = "mask"
+        chunks, sealed = self._mask(parsed)
+        self._stage = "enrich"
         source_type = _SOURCE_TYPE[env["source_type"]]
         classification = _CLASSIFICATION[env["classification"]]
         flagged = self._detector.flagged(
@@ -241,7 +335,9 @@ class Worker:
         if enrichment is not None:
             # 摘要块的向量以标题开头：主题匹配时标题本身是很强的信号
             inputs.append(f"{env['title']}\n{enrichment.summary_chunk.text}")
+        self._stage = "embed"
         vectors = self._embedder.embed(inputs)
+        self._stage = "write"
         occurred = Timestamp()
         occurred.CopyFrom(evt.occurred_at)
         relations = self._graph.extract(
@@ -274,7 +370,7 @@ class Worker:
                 self._today(),
             ),
             chunks=[
-                _chunk(c, v, c.chunk_id in flagged)
+                _chunk(c, v, c.chunk_id in flagged, sealed.get(c.chunk_id))
                 for c, v in zip(chunks, vectors[: len(chunks)], strict=True)
             ],
             relations=to_proto(relations),
@@ -283,9 +379,26 @@ class Worker:
         resp = self._writer.WriteDocument(req, timeout=30)
         if resp.result == index_writer_pb2.WRITE_RESULT_MODEL_MISMATCH:
             pending, model = resp.index_version, self._embedder.model_version
-            raise RuntimeError(f"待发布版本 {pending} 的嵌入模型与 {model} 不一致")
+            raise ModelMismatchError(f"待发布版本 {pending} 的嵌入模型与 {model} 不一致")
         result: int = resp.result
         return result
+
+    def _mask(self, chunks: list[Chunk]) -> tuple[list[Chunk], dict[str, pii.Sealed]]:
+        """PII 等长掩码，原值按块加密（入库管道详设第 6 节）。
+
+        之后的摘要、关系抽取、向量化都只见到掩码文本。"""
+        key = pii.DocumentKey(self._pii_keys) if self._pii_keys is not None else None
+        out: list[Chunk] = []
+        sealed: dict[str, pii.Sealed] = {}
+        for c in chunks:
+            masked, found = pii.mask(c.text)
+            if not found:
+                out.append(c)
+                continue
+            out.append(dataclasses.replace(c, text=masked, text_hash=text_hash(masked)))
+            if key is not None:
+                sealed[c.chunk_id] = key.seal(c.chunk_id, found)
+        return out, sealed
 
     def _enrich(
         self,
@@ -311,13 +424,20 @@ class Worker:
         # 二进制原文另存一个对象（connectors 的文档包格式），取回后核对摘要再解析
         data = self._raw.get(env["content_ref"])
         if hashlib.sha256(data).hexdigest() != evt.content_hash:
-            raise ValueError("原文与事件的内容摘要不一致")
+            raise ContentMismatchError("原文与事件的内容摘要不一致")
         blocks = parse(env["content_type"], data, env["title"], self._ocr)
         return chunk_parsed(evt.source_id, evt.doc_id, assemble(blocks))
 
 
-def _chunk(c: Chunk, vector: list[float], flagged: bool = False) -> index_writer_pb2.Chunk:
+def _chunk(
+    c: Chunk, vector: list[float], flagged: bool = False, sealed: pii.Sealed | None = None
+) -> index_writer_pb2.Chunk:
     return index_writer_pb2.Chunk(
+        pii=index_writer_pb2.SealedPII(
+            ciphertext=sealed.ciphertext, wrapped_key=sealed.wrapped_key, key_id=sealed.key_id
+        )
+        if sealed
+        else None,
         injection_flag=flagged,
         chunk_id=c.chunk_id,
         parent_chunk_id=c.parent_chunk_id,

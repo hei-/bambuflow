@@ -144,6 +144,21 @@ message Chunk {
   repeated float embedding = 7;
   // 入库时检测到可疑指令（提示词注入，入库管道详设第 7 节）。带标记的块照常可检索，但在线不能成为任何陈述的唯一依据。
   bool injection_flag = 8;
+  // text 里 PII 已做等长掩码（入库管道详设第 6 节：索引只存掩码文本）；原值用信封加密单独保存，
+  // 只有策略允许看 PII 原文的调用者在检索返回时解密还原。没有 PII 的块为空。
+  SealedPII pii = 9;
+}
+
+// 一个块里 PII 原值的密文（技术设计文档 8.6 应用层信封加密）：
+// 明文是 [[start, end, 原值], …] 的 JSON（start、end 为 text 里被掩码片段的 Unicode 字符位置），
+// 用文档级数据密钥 AES-256-GCM 加密，附加数据为 chunk_id；数据密钥由密钥服务（默认 Vault transit）的主密钥包裹。
+message SealedPII {
+  // 12 字节随机数 + 密文与认证标签
+  bytes ciphertext = 1;
+  // 被主密钥包裹的数据密钥（Vault transit 的 vault:v1:… 形式）
+  string wrapped_key = 2;
+  // 主密钥名
+  string key_id = 3;
 }
 
 message WriteDocumentResponse {

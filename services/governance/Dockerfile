@@ -23,3 +23,4 @@ FROM runtime AS dev
 COPY tools/test-upstream/identity-sync.yaml /etc/bambuflow/identity-sync.yaml
 COPY tools/test-upstream/vocab.yaml /etc/bambuflow/vocab.yaml
 COPY tools/test-upstream/sources.yaml /etc/bambuflow/sources.yaml
+COPY tools/test-upstream/tenants /etc/bambuflow/tenants

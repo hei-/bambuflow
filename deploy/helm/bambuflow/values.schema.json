@@ -32,7 +32,7 @@
     "replicas": {"type": "integer", "minimum": 2, "description": "HPA 下限；至少 2 个，PDB 才能在驱逐时保住一个"},
     "maxReplicas": {"type": "integer", "minimum": 2}
   },
-  "required": ["image", "vault", "networkPolicy", "otel", "events", "tenants", "policyData", "indexing", "gateway", "retrieval", "governance", "orchestrator", "batch", "evaluation", "webhook"],
+  "required": ["image", "vault", "networkPolicy", "otel", "events", "tenants", "policyData", "indexing", "processingAdmin", "connectorsAdmin", "gateway", "retrieval", "governance", "orchestrator", "batch", "evaluation", "webhook"],
   "properties": {
     "image": {
       "type": "object",
@@ -126,6 +126,20 @@
         "addr": {"allOf": [{"$ref": "#/definitions/noDev"}, {"pattern": "^[^/:]+:[0-9]+$"}, {"not": {"pattern": "^(indexing|localhost|127\\.0\\.0\\.1):"}}]}
       }
     },
+    "connectorsAdmin": {
+      "type": "object",
+      "required": ["addr"],
+      "properties": {
+        "addr": {"allOf": [{"$ref": "#/definitions/noDev"}, {"pattern": "^[^/:]+:[0-9]+$"}, {"not": {"pattern": "^(connectors-admin|localhost|127\\.0\\.0\\.1):"}}]}
+      }
+    },
+    "processingAdmin": {
+      "type": "object",
+      "required": ["addr"],
+      "properties": {
+        "addr": {"allOf": [{"$ref": "#/definitions/noDev"}, {"pattern": "^[^/:]+:[0-9]+$"}, {"not": {"pattern": "^(processing-admin|localhost|127\\.0\\.0\\.1):"}}]}
+      }
+    },
     "gateway": {
       "type": "object",
       "required": ["replicas", "maxReplicas", "publicUrl", "platformIssuer", "platformClients", "redisAddr", "userStreams", "quotaTimezone", "adminRoles", "audit", "resources"],
@@ -186,6 +200,8 @@
         "nliUrl": {"$ref": "#/definitions/url"},
         "redisAddr": {"$ref": "#/definitions/redisAddr"},
         "maxConcurrency": {"type": "integer", "minimum": 1},
+        "answerRetentionDays": {"type": "integer", "minimum": 0},
+        "purgeSchedule": {"type": "string"},
         "sqlCatalog": {
           "type": "object",
           "properties": {

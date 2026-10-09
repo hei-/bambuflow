@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n bambuflow/config/v1/config.proto\x12\x13\x62\x61mbuflow.config.v1\".\n\x12GetSnapshotRequest\x12\x18\n\x07service\x18\x01 \x01(\tR\x07service\"\x96\x02\n\x13GetSnapshotResponse\x12)\n\x10snapshot_version\x18\x01 \x01(\tR\x0fsnapshotVersion\x12\x43\n\x0cvocabularies\x18\x02 \x03(\x0b\x32\x1f.bambuflow.config.v1.VocabularyR\x0cvocabularies\x12\x45\n\rsource_grants\x18\x03 \x03(\x0b\x32 .bambuflow.config.v1.SourceGrantR\x0csourceGrants\x12H\n\x0b\x65xperiments\x18\x04 \x03(\x0b\x32&.bambuflow.config.v1.RunningExperimentR\x0b\x65xperiments\"\xec\x01\n\x11RunningExperiment\x12\x15\n\x06\x65xp_id\x18\x01 \x01(\tR\x05\x65xpId\x12\x16\n\x06tenant\x18\x02 \x01(\tR\x06tenant\x12\'\n\x0ftraffic_percent\x18\x03 \x01(\x05R\x0etrafficPercent\x12\x30\n\x11support_threshold\x18\x04 \x01(\x01H\x00R\x10supportThreshold\x88\x01\x01\x12&\n\x0cmin_coverage\x18\x05 \x01(\x01H\x01R\x0bminCoverage\x88\x01\x01\x42\x14\n\x12_support_thresholdB\x0f\n\r_min_coverage\"B\n\x0bSourceGrant\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\"[\n\nVocabulary\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x39\n\x05terms\x18\x02 \x03(\x0b\x32#.bambuflow.config.v1.VocabularyTermR\x05terms\"\xc6\x01\n\x0eVocabularyTerm\x12\x12\n\x04\x63ode\x18\x01 \x01(\tR\x04\x63ode\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n\x08synonyms\x18\x03 \x03(\tR\x08synonyms\x12\x16\n\x06parent\x18\x04 \x01(\tR\x06parent\x12\x37\n\x06status\x18\x05 \x01(\x0e\x32\x1f.bambuflow.config.v1.TermStatusR\x06status\x12\x1f\n\x0breplaced_by\x18\x06 \x01(\tR\nreplacedBy*]\n\nTermStatus\x12\x1b\n\x17TERM_STATUS_UNSPECIFIED\x10\x00\x12\x16\n\x12TERM_STATUS_ACTIVE\x10\x01\x12\x1a\n\x16TERM_STATUS_DEPRECATED\x10\x02\x32q\n\rConfigService\x12`\n\x0bGetSnapshot\x12\'.bambuflow.config.v1.GetSnapshotRequest\x1a(.bambuflow.config.v1.GetSnapshotResponseB\xe1\x01\n\x17\x63om.bambuflow.config.v1B\x0b\x43onfigProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\xa2\x02\x03\x42\x43X\xaa\x02\x13\x42\x61mbuflow.Config.V1\xca\x02\x13\x42\x61mbuflow\\Config\\V1\xe2\x02\x1f\x42\x61mbuflow\\Config\\V1\\GPBMetadata\xea\x02\x15\x42\x61mbuflow::Config::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n bambuflow/config/v1/config.proto\x12\x13\x62\x61mbuflow.config.v1\"a\n\x0cWatchRequest\x12\x18\n\x07service\x18\x01 \x01(\tR\x07service\x12\x1f\n\x0binstance_id\x18\x02 \x01(\tR\ninstanceId\x12\x16\n\x06loaded\x18\x03 \x01(\tR\x06loaded\"T\n\rWatchResponse\x12\x18\n\x07service\x18\x01 \x01(\tR\x07service\x12)\n\x10snapshot_version\x18\x02 \x01(\tR\x0fsnapshotVersion\"\xa2\x01\n\nAckRequest\x12\x18\n\x07service\x18\x01 \x01(\tR\x07service\x12\x1f\n\x0binstance_id\x18\x02 \x01(\tR\ninstanceId\x12)\n\x10snapshot_version\x18\x03 \x01(\tR\x0fsnapshotVersion\x12\x16\n\x06loaded\x18\x04 \x01(\x08R\x06loaded\x12\x16\n\x06reason\x18\x05 \x01(\tR\x06reason\"\r\n\x0b\x41\x63kResponse\"\x17\n\x15GetSigningKeysRequest\"M\n\x16GetSigningKeysResponse\x12\x33\n\x04keys\x18\x01 \x03(\x0b\x32\x1f.bambuflow.config.v1.SigningKeyR\x04keys\"B\n\nSigningKey\x12\x15\n\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n\npublic_key\x18\x02 \x01(\x0cR\tpublicKey\".\n\x12GetSnapshotRequest\x12\x18\n\x07service\x18\x01 \x01(\tR\x07service\"\xbe\x03\n\x13GetSnapshotResponse\x12)\n\x10snapshot_version\x18\x01 \x01(\tR\x0fsnapshotVersion\x12\x43\n\x0cvocabularies\x18\x02 \x03(\x0b\x32\x1f.bambuflow.config.v1.VocabularyR\x0cvocabularies\x12\x45\n\rsource_grants\x18\x03 \x03(\x0b\x32 .bambuflow.config.v1.SourceGrantR\x0csourceGrants\x12H\n\x0b\x65xperiments\x18\x04 \x03(\x0b\x32&.bambuflow.config.v1.RunningExperimentR\x0b\x65xperiments\x12%\n\x0esigned_payload\x18\x05 \x01(\x0cR\rsignedPayload\x12\x1c\n\tsignature\x18\x06 \x01(\x0cR\tsignature\x12$\n\x0esigning_key_id\x18\x07 \x01(\tR\x0csigningKeyId\x12;\n\x07tenants\x18\x08 \x03(\x0b\x32!.bambuflow.config.v1.TenantConfigR\x07tenants\"_\n\x0cTenantConfig\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1d\n\nversion_id\x18\x02 \x01(\tR\tversionId\x12\x18\n\x07\x63ontent\x18\x03 \x01(\tR\x07\x63ontent\"\xec\x01\n\x11RunningExperiment\x12\x15\n\x06\x65xp_id\x18\x01 \x01(\tR\x05\x65xpId\x12\x16\n\x06tenant\x18\x02 \x01(\tR\x06tenant\x12\'\n\x0ftraffic_percent\x18\x03 \x01(\x05R\x0etrafficPercent\x12\x30\n\x11support_threshold\x18\x04 \x01(\x01H\x00R\x10supportThreshold\x88\x01\x01\x12&\n\x0cmin_coverage\x18\x05 \x01(\x01H\x01R\x0bminCoverage\x88\x01\x01\x42\x14\n\x12_support_thresholdB\x0f\n\r_min_coverage\"B\n\x0bSourceGrant\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\"[\n\nVocabulary\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x39\n\x05terms\x18\x02 \x03(\x0b\x32#.bambuflow.config.v1.VocabularyTermR\x05terms\"\xc6\x01\n\x0eVocabularyTerm\x12\x12\n\x04\x63ode\x18\x01 \x01(\tR\x04\x63ode\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n\x08synonyms\x18\x03 \x03(\tR\x08synonyms\x12\x16\n\x06parent\x18\x04 \x01(\tR\x06parent\x12\x37\n\x06status\x18\x05 \x01(\x0e\x32\x1f.bambuflow.config.v1.TermStatusR\x06status\x12\x1f\n\x0breplaced_by\x18\x06 \x01(\tR\nreplacedBy*]\n\nTermStatus\x12\x1b\n\x17TERM_STATUS_UNSPECIFIED\x10\x00\x12\x16\n\x12TERM_STATUS_ACTIVE\x10\x01\x12\x1a\n\x16TERM_STATUS_DEPRECATED\x10\x02\x32\xf8\x02\n\rConfigService\x12`\n\x0bGetSnapshot\x12\'.bambuflow.config.v1.GetSnapshotRequest\x1a(.bambuflow.config.v1.GetSnapshotResponse\x12P\n\x05Watch\x12!.bambuflow.config.v1.WatchRequest\x1a\".bambuflow.config.v1.WatchResponse0\x01\x12H\n\x03\x41\x63k\x12\x1f.bambuflow.config.v1.AckRequest\x1a .bambuflow.config.v1.AckResponse\x12i\n\x0eGetSigningKeys\x12*.bambuflow.config.v1.GetSigningKeysRequest\x1a+.bambuflow.config.v1.GetSigningKeysResponseB\xe1\x01\n\x17\x63om.bambuflow.config.v1B\x0b\x43onfigProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\xa2\x02\x03\x42\x43X\xaa\x02\x13\x42\x61mbuflow.Config.V1\xca\x02\x13\x42\x61mbuflow\\Config\\V1\xe2\x02\x1f\x42\x61mbuflow\\Config\\V1\\GPBMetadata\xea\x02\x15\x42\x61mbuflow::Config::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,20 +32,36 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.config.v1.config_
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\027com.bambuflow.config.v1B\013ConfigProtoP\001ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\242\002\003BCX\252\002\023Bambuflow.Config.V1\312\002\023Bambuflow\\Config\\V1\342\002\037Bambuflow\\Config\\V1\\GPBMetadata\352\002\025Bambuflow::Config::V1'
-  _globals['_TERMSTATUS']._serialized_start=987
-  _globals['_TERMSTATUS']._serialized_end=1080
-  _globals['_GETSNAPSHOTREQUEST']._serialized_start=57
-  _globals['_GETSNAPSHOTREQUEST']._serialized_end=103
-  _globals['_GETSNAPSHOTRESPONSE']._serialized_start=106
-  _globals['_GETSNAPSHOTRESPONSE']._serialized_end=384
-  _globals['_RUNNINGEXPERIMENT']._serialized_start=387
-  _globals['_RUNNINGEXPERIMENT']._serialized_end=623
-  _globals['_SOURCEGRANT']._serialized_start=625
-  _globals['_SOURCEGRANT']._serialized_end=691
-  _globals['_VOCABULARY']._serialized_start=693
-  _globals['_VOCABULARY']._serialized_end=784
-  _globals['_VOCABULARYTERM']._serialized_start=787
-  _globals['_VOCABULARYTERM']._serialized_end=985
-  _globals['_CONFIGSERVICE']._serialized_start=1082
-  _globals['_CONFIGSERVICE']._serialized_end=1195
+  _globals['_TERMSTATUS']._serialized_start=1789
+  _globals['_TERMSTATUS']._serialized_end=1882
+  _globals['_WATCHREQUEST']._serialized_start=57
+  _globals['_WATCHREQUEST']._serialized_end=154
+  _globals['_WATCHRESPONSE']._serialized_start=156
+  _globals['_WATCHRESPONSE']._serialized_end=240
+  _globals['_ACKREQUEST']._serialized_start=243
+  _globals['_ACKREQUEST']._serialized_end=405
+  _globals['_ACKRESPONSE']._serialized_start=407
+  _globals['_ACKRESPONSE']._serialized_end=420
+  _globals['_GETSIGNINGKEYSREQUEST']._serialized_start=422
+  _globals['_GETSIGNINGKEYSREQUEST']._serialized_end=445
+  _globals['_GETSIGNINGKEYSRESPONSE']._serialized_start=447
+  _globals['_GETSIGNINGKEYSRESPONSE']._serialized_end=524
+  _globals['_SIGNINGKEY']._serialized_start=526
+  _globals['_SIGNINGKEY']._serialized_end=592
+  _globals['_GETSNAPSHOTREQUEST']._serialized_start=594
+  _globals['_GETSNAPSHOTREQUEST']._serialized_end=640
+  _globals['_GETSNAPSHOTRESPONSE']._serialized_start=643
+  _globals['_GETSNAPSHOTRESPONSE']._serialized_end=1089
+  _globals['_TENANTCONFIG']._serialized_start=1091
+  _globals['_TENANTCONFIG']._serialized_end=1186
+  _globals['_RUNNINGEXPERIMENT']._serialized_start=1189
+  _globals['_RUNNINGEXPERIMENT']._serialized_end=1425
+  _globals['_SOURCEGRANT']._serialized_start=1427
+  _globals['_SOURCEGRANT']._serialized_end=1493
+  _globals['_VOCABULARY']._serialized_start=1495
+  _globals['_VOCABULARY']._serialized_end=1586
+  _globals['_VOCABULARYTERM']._serialized_start=1589
+  _globals['_VOCABULARYTERM']._serialized_end=1787
+  _globals['_CONFIGSERVICE']._serialized_start=1885
+  _globals['_CONFIGSERVICE']._serialized_end=2261
 # @@protoc_insertion_point(module_scope)

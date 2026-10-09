@@ -15,6 +15,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.yaml.in/yaml/v3"
+
+	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
 )
 
 // Names 是三套词表的名字。
@@ -84,7 +86,8 @@ type Store struct{ Pool *pgxpool.Pool }
 
 // Upsert 写入词条：新增或更新名称、同义词等；不删除（编码只能停用）。
 // 已停用的编码不能重新启用：它可能已被替代编码接管，复活会让同一含义有两个编码。
-func (s Store) Upsert(ctx context.Context, terms []Term) error {
+// beforeCommit 不为空时在同一事务里执行（写变更审计）：审计写不进去就不改词表。
+func (s Store) Upsert(ctx context.Context, terms []Term, beforeCommit func() error) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		for _, t := range terms {
 			tag, err := tx.Exec(ctx, `
@@ -98,12 +101,18 @@ func (s Store) Upsert(ctx context.Context, terms []Term) error {
 				return err
 			}
 			if tag.RowsAffected() == 0 {
-				return fmt.Errorf("%s/%s 已停用，不能重新启用", t.Vocabulary, t.Code)
+				return fmt.Errorf("%w：%s/%s", ErrReactivate, t.Vocabulary, t.Code)
 			}
+		}
+		if beforeCommit != nil {
+			return beforeCommit()
 		}
 		return nil
 	})
 }
+
+// ErrReactivate：已停用的编码不能重新启用。
+var ErrReactivate = errors.New("已停用的编码不能重新启用")
 
 // Snapshot 读出全部词条，并以内容摘要作为快照版本：内容不变则版本不变。
 func (s Store) Snapshot(ctx context.Context) (string, []Term, error) {
@@ -136,4 +145,15 @@ func nonNil(xs []string) []string {
 		return []string{}
 	}
 	return xs
+}
+
+// SaveAck 记下实例最近一次的加载结果。
+func (s Store) SaveAck(ctx context.Context, a *configv1.AckRequest) error {
+	_, err := s.Pool.Exec(ctx, `
+		INSERT INTO governance.config_acks (service, instance_id, snapshot_version, loaded, reason)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (service, instance_id) DO UPDATE SET snapshot_version = EXCLUDED.snapshot_version,
+			loaded = EXCLUDED.loaded, reason = EXCLUDED.reason, acked_at = now()`,
+		a.GetService(), a.GetInstanceId(), a.GetSnapshotVersion(), a.GetLoaded(), a.GetReason())
+	return err
 }

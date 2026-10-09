@@ -123,9 +123,12 @@ func (s *Server) docScope(ctx context.Context, filters *commonv1.Filters) (Filte
 	}
 	// 调用方的条件只能收窄授权范围（与 Search 相同）
 	f = f.Narrow(filters)
-	version, _, err := s.Store.LiveVersion(ctx)
+	version, _, err := s.indexVersion(ctx)
 	if errors.Is(err, ErrNoLiveIndex) {
 		return Filter{}, "", "", status.Error(codes.Unavailable, "还没有线上索引版本")
+	}
+	if _, ok := status.FromError(err); ok && err != nil {
+		return Filter{}, "", "", err
 	}
 	if err != nil {
 		s.Log.ErrorContext(ctx, "读取线上索引版本失败", slog.Any("err", err))

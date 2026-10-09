@@ -36,7 +36,7 @@ func TestLoadRejectsBadConfig(t *testing.T) {
 			"a": "tenant: a\nrollout: general\nbound_clients: [console]\n",
 		}, []string{"console"}, "只能绑定一个租户"},
 		"rollout 取值不对":   {map[string]string{"a": "tenant: a\nrollout: beta\n"}, nil, "rollout"},
-		"tenant 与目录名不一致": {map[string]string{"a": "tenant: b\nrollout: general\n"}, nil, "目录名"},
+		"tenant 与目录名不一致": {map[string]string{"a": "tenant: b\nrollout: general\n"}, nil, "应与租户名一致"},
 		"agent 同时是业务系统客户端": {map[string]string{
 			"a": "tenant: a\nrollout: general\nbound_clients: [app]\n",
 			"b": "tenant: b\nrollout: general\nmcp_agents: [{client_id: app, purpose: p, owner: o}]\n",
@@ -131,5 +131,30 @@ func TestResolveAgent(t *testing.T) {
 	}
 	if !risk.MCPToolEnabled("ask") || risk.MCPToolEnabled("sql_query") {
 		t.Error("没有配置 mcp_tools 时开放全部只读工具，且不开放其他工具")
+	}
+}
+
+func TestParseAndNewSplitPerTenantAndCrossTenantChecks(t *testing.T) {
+	a, err := Parse("a", []byte("tenant: a\nrollout: pilot\nbound_clients: [app]\n"))
+	if err != nil || a.Rollout != "pilot" {
+		t.Fatalf("%+v %v", a, err)
+	}
+	if _, err := Parse("Bad", []byte("tenant: Bad\nrollout: general\n")); err == nil {
+		t.Fatal("租户名只能是小写字母、数字与连字符")
+	}
+	if _, err := Parse("a", []byte("tenant: a\nrollout: general\nmcp_tools: [delete_all]\n")); err == nil {
+		t.Fatal("未知的 MCP 工具应拒绝")
+	}
+	b, _ := Parse("b", []byte("tenant: b\nrollout: general\nbound_clients: [app]\n"))
+	if _, err := New([]Tenant{a, b}, nil); err == nil || !strings.Contains(err.Error(), "只能绑定一个租户") {
+		t.Fatalf("同一客户端绑定两个租户: %v", err)
+	}
+	if _, err := New([]Tenant{a, a}, nil); err == nil {
+		t.Fatal("同一租户出现两次应拒绝")
+	}
+	plain, _ := Parse("a", []byte("tenant: a\nrollout: pilot\n"))
+	r, err := New([]Tenant{b, plain}, nil)
+	if err != nil || len(r.Tenants()) != 2 || r.Tenants()[0].Name != "a" {
+		t.Fatalf("%v %v", r, err)
 	}
 }

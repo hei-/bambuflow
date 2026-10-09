@@ -3,22 +3,25 @@
 密钥与连接串（数据库 DSN、LLM 网关凭证、审计桶凭证 BF_AUDIT_S3_ACCESS_KEY/SECRET_KEY 等）不进 values：
 由 Vault Secrets Operator 从 Vault 的 <kvMount>/bambuflow/<组件> 同步到名为 <release>-<组件> 的 Secret，
 以 envFrom 注入，密钥轮换后自动滚动重启（vault.yaml，部署配置清单）。服务间 mTLS 由服务网格提供（技术设计文档 12.6）。
-租户配置与授权策略数据由 values 的 tenants、policyData 渲染成 ConfigMap（config.yaml），改动后经 checksum 注解滚动重启；
-governance 分发租户配置后改为监听。
+values 的 tenants 渲染成 ConfigMap 挂给 governance，只作为还没有版本的租户的初始版本导入；之后租户配置经变更单与发布修改，
+由 governance 的配置快照推给 gateway（governance 详设 3、4）。授权策略数据（policyData）同样渲染成 ConfigMap（config.yaml），
+改动后经 checksum 注解滚动重启。
 gateway 用 StatefulSet：每个实例的入口审计本地队列放在自己的持久卷上，重启后接着把没送出的审计段送往审计桶
 （技术设计文档 8.3）；对象键以实例名为前缀，实例名稳定，送出记录才能对上。
 governance 的管理接口把变更审计写进与 gateway 入口审计同一个审计桶（gateway.audit），凭证同样经 Vault 注入
 （bambuflow/governance 的 BF_AUDIT_S3_ACCESS_KEY/SECRET_KEY）；紧急拒绝规则经入库平面的 indexing（indexing.addr）写进拒绝名单。
 evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob。
 存活探针只看进程是否在，就绪探针才检查依赖：依赖故障时摘流量，不重启。
-运行期要直接读写 Vault 的组件（gateway 读 Principal 签名密钥，webhook 读写订阅的签名密钥）带 vaultRole，
+运行期要直接读写 Vault 的组件（gateway 读 Principal 签名密钥，webhook 读写订阅的签名密钥，
+retrieval 经 transit 解开 PII 原值的数据密钥，orchestrator 经 transit 加密回答记录的问题原文与受限级快照，
+governance 读快照签名私钥）带 vaultRole，
 由 Vault Agent 注入令牌；两者用不同的 Vault 角色，各自只能访问自己的路径。
 平台事件流（Redis Streams platform:events）由 qa/batch、indexing、governance 写入、webhook 消费，必须指向同一个 Redis（events.redisAddr）。
 租户可访问的数据源由 governance 下发给 retrieval（ConfigService，每 10 秒拉取），policyData 只放租户策略（禁止的数据源、地域、可看 PII 的群组）。
 */ -}}
 {{- $v := .Values -}}
 {{- $jwks := printf "http://%s-gateway:8081/internal/jwks.json" .Release.Name -}}
-{{- /* gateway 按 <租户>/tenant.yaml 读取；ConfigMap 的键是平铺的，用 items 映射成目录结构 */ -}}
+{{- /* governance 按 <租户>/tenant.yaml 导入初始版本；ConfigMap 的键是平铺的，用 items 映射成目录结构 */ -}}
 {{- $tenantItems := list -}}
 {{- range $t, $_ := $v.tenants -}}
 {{- $tenantItems = append $tenantItems (dict "key" (printf "%s.yaml" $t) "path" (printf "%s/tenant.yaml" $t)) -}}
@@ -28,7 +31,6 @@ evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob�
   "gateway" (dict
     "image" "gateway" "values" $v.gateway "kind" "StatefulSet" "vaultRole" $v.vault.role
     "volumes" (list
-      (dict "name" "tenants" "mountPath" "/etc/bambuflow/tenants" "source" (dict "configMap" (dict "name" (printf "%s-tenants" .Release.Name) "items" $tenantItems)))
       (dict "name" "admin-roles" "mountPath" "/etc/bambuflow/admin-roles.yaml" "subPath" "admin-roles.yaml" "source" (dict "configMap" (dict "name" (printf "%s-admin-roles" .Release.Name)))))
     "claims" (list (dict "name" "audit" "mountPath" "/var/lib/gateway/audit" "size" $v.gateway.audit.storageSize))
     "ports" (list (dict "name" "http" "port" 8080) (dict "name" "internal" "port" 8081) (dict "name" "grpc" "port" 9090))
@@ -38,7 +40,6 @@ evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob�
       "BF_PUBLIC_URL" $v.gateway.publicUrl
       "BF_PLATFORM_ISSUER" $v.gateway.platformIssuer
       "BF_PLATFORM_CLIENTS" $v.gateway.platformClients
-      "BF_TENANTS_DIR" "/etc/bambuflow/tenants"
       "BF_ADMIN_ROLES_FILE" "/etc/bambuflow/admin-roles.yaml"
       "BF_RETRIEVAL_ADDR" (printf "%s-retrieval:9090" .Release.Name)
       "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)
@@ -46,6 +47,8 @@ evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob�
       "BF_GOVERNANCE_ADDR" (printf "%s-governance:9090" .Release.Name)
       "BF_EVALUATION_ADDR" (printf "%s-evaluation:9090" .Release.Name)
       "BF_INDEXING_ADDR" $v.indexing.addr
+      "BF_PROCESSING_ADMIN_ADDR" $v.processingAdmin.addr
+      "BF_CONNECTORS_ADMIN_ADDR" $v.connectorsAdmin.addr
       "BF_REDIS_ADDR" $v.gateway.redisAddr
       "BF_GATEWAY_INSTANCES" (toString $v.gateway.replicas)
       "BF_USER_STREAMS" (toString $v.gateway.userStreams)
@@ -56,7 +59,7 @@ evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob�
       "BF_SIGNING_KEY_MOUNT" $v.vault.kvMount
       "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "retrieval" (dict
-    "image" "retrieval" "values" $v.retrieval "kind" "Deployment"
+    "image" "retrieval" "values" $v.retrieval "kind" "Deployment" "vaultRole" $v.vault.role
     "volumes" (list
       (dict "name" "policy-data" "mountPath" "/etc/bambuflow/policy/data.json" "subPath" "data.json" "source" (dict "configMap" (dict "name" (printf "%s-policy-data" .Release.Name)))))
     "ports" (list (dict "name" "grpc" "port" 9090) (dict "name" "internal" "port" 8081))
@@ -66,9 +69,12 @@ evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob�
       "BF_PRINCIPAL_JWKS_URL" $jwks
       "BF_EMBEDDER_URL" $v.retrieval.embedderUrl
       "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
-      "BF_RERANKER_URL" $v.retrieval.rerankerUrl))
+      "BF_RERANKER_URL" $v.retrieval.rerankerUrl
+      "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "governance" (dict
-    "image" "governance" "values" $v.governance "kind" "Deployment" "args" (list "serve")
+    "image" "governance" "values" $v.governance "kind" "Deployment" "args" (list "serve") "vaultRole" $v.vault.role
+    "volumes" (list
+      (dict "name" "tenants" "mountPath" "/etc/bambuflow/tenants" "source" (dict "configMap" (dict "name" (printf "%s-tenants" .Release.Name) "items" $tenantItems))))
     "ports" (list (dict "name" "grpc" "port" 9090))
     "readiness" (dict "exec" (dict "command" (list "governance" "serve-healthcheck")))
     "liveness" (dict "tcpSocket" (dict "port" "grpc"))
@@ -78,9 +84,13 @@ evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob�
       "BF_AUDIT_S3_ENDPOINT" $v.gateway.audit.s3Endpoint
       "BF_AUDIT_BUCKET" $v.gateway.audit.bucket
       "BF_AUDIT_RETENTION_DAYS" (toString $v.gateway.audit.retentionDays)
-      "BF_REDIS_ADDR" $v.events.redisAddr))
+      "BF_REDIS_ADDR" $v.events.redisAddr
+      "BF_TENANTS_SEED_DIR" "/etc/bambuflow/tenants"
+      "BF_PLATFORM_CLIENTS" $v.gateway.platformClients
+      "BF_EVALUATION_ADDR" (printf "%s-evaluation:9090" .Release.Name)
+      "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "orchestrator" (dict
-    "image" "orchestrator" "values" $v.orchestrator "kind" "Deployment"
+    "image" "orchestrator" "values" $v.orchestrator "kind" "Deployment" "vaultRole" $v.vault.role
     "volumes" (list
       (dict "name" "llm-api-key" "mountPath" "/run/secrets/llm_api_key" "subPath" "api_key" "source" (dict "secret" (dict "secretName" (printf "%s-orchestrator-llm" .Release.Name))))
       (dict "name" "sql-catalog" "mountPath" "/etc/bambuflow/sql-catalog.yaml" "subPath" "sql-catalog.yaml" "source" (dict "configMap" (dict "name" (printf "%s-sql-catalog" .Release.Name)))))
@@ -98,7 +108,9 @@ evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob�
       "BF_REDIS_ADDR" $v.orchestrator.redisAddr
       "BF_MAX_CONCURRENCY" (toString $v.orchestrator.maxConcurrency)
       "BF_SQL_CATALOG" (ternary "" "/etc/bambuflow/sql-catalog.yaml" (empty $v.orchestrator.sqlCatalog))
-      "BF_LLM_API_KEY_FILE" "/run/secrets/llm_api_key"))
+      "BF_LLM_API_KEY_FILE" "/run/secrets/llm_api_key"
+      "BF_ANSWER_KEY" "bambuflow-answers"
+      "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "batch" (dict
     "image" "batch" "values" $v.batch "kind" "Deployment" "args" (list "serve")
     "ports" (list (dict "name" "grpc" "port" 9090))

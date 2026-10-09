@@ -46,9 +46,17 @@ type Candidate struct {
 	Classification                          commonv1.Classification
 	// 入库时检测到可疑指令（retrieval 详设 3.3），原样返回给调用方
 	InjectionFlag bool
+	// Text 里被掩码的 PII 原值的密文（入库时信封加密）；没有 PII 时 Ciphertext 为空
+	PII SealedPII
 	// 图召回找到它时的路径，以及路径上各条边的证据块所属文档：组装复核时这些文档也必须仍然可见
 	GraphPath []PathStep
 	PathDocs  []string
+}
+
+// SealedPII 是一个块里 PII 原值的密文与被主密钥包裹的数据密钥（contracts SealedPII）。
+type SealedPII struct {
+	Ciphertext        []byte
+	WrappedKey, KeyID string
 }
 
 // DocSummary 是列举结果里的一份文档。
@@ -74,6 +82,8 @@ var ErrNoLiveIndex = errors.New("还没有线上索引版本")
 type Store interface {
 	// LiveVersion 返回 prod 别名指向的索引版本及其嵌入模型版本。
 	LiveVersion(ctx context.Context) (version, model string, err error)
+	// VersionModel 返回给定索引版本的嵌入模型（评测模式指定版本时用）；不存在或已丢弃时为 ErrNoLiveIndex。
+	VersionModel(ctx context.Context, version string) (model string, err error)
 	// Dense 在给定索引版本里按过滤条件召回与 vec 最近的 k 个块，按相似度降序。
 	Dense(ctx context.Context, version string, f Filter, vec []float32, k int) ([]Candidate, error)
 	// Keyword 在给定索引版本里按过滤条件召回含任一 terms 的 k 个块，按相关度降序。
@@ -134,12 +144,21 @@ type Server struct {
 	Tokenize func(string) []string
 	// Reranker 为 nil 时不精排，按融合顺序返回并标记降级
 	Reranker Reranker
+	// EvalMode 为 true 时接受 EvalIndexHeader 指定的索引版本（evaluation 详设 4.2）；只在评测副本上开启
+	EvalMode bool
 	// Disabled 是检索计划关闭的召回路（如对照评测只开稠密路）；关闭的路不执行、不算降级
 	Disabled map[string]bool
 	// Breakers 按召回路熔断，Admission 做入口限流与过载保护（详设 9.2）；为 nil 时不启用（单元测试）
 	Breakers  *guard.Breakers
 	Admission *guard.Admission
-	Log       *slog.Logger
+	// PII 为能看 PII 原文的调用者还原入库时掩码的原值（internal/pii）；为 nil 时一律返回掩码文本
+	PII PIIRestorer
+	Log *slog.Logger
+}
+
+// PIIRestorer 解开一个块的 PII 原值并回填到掩码正文里。
+type PIIRestorer interface {
+	Restore(ctx context.Context, chunkID, text string, ciphertext []byte, wrapped, keyID string) (string, error)
 }
 
 var (
@@ -333,9 +352,12 @@ func (s *Server) recall(ctx context.Context, f Filter, queries []*retrievalv1.Su
 		s.Log.ErrorContext(ctx, "召回不可用", append(attrs, slog.String("reason", reason))...)
 		return nil, "", "", nil, errUnavailable
 	}
-	version, model, err := s.Store.LiveVersion(ctx)
+	version, model, err := s.indexVersion(ctx)
 	if errors.Is(err, ErrNoLiveIndex) {
 		return fail("no_live_index")
+	}
+	if _, ok := status.FromError(err); ok && err != nil {
+		return nil, "", "", nil, err
 	}
 	if err != nil {
 		return fail("metadata_unavailable", slog.Any("err", err))
@@ -511,7 +533,7 @@ func (s *Server) assemble(ctx context.Context, f Filter, cands []scored, topK in
 		a := acls[c.DocID]
 		hits = append(hits, &retrievalv1.Hit{
 			ChunkId: c.ChunkID, DocId: c.DocID, DocVersion: c.DocVersion, ParentChunkId: c.ParentChunkID,
-			Text: text(f, c.Text), Span: c.Span, Title: c.Title, HeadingPath: c.HeadingPath, SourceUri: c.SourceURI,
+			Text: s.text(ctx, f, c.Candidate), Span: c.Span, Title: c.Title, HeadingPath: c.HeadingPath, SourceUri: c.SourceURI,
 			SourceType: c.SourceType, Owner: c.Owner, Classification: commonv1.Classification(a.Classification), Score: c.score,
 			GraphPath: graphPath(f, c.GraphPath), InjectionFlag: c.InjectionFlag,
 		})
@@ -527,12 +549,30 @@ func visible(f Filter, acls map[string]ACL, docID string) bool {
 	return ok && f.Check(a) == retrievalv1.AccessReason_ACCESS_REASON_ALLOWED
 }
 
-// text 按策略义务处理正文：默认 PII 掩码（技术设计文档 8.2，索引侧已掩码，这里是第二道防线）。
-func text(f Filter, s string) string {
+// text 按策略义务处理正文（技术设计文档 8.2、8.6）。索引里只有等长掩码的正文：
+// 默认再按查询侧规则掩码一次（第二道防线，防入库漏识别）；义务允许看原文时解开入库时加密的原值并回填，
+// 解不开（密钥服务不可用、密文损坏）就返回掩码正文，不阻断检索。
+// maskUnlessShown 处理没有加密原值的短文本（如图路径上的实体名）：义务不允许看原文时掩码。
+func maskUnlessShown(f Filter, s string) string {
 	if f.ShowPII {
 		return s
 	}
 	return redact.Mask(s)
+}
+
+func (s *Server) text(ctx context.Context, f Filter, c Candidate) string {
+	if !f.ShowPII {
+		return redact.Mask(c.Text)
+	}
+	if len(c.PII.Ciphertext) == 0 || s.PII == nil {
+		return c.Text
+	}
+	out, err := s.PII.Restore(ctx, c.ChunkID, c.Text, c.PII.Ciphertext, c.PII.WrappedKey, c.PII.KeyID)
+	if err != nil {
+		s.Log.WarnContext(ctx, "还原 PII 原值失败，返回掩码正文", slog.String("chunk_id", c.ChunkID), slog.Any("err", err))
+		return c.Text
+	}
+	return out
 }
 
 var purposes = []string{"answer", "search", "agent_round", "mcp", "batch"}

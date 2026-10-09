@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "bambuflow/admin/v1/index_version_admin.proto";
+import "google/protobuf/timestamp.proto";
+
+// RebuildAdminService 是全量重建（入库管道详设第 10 节、14.4），由 indexing 实现，
+// gateway 的 /v1/admin/index-rebuilds 调用。换嵌入模型或分块器时使用，平台运维双人复核：
+// 第一次调用只创建待复核的操作（op_），另一位平台运维复核后才开始。
+//
+// 开始时新建一个声明目标嵌入模型与分块器版本的待发布版本，并对每个数据源发出 RefetchRequested
+// （全部文档重新拉取）；按新模型部署的 processing 把文档写进这个版本。全部在用文档写完之前发布会被拒绝。
+service RebuildAdminService {
+  rpc StartRebuild(StartRebuildRequest) returns (StartRebuildResponse);
+  rpc ApproveRebuild(ApproveRebuildRequest) returns (ApproveRebuildResponse);
+  rpc GetRebuild(GetRebuildRequest) returns (GetRebuildResponse);
+  // 取消：丢弃重建的待发布版本，线上不受影响
+  rpc CancelRebuild(CancelRebuildRequest) returns (CancelRebuildResponse);
+}
+
+message StartRebuildRequest {
+  // 目标嵌入模型与分块器版本，至少一个与线上不同；不填的沿用线上版本的
+  string embedding_model = 1;
+  string chunker_version = 2;
+  // 必填，最多 500 字
+  string reason = 3;
+}
+
+// RebuildOperation 是待复核的重建申请。
+message RebuildOperation {
+  // op_ 前缀
+  string operation_id = 1;
+  string embedding_model = 2;
+  string chunker_version = 3;
+  // 申请时的线上版本
+  string live_version = 4;
+  string reason = 5;
+  string requested_by = 6;
+  google.protobuf.Timestamp requested_at = 7;
+  OperationStatus status = 8;
+  string approved_by = 9;
+  google.protobuf.Timestamp approved_at = 10;
+  string failure_reason = 11;
+  google.protobuf.Timestamp expires_at = 12;
+  // 复核执行后开始的重建，rb_ 前缀
+  string rebuild_id = 13;
+}
+
+message StartRebuildResponse {
+  RebuildOperation operation = 1;
+  // false 表示已有待复核的重建申请，返回的是它
+  bool created = 2;
+}
+
+message ApproveRebuildRequest {
+  string operation_id = 1;
+}
+
+message ApproveRebuildResponse {
+  RebuildOperation operation = 1;
+}
+
+message Rebuild {
+  // rb_ 前缀
+  string rebuild_id = 1;
+  // 重建写入的待发布版本
+  string version = 2;
+  string embedding_model = 3;
+  string chunker_version = 4;
+  // running、completed（已发布上线）、cancelled
+  string status = 5;
+  // 已写进新版本的文档数与需要写的在用文档数
+  int64 written_docs = 6;
+  int64 total_docs = 7;
+  string requested_by = 8;
+  string approved_by = 9;
+  google.protobuf.Timestamp started_at = 10;
+  google.protobuf.Timestamp finished_at = 11;
+  string cancelled_by = 12;
+  string reason = 13;
+}
+
+message GetRebuildRequest {
+  string rebuild_id = 1;
+}
+
+message GetRebuildResponse {
+  Rebuild rebuild = 1;
+}
+
+message CancelRebuildRequest {
+  string rebuild_id = 1;
+  // 必填，最多 500 字
+  string reason = 2;
+}
+
+message CancelRebuildResponse {
+  Rebuild rebuild = 1;
+}

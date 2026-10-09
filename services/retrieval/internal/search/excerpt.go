@@ -48,7 +48,7 @@ func (s *Server) GetExcerpt(ctx context.Context, r *retrievalv1.GetExcerptReques
 		return nil, errNoExcerpt
 	}
 	return &retrievalv1.GetExcerptResponse{
-		ChunkId: c.ChunkID, DocId: c.DocID, DocVersion: c.DocVersion, Text: text(f, c.Text), Span: c.Span, Title: c.Title,
+		ChunkId: c.ChunkID, DocId: c.DocID, DocVersion: c.DocVersion, Text: s.text(ctx, f, c), Span: c.Span, Title: c.Title,
 		HeadingPath: c.HeadingPath, SourceUri: c.SourceURI, SourceType: c.SourceType, Owner: c.Owner,
 		Classification: c.Classification, IndexVersion: version, PolicyVersion: pv, InjectionFlag: c.InjectionFlag,
 	}, nil

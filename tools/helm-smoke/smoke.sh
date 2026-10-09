@@ -60,9 +60,13 @@ YAML
 		'{kubernetes_host: "https://k3s:6443", kubernetes_ca_cert: $ca, token_reviewer_jwt: $jwt}')" >/dev/null
 	vault_api PUT sys/policies/acl/bambuflow-online "$(jq -n \
 		--arg p 'path "secret/data/bambuflow/*" { capabilities = ["read"] }
-path "secret/data/gateway/*" { capabilities = ["read"] }' '{policy: $p}')" >/dev/null
+path "secret/data/gateway/*" { capabilities = ["read"] }
+path "secret/data/governance/*" { capabilities = ["read"] }
+path "transit/decrypt/bambuflow-pii" { capabilities = ["update"] }
+path "transit/datakey/plaintext/bambuflow-answers" { capabilities = ["update"] }
+path "transit/decrypt/bambuflow-answers" { capabilities = ["update"] }' '{policy: $p}')" >/dev/null
 	vault_api POST auth/kubernetes/role/bambuflow-online "$(jq -n --arg rel "$REL" --arg ns "$NS" \
-		'{bound_service_account_names: [$rel + "-gateway", $rel + "-vault-sync"],
+		'{bound_service_account_names: [$rel + "-gateway", $rel + "-retrieval", $rel + "-governance", $rel + "-orchestrator", $rel + "-vault-sync"],
 		  bound_service_account_namespaces: [$ns], policies: ["bambuflow-online"], ttl: "1h"}')" >/dev/null
 	# webhook 单独一个角色：只能读写订阅的签名密钥
 	vault_api PUT sys/policies/acl/bambuflow-webhook "$(jq -n \

@@ -23,8 +23,8 @@ import (
 	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
 	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenancy"
 )
 
 // ---- 假的 qa/batch：用 gateway 发布的 JWKS 验签 Principal，只对提交人 alice 返回批次 ----

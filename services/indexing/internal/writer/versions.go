@@ -214,7 +214,8 @@ func (a *VersionAdmin) ApproveOperation(ctx context.Context, r *adminv1.ApproveO
 	var op operation
 	var refused error
 	err = pgx.BeginFunc(ctx, a.Pool, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+operationCols+` FROM idx.operations WHERE operation_id = $1 FOR UPDATE`, r.GetOperationId())
+		rows, err := tx.Query(ctx, `SELECT `+operationCols+` FROM idx.operations WHERE operation_id = $1 AND action = $2 FOR UPDATE`,
+			r.GetOperationId(), actionActivate)
 		if err != nil {
 			return err
 		}

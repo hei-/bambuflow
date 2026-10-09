@@ -8,6 +8,8 @@ dependencies = [
     "grpcio>=1.84.0",
     "httpx>=0.28",
     "pyjwt[crypto]>=2.10",
+    # 配置快照验签（snapshot.py）；pyjwt[crypto] 已经依赖它，这里显式声明
+    "cryptography>=44",
     "opentelemetry-api>=1.38",
     "opentelemetry-sdk>=1.38",
     "opentelemetry-exporter-otlp-proto-grpc>=1.38",

@@ -26,7 +26,7 @@ from bambuflow_grounding import (
     GroundingUnavailableError,
     Verdict,
 )
-from bambuflow_orchestrator import context, prompt, redact
+from bambuflow_orchestrator import confidence, context, prompt, redact
 from bambuflow_orchestrator.experiments import Assignment
 from bambuflow_orchestrator.llm import CircuitOpenError, LLMUnavailableError
 from bambuflow_orchestrator.parse import Parser
@@ -167,6 +167,8 @@ class Answer:
         self.citations: dict[int, answer_pb2.Citation] = {}
         self._hits: dict[int, retrieval_pb2.Hit] = {}
         self._candidates: list[str] = []
+        # 回答整体的置信度（详设 7.8）：有陈述经过校验、回答为 answered 或证据不足时才给
+        self.confidence: answer_pb2.Confidence | None = None
 
     async def _gather(self) -> retrieval_pb2.SearchResponse:
         """取证据：单跳是一次检索。"""
@@ -217,6 +219,9 @@ class Answer:
         by_ref = {
             ref: Evidence(ref, h.chunk_id, h.text, h.injection_flag) for ref, h in self.evidence
         }
+        # 置信度的特征：最高精排分（没有精排时为 None）与每句的支持度
+        top_rerank = max(h.score for _, h in self.evidence) if found.rerank_model else None
+        supports: list[float] = []
         parser = Parser()
         passed = 0
         dropped: list[str] = []
@@ -242,6 +247,7 @@ class Answer:
                     why.nli_model = why.nli_model or result.nli_model
                     why.support_threshold = result.support_threshold
                     for v in result.verdicts:
+                        supports.append(v.support)
                         if not v.passed:
                             dropped.append(v.reason)
                             continue
@@ -276,6 +282,9 @@ class Answer:
             if passed and coverage >= min_coverage
             else answer_pb2.STATUS_INSUFFICIENT_EVIDENCE
         )
+        if supports:
+            cited = {c.doc_id for c in self.citations.values()}
+            self.confidence = confidence.compute(passed, supports, top_rerank, len(cited))
         if passed:
             for block_id, block_type, text in self._notes():
                 yield self._note(block_id, block_type, text)
@@ -393,14 +402,15 @@ class Answer:
     def _final(self) -> Event:
         # 非流式的 response() 也读 self.why：final 总在它之前产生
         self._graph_paths()
-        return Event(
-            final=answer_pb2.AnswerFinal(
-                status=self.status,
-                why=self.why,
-                audit=self.audit(),
-                answer_kind=answer_pb2.ANSWER_KIND_FACT,
-            )
+        final = answer_pb2.AnswerFinal(
+            status=self.status,
+            why=self.why,
+            audit=self.audit(),
+            answer_kind=answer_pb2.ANSWER_KIND_FACT,
         )
+        if self.confidence is not None:
+            final.confidence.CopyFrom(self.confidence)
+        return Event(final=final)
 
     def audit(self) -> answer_pb2.AuditBlocks:
         """审计用的三类块：候选、上下文、展示（被引用的块）。"""
@@ -422,6 +432,8 @@ class Answer:
             # 非流式的 evidence_only 只给证据，不带中途已校验的句子，引文统一取块正文开头
             out.citations.extend(citation(r, h, h.text[:QUOTE_CHARS]) for r, h in self.evidence)
             return out
+        if self.confidence is not None:
+            out.confidence.CopyFrom(self.confidence)
         out.answer = self.text
         out.sentences.extend(self.sentences)
         out.blocks.extend(self.blocks.values())

@@ -71,6 +71,8 @@ message AnswerFinal {
   AuditBlocks audit = 3;
   AnswerKind answer_kind = 4;
   TokenUsage usage = 5;
+  // 与 AnswerResponse.confidence 相同。
+  Confidence confidence = 6;
 }
 
 // AuditBlocks 是一次回答涉及的三类块（技术设计文档 8.3，评估报告 K12）：
@@ -108,6 +110,8 @@ message AnswerResponse {
   // 本轮所属的会话，下一轮带上它（orchestrator 详设 10.1）。
   string conversation_id = 11;
   TokenUsage usage = 12;
+  // 回答整体的置信度（技术设计文档 7.8）；拒答、仅证据与清单类回答不给。
+  Confidence confidence = 13;
 }
 
 // 回答类型（K2 详设第 7 节），供前端选择展示方式、供评测分桶。
@@ -407,4 +411,35 @@ message Feedback {
   FeedbackRating rating = 3;
   optional int32 sentence_index = 4;
   google.protobuf.Timestamp created_at = 5;
+}
+
+// 置信度：“这个回答正确且有据”的可能性（技术设计文档 7.8）。
+// score = sigmoid(w1·coverage + w2·mean_support + w3·top_rerank + w4·source_diversity − w5·conflict + b)，
+// 权重由 evaluation 在评测集上校准，版本记在 weights_version；未校准时用保守的默认权重。
+message Confidence {
+  // 0–1
+  double score = 1;
+  ConfidenceLevel level = 2;
+  string weights_version = 3;
+  // 引用覆盖率：通过校验的句子数 / 陈述总数
+  double coverage = 4;
+  // 各句支持度的平均值（含未通过的句子）
+  double mean_support = 5;
+  // 送入上下文的证据里最高的精排分；没有精排时为 0.5（不偏向任何一边）
+  double top_rerank = 6;
+  // 来源多样性：min(被引用的独立文档数, 3) / 3
+  double source_diversity = 7;
+  // 是否存在未解决的证据冲突
+  bool conflict = 8;
+}
+
+// 置信度分档（技术设计文档 7.8）：低档在界面上提示用户核实原文。
+enum ConfidenceLevel {
+  CONFIDENCE_LEVEL_UNSPECIFIED = 0;
+  // < 0.5
+  CONFIDENCE_LEVEL_LOW = 1;
+  // 0.5–0.8
+  CONFIDENCE_LEVEL_MEDIUM = 2;
+  // ≥ 0.8
+  CONFIDENCE_LEVEL_HIGH = 3;
 }

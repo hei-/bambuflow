@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// EvalGateAdminService 是评测门禁的列表与报告（evaluation 详设 5.2、8.2），由 evaluation 实现，
+// gateway 的 /v1/admin/eval-gates 调用；平台管理员与平台运维可看。门禁结论由评测运行写入，这里只读。
+service EvalGateAdminService {
+  rpc ListGates(ListGatesRequest) returns (ListGatesResponse);
+  rpc GetGate(GetGateRequest) returns (GetGateResponse);
+}
+
+message GateMetric {
+  string name = 1;
+  // 没有样本时不填
+  optional double value = 2;
+}
+
+message GateConfigVersion {
+  // 如 snapshot_version、index_version、model
+  string name = 1;
+  repeated string values = 2;
+}
+
+message Gate {
+  // gate_ 前缀
+  string gate_id = 1;
+  // ci、config_release、index_publish、index_rebuild、scheduled、manual
+  string trigger = 2;
+  string golden_set = 3;
+  string golden_version = 4;
+  repeated string tenants = 5;
+  // passed、failed、indeterminate
+  string conclusion = 6;
+  repeated string reasons = 7;
+  // 多次运行间结果不同的题，只作参考
+  repeated string unstable = 8;
+  repeated GateMetric metrics = 9;
+  repeated GateConfigVersion config = 10;
+  int32 repeats = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message ListGatesRequest {
+  // 只看涉及这个租户的门禁
+  string tenant = 1;
+  string trigger = 2;
+  // 默认 50，最多 200
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListGatesResponse {
+  // 最近的在前
+  repeated Gate gates = 1;
+  string next_page_token = 2;
+}
+
+message GetGateRequest {
+  string gate_id = 1;
+}
+
+message GetGateResponse {
+  Gate gate = 1;
+  // 完整报告（Markdown）：各指标候选与基线对照、按租户与分桶、变差的题
+  string report_markdown = 2;
+}

@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// GoldenSetAdminService 是评测集题目的查看与候选题复核（evaluation 详设 3.4、8.2），由 evaluation 实现，
+// gateway 的 /v1/admin/golden-sets/{tenant}/questions 调用。
+//
+// 评测集以仓库 golden/ 为准（评测集变更要和被评测的变更分开评审）：这里列出的是 evaluation 镜像里那一版；
+// 新题先作为候选题提交，业务专家（数据属主）与平台（平台管理员）各一人复核通过后才能入集，
+// 由 python -m bambuflow_evaluation candidates 导出成 YAML 走合并请求加进 golden/。
+service GoldenSetAdminService {
+  rpc ListQuestions(ListQuestionsRequest) returns (ListQuestionsResponse);
+  rpc SubmitCandidate(SubmitCandidateRequest) returns (SubmitCandidateResponse);
+  rpc ReviewCandidate(ReviewCandidateRequest) returns (ReviewCandidateResponse);
+}
+
+message GoldenExpected {
+  // answered、insufficient_evidence、refused
+  string status = 1;
+  repeated string key_points = 2;
+  repeated string must_cite = 3;
+  repeated string must_not_cite = 4;
+}
+
+message GoldenQuestion {
+  // 已入集的题为评测集里的 id；候选题为 cand_ 前缀
+  string question_id = 1;
+  string golden_set = 2;
+  string bucket = 3;
+  // 提问身份模板（askers.yaml 的名字）
+  string asker = 4;
+  string question = 5;
+  GoldenExpected expected = 6;
+  // in_set（已入集）；候选题为 pending、accepted、rejected
+  string status = 7;
+  // 候选题的来源：expert、feedback、online_sample、llm_generated
+  string origin = 8;
+  string submitted_by = 9;
+  google.protobuf.Timestamp submitted_at = 10;
+  // 已通过的复核：业务专家、平台各一人
+  string expert_reviewer = 11;
+  string platform_reviewer = 12;
+  string reject_reason = 13;
+}
+
+message ListQuestionsRequest {
+  string tenant = 1;
+  // 是否包括候选题（默认只列已入集的题）
+  bool include_candidates = 2;
+}
+
+message ListQuestionsResponse {
+  repeated GoldenQuestion questions = 1;
+  // 评测集版本（questions.yaml 的 version），按集合列出
+  repeated string golden_versions = 2;
+}
+
+message SubmitCandidateRequest {
+  string tenant = 1;
+  string golden_set = 2;
+  string bucket = 3;
+  string asker = 4;
+  string question = 5;
+  GoldenExpected expected = 6;
+  string origin = 7;
+}
+
+message SubmitCandidateResponse {
+  GoldenQuestion question = 1;
+}
+
+message ReviewCandidateRequest {
+  string tenant = 1;
+  string question_id = 2;
+  bool approved = 3;
+  // 驳回时必填，最多 500 字
+  string reason = 4;
+}
+
+message ReviewCandidateResponse {
+  GoldenQuestion question = 1;
+}

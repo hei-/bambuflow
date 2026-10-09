@@ -600,3 +600,13 @@ def test_restricted_context_falls_back_to_baseline() -> None:
     r, _ = run_in(treat, FakeRetrieval([restricted, flagged]))
     assert r.why.experiment_arm == answer_pb2.EXPERIMENT_ARM_EXCLUDED
     assert r.status == answer_pb2.STATUS_INSUFFICIENT_EVIDENCE and r.why.support_threshold == 0.5
+
+
+def test_answer_carries_confidence() -> None:
+    r = run()
+    assert r.status == answer_pb2.STATUS_ANSWERED
+    assert r.confidence.weights_version and r.confidence.coverage == 1.0
+    assert r.confidence.level != answer_pb2.CONFIDENCE_LEVEL_UNSPECIFIED
+    # 没有陈述经过校验（没有证据）时不给置信度
+    empty = run(retrieval=FakeRetrieval([]))
+    assert not empty.HasField("confidence")

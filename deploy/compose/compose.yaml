@@ -194,11 +194,21 @@ services:
       BF_AUDIT_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
       BF_AUDIT_BUCKET: bambuflow-audit
       BF_AUDIT_RETENTION_DAYS: "1"
+      # 快照签名私钥在 Vault（vault-seed 写入）
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
       # 平台事件流：撤销数据源时发 source.revoked
       BF_REDIS_ADDR: redis:6379
+      # 租户配置的初始版本（只为还没有版本的租户导入，之后经变更单与发布修改）；开发镜像里是 tools/test-upstream/tenants
+      BF_TENANTS_SEED_DIR: /etc/bambuflow/tenants
+      BF_PLATFORM_CLIENTS: console
+      # 租户切到全量时核对评测门禁
+      BF_EVALUATION_ADDR: evaluation-api:9090
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
     depends_on:
+      vault-seed:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       vocab-seed:
@@ -258,7 +268,6 @@ services:
     image: bambuflow-gateway:dev
     environment:
       BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
-      BF_TENANTS_DIR: /etc/bambuflow/tenants
       # 平台角色 → 群组（管理接口的 RBAC），测试映射见 tools/test-upstream/admin-roles.yaml
       BF_ADMIN_ROLES_FILE: /etc/bambuflow/admin-roles.yaml
       BF_PLATFORM_CLIENTS: console
@@ -275,6 +284,9 @@ services:
       BF_EVALUATION_ADDR: evaluation-api:9090
       # indexing 在 ingest profile 里；没起时索引版本的管理接口返回 503
       BF_INDEXING_ADDR: indexing:9090
+      # processing 的管理服务同样在 ingest profile 里；没起时入库运维接口返回 503
+      BF_PROCESSING_ADMIN_ADDR: processing-admin:9090
+      BF_CONNECTORS_ADMIN_ADDR: connectors-admin:9090
       BF_REDIS_ADDR: redis:6379
       # e2e 与评测用少数几个测试用户连续发请求，开发环境把限流放宽；生产取 gateway 详设 5.1 的默认值
       BF_CLIENT_RPS: "1000"
@@ -302,6 +314,9 @@ services:
       redis:
         condition: service_healthy
       keycloak:
+        condition: service_healthy
+      # 租户配置由 governance 的配置快照下发，拿不到就不启动
+      governance:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck
@@ -363,7 +378,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # evaluation 常驻服务（evaluation 详设第 2 节）：A/B 分析与在线质量趋势接口；读 governance 的实验、orchestrator 的回答记录。
+  # evaluation 常驻服务（evaluation 详设第 2 节）：A/B 分析、在线质量趋势与门禁报告接口；读 governance 的实验、orchestrator 的回答记录。
   # 护栏检查（guard）与在线抽样评审（online-sample）在生产是每天的 CronJob，开发环境按需
   # docker compose run evaluation-api guard | online-sample
   evaluation-api:
@@ -380,6 +395,11 @@ services:
       BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
       BF_EVAL_NLI_MODEL: ${BF_EVAL_NLI_MODEL:-nli}
       BF_ONLINE_TENANTS: credit,ops
+      # 异步门禁（EvalService.RunGate）跑在评测副本上，评测身份用开发签名密钥签发（signer.py）
+      BF_EVAL_RETRIEVAL_ADDR: retrieval-eval:9090
+      BF_EVAL_ORCHESTRATOR_ADDR: orchestrator-eval:9090
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
     depends_on:
       evaluation-migrate:
         condition: service_completed_successfully
@@ -438,6 +458,9 @@ services:
       # 权限评测集与 e2e 用少数几个租户连续调用，开发环境把租户限流放宽；生产取 retrieval 详设 9.2 的部署值
       BF_TENANT_RPS: "1000"
       BF_TENANT_BURST: "2000"
+      # 能看 PII 原文的调用者经 Vault transit 解开入库时加密的原值
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
     depends_on:
@@ -450,6 +473,21 @@ services:
     healthcheck:
       <<: *healthcheck
       test: [CMD, retrieval, healthcheck]
+
+  # 评测副本（evaluation 详设 4.2）：与线上同一镜像，开启评测模式（接受门禁指定的索引版本），不接任何来自 gateway 的流量
+  retrieval-eval:
+    extends: {service: retrieval}
+    environment:
+      BF_EVAL_MODE: "1"
+
+  orchestrator-eval:
+    extends: {service: orchestrator}
+    environment:
+      BF_EVAL_MODE: "1"
+      BF_RETRIEVAL_ADDR: retrieval-eval:9090
+    depends_on:
+      retrieval-eval:
+        condition: service_healthy
 
   # 回答记录与反馈的表结构（orchestrator schema），与 orchestrator 用同一个镜像
   orchestrator-migrate:
@@ -485,6 +523,10 @@ services:
       BF_REDIS_ADDR: redis:6379
       # 回答记录与反馈（回放、反馈接口）
       BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      # 回答记录的信封加密（问题原文、受限级回答快照）：Vault transit 的主密钥（vault-seed 建）
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      BF_ANSWER_KEY: bambuflow-answers
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       # sql_query：视图目录与查询账号（P3-Q）；查询账号由 make ingest 的 dbschema-seed 建，之前 sql_query 返回不可用
@@ -495,6 +537,8 @@ services:
         target: /etc/bambuflow/sql-catalog.yaml
     secrets: [llm_api_key]
     depends_on:
+      vault-seed:
+        condition: service_completed_successfully
       orchestrator-migrate:
         condition: service_completed_successfully
       redis:
@@ -756,7 +800,12 @@ services:
       context: ../..
       dockerfile: services/ingestion/processing/Dockerfile
     image: bambuflow-processing:dev
-    environment: *ingest-env
+    environment:
+      <<: *ingest-env
+      # PII 原值的信封加密：Vault transit 的主密钥（vault-seed 启用）
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      BF_PII_KEY: bambuflow-pii
     depends_on:
       indexing:
         condition: service_healthy
@@ -767,6 +816,39 @@ services:
       governance:
         condition: service_healthy
 
+  # connectors 的数据源运维接口（同步状态、暂停与恢复），gateway 的 /v1/admin 调用；同步状态与各同步任务共用 Redis
+  connectors-admin:
+    profiles: [ingest]
+    build:
+      context: ../..
+      dockerfile: services/ingestion/connectors/Dockerfile
+      args:
+        GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+      target: dev
+    image: bambuflow-connectors:dev
+    command: [serve-admin]
+    environment:
+      BF_REDIS_ADDR: redis:6379
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, connectors, healthcheck]
+
+  # processing 的入库运维接口（入库状态、死信、重放），gateway 的 /v1/admin 调用；与 run-once 共用镜像和 Redis
+  processing-admin:
+    profiles: [ingest]
+    build:
+      context: ../..
+      dockerfile: services/ingestion/processing/Dockerfile
+    image: bambuflow-processing:dev
+    command: [serve-admin]
+    environment:
+      BF_REDIS_URL: redis://redis:6379/0
+      BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, python, -c, "import socket; socket.create_connection(('127.0.0.1', 9090), 3)"]
+
   indexing-publish:
     profiles: [ingest-job]
     image: bambuflow-indexing:dev
@@ -774,8 +856,12 @@ services:
     command: [publish]
     environment:
       BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      # 先对待发布版本跑评测门禁，通过才切别名
+      BF_EVAL_ADDR: evaluation-api:9090
     depends_on:
       indexing:
+        condition: service_healthy
+      evaluation-api:
         condition: service_healthy
 
   # 权限评测集的故障注入（make eval-perm）：同一镜像分别去掉策略包、指向不存在的元数据库、拿不到 governance 的租户授权，
@@ -818,6 +904,8 @@ services:
       # 评测身份用 gateway 的开发签名密钥签发（只在开发与 CI 的 Vault 里存在，services/evaluation 的 signer.py）
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+      # 门禁结论与报告写进 evaluation.gate_runs（/v1/admin/eval-gates 查询；表由 core profile 的 evaluation-migrate 建）
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
 
   # 端到端测试：用工具镜像在 compose 网络里运行 tools/e2e，不从本机直连服务。由 make e2e 调用。
   e2e:

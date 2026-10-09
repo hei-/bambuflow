@@ -914,6 +914,9 @@ type Chunk struct {
 	Embedding []float32 `protobuf:"fixed32,7,rep,packed,name=embedding,proto3" json:"embedding,omitempty"`
 	// 入库时检测到可疑指令（提示词注入，入库管道详设第 7 节）。带标记的块照常可检索，但在线不能成为任何陈述的唯一依据。
 	InjectionFlag bool `protobuf:"varint,8,opt,name=injection_flag,json=injectionFlag,proto3" json:"injection_flag,omitempty"`
+	// text 里 PII 已做等长掩码（入库管道详设第 6 节：索引只存掩码文本）；原值用信封加密单独保存，
+	// 只有策略允许看 PII 原文的调用者在检索返回时解密还原。没有 PII 的块为空。
+	Pii           *SealedPII `protobuf:"bytes,9,opt,name=pii,proto3" json:"pii,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1004,6 +1007,79 @@ func (x *Chunk) GetInjectionFlag() bool {
 	return false
 }
 
+func (x *Chunk) GetPii() *SealedPII {
+	if x != nil {
+		return x.Pii
+	}
+	return nil
+}
+
+// 一个块里 PII 原值的密文（技术设计文档 8.6 应用层信封加密）：
+// 明文是 [[start, end, 原值], …] 的 JSON（start、end 为 text 里被掩码片段的 Unicode 字符位置），
+// 用文档级数据密钥 AES-256-GCM 加密，附加数据为 chunk_id；数据密钥由密钥服务（默认 Vault transit）的主密钥包裹。
+type SealedPII struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 12 字节随机数 + 密文与认证标签
+	Ciphertext []byte `protobuf:"bytes,1,opt,name=ciphertext,proto3" json:"ciphertext,omitempty"`
+	// 被主密钥包裹的数据密钥（Vault transit 的 vault:v1:… 形式）
+	WrappedKey string `protobuf:"bytes,2,opt,name=wrapped_key,json=wrappedKey,proto3" json:"wrapped_key,omitempty"`
+	// 主密钥名
+	KeyId         string `protobuf:"bytes,3,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SealedPII) Reset() {
+	*x = SealedPII{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SealedPII) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SealedPII) ProtoMessage() {}
+
+func (x *SealedPII) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SealedPII.ProtoReflect.Descriptor instead.
+func (*SealedPII) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *SealedPII) GetCiphertext() []byte {
+	if x != nil {
+		return x.Ciphertext
+	}
+	return nil
+}
+
+func (x *SealedPII) GetWrappedKey() string {
+	if x != nil {
+		return x.WrappedKey
+	}
+	return ""
+}
+
+func (x *SealedPII) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
 type WriteDocumentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Result        WriteResult            `protobuf:"varint,1,opt,name=result,proto3,enum=bambuflow.ingestion.v1.WriteResult" json:"result,omitempty"`
@@ -1017,7 +1093,7 @@ type WriteDocumentResponse struct {
 
 func (x *WriteDocumentResponse) Reset() {
 	*x = WriteDocumentResponse{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1029,7 +1105,7 @@ func (x *WriteDocumentResponse) String() string {
 func (*WriteDocumentResponse) ProtoMessage() {}
 
 func (x *WriteDocumentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1042,7 +1118,7 @@ func (x *WriteDocumentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteDocumentResponse.ProtoReflect.Descriptor instead.
 func (*WriteDocumentResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *WriteDocumentResponse) GetResult() WriteResult {
@@ -1144,7 +1220,7 @@ const file_bambuflow_ingestion_v1_index_writer_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\x05 \x01(\x02R\n" +
 	"confidence\x12+\n" +
-	"\x11extractor_version\x18\x06 \x01(\tR\x10extractorVersion\"\x92\x02\n" +
+	"\x11extractor_version\x18\x06 \x01(\tR\x10extractorVersion\"\xc7\x02\n" +
 	"\x05Chunk\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12&\n" +
 	"\x0fparent_chunk_id\x18\x02 \x01(\tR\rparentChunkId\x12!\n" +
@@ -1153,7 +1229,15 @@ const file_bambuflow_ingestion_v1_index_writer_proto_rawDesc = "" +
 	"\ttext_hash\x18\x05 \x01(\tR\btextHash\x12-\n" +
 	"\x04span\x18\x06 \x01(\v2\x19.bambuflow.common.v1.SpanR\x04span\x12\x1c\n" +
 	"\tembedding\x18\a \x03(\x02R\tembedding\x12%\n" +
-	"\x0einjection_flag\x18\b \x01(\bR\rinjectionFlag\"\xc1\x01\n" +
+	"\x0einjection_flag\x18\b \x01(\bR\rinjectionFlag\x123\n" +
+	"\x03pii\x18\t \x01(\v2!.bambuflow.ingestion.v1.SealedPIIR\x03pii\"c\n" +
+	"\tSealedPII\x12\x1e\n" +
+	"\n" +
+	"ciphertext\x18\x01 \x01(\fR\n" +
+	"ciphertext\x12\x1f\n" +
+	"\vwrapped_key\x18\x02 \x01(\tR\n" +
+	"wrappedKey\x12\x15\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\xc1\x01\n" +
 	"\x15WriteDocumentResponse\x12;\n" +
 	"\x06result\x18\x01 \x01(\x0e2#.bambuflow.ingestion.v1.WriteResultR\x06result\x12\x1f\n" +
 	"\vdoc_version\x18\x02 \x01(\x03R\n" +
@@ -1197,7 +1281,7 @@ func file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP() []byte {
 }
 
 var file_bambuflow_ingestion_v1_index_writer_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_bambuflow_ingestion_v1_index_writer_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_bambuflow_ingestion_v1_index_writer_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_bambuflow_ingestion_v1_index_writer_proto_goTypes = []any{
 	(AclResult)(0),                    // 0: bambuflow.ingestion.v1.AclResult
 	(TombstoneResult)(0),              // 1: bambuflow.ingestion.v1.TombstoneResult
@@ -1212,47 +1296,49 @@ var file_bambuflow_ingestion_v1_index_writer_proto_goTypes = []any{
 	(*Entity)(nil),                    // 10: bambuflow.ingestion.v1.Entity
 	(*Relation)(nil),                  // 11: bambuflow.ingestion.v1.Relation
 	(*Chunk)(nil),                     // 12: bambuflow.ingestion.v1.Chunk
-	(*WriteDocumentResponse)(nil),     // 13: bambuflow.ingestion.v1.WriteDocumentResponse
-	(v1.Classification)(0),            // 14: bambuflow.common.v1.Classification
-	(*timestamppb.Timestamp)(nil),     // 15: google.protobuf.Timestamp
-	(v1.SourceType)(0),                // 16: bambuflow.common.v1.SourceType
-	(*v1.DocMetadata)(nil),            // 17: bambuflow.common.v1.DocMetadata
-	(v1.EntityType)(0),                // 18: bambuflow.common.v1.EntityType
-	(v1.RelationType)(0),              // 19: bambuflow.common.v1.RelationType
-	(*v1.Span)(nil),                   // 20: bambuflow.common.v1.Span
+	(*SealedPII)(nil),                 // 13: bambuflow.ingestion.v1.SealedPII
+	(*WriteDocumentResponse)(nil),     // 14: bambuflow.ingestion.v1.WriteDocumentResponse
+	(v1.Classification)(0),            // 15: bambuflow.common.v1.Classification
+	(*timestamppb.Timestamp)(nil),     // 16: google.protobuf.Timestamp
+	(v1.SourceType)(0),                // 17: bambuflow.common.v1.SourceType
+	(*v1.DocMetadata)(nil),            // 18: bambuflow.common.v1.DocMetadata
+	(v1.EntityType)(0),                // 19: bambuflow.common.v1.EntityType
+	(v1.RelationType)(0),              // 20: bambuflow.common.v1.RelationType
+	(*v1.Span)(nil),                   // 21: bambuflow.common.v1.Span
 }
 var file_bambuflow_ingestion_v1_index_writer_proto_depIdxs = []int32{
-	14, // 0: bambuflow.ingestion.v1.UpdateAclRequest.classification:type_name -> bambuflow.common.v1.Classification
-	15, // 1: bambuflow.ingestion.v1.UpdateAclRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	15, // 0: bambuflow.ingestion.v1.UpdateAclRequest.classification:type_name -> bambuflow.common.v1.Classification
+	16, // 1: bambuflow.ingestion.v1.UpdateAclRequest.occurred_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: bambuflow.ingestion.v1.UpdateAclResponse.result:type_name -> bambuflow.ingestion.v1.AclResult
-	15, // 3: bambuflow.ingestion.v1.TombstoneDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	16, // 3: bambuflow.ingestion.v1.TombstoneDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
 	1,  // 4: bambuflow.ingestion.v1.TombstoneDocumentResponse.result:type_name -> bambuflow.ingestion.v1.TombstoneResult
-	15, // 5: bambuflow.ingestion.v1.WriteDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
-	16, // 6: bambuflow.ingestion.v1.WriteDocumentRequest.source_type:type_name -> bambuflow.common.v1.SourceType
-	14, // 7: bambuflow.ingestion.v1.WriteDocumentRequest.classification:type_name -> bambuflow.common.v1.Classification
+	16, // 5: bambuflow.ingestion.v1.WriteDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	17, // 6: bambuflow.ingestion.v1.WriteDocumentRequest.source_type:type_name -> bambuflow.common.v1.SourceType
+	15, // 7: bambuflow.ingestion.v1.WriteDocumentRequest.classification:type_name -> bambuflow.common.v1.Classification
 	12, // 8: bambuflow.ingestion.v1.WriteDocumentRequest.chunks:type_name -> bambuflow.ingestion.v1.Chunk
-	17, // 9: bambuflow.ingestion.v1.WriteDocumentRequest.metadata:type_name -> bambuflow.common.v1.DocMetadata
+	18, // 9: bambuflow.ingestion.v1.WriteDocumentRequest.metadata:type_name -> bambuflow.common.v1.DocMetadata
 	11, // 10: bambuflow.ingestion.v1.WriteDocumentRequest.relations:type_name -> bambuflow.ingestion.v1.Relation
 	8,  // 11: bambuflow.ingestion.v1.WriteDocumentRequest.enrichment:type_name -> bambuflow.ingestion.v1.Enrichment
 	12, // 12: bambuflow.ingestion.v1.Enrichment.summary_chunk:type_name -> bambuflow.ingestion.v1.Chunk
 	9,  // 13: bambuflow.ingestion.v1.Enrichment.sections:type_name -> bambuflow.ingestion.v1.SectionSummary
-	18, // 14: bambuflow.ingestion.v1.Entity.type:type_name -> bambuflow.common.v1.EntityType
+	19, // 14: bambuflow.ingestion.v1.Entity.type:type_name -> bambuflow.common.v1.EntityType
 	10, // 15: bambuflow.ingestion.v1.Relation.subject:type_name -> bambuflow.ingestion.v1.Entity
-	19, // 16: bambuflow.ingestion.v1.Relation.relation_type:type_name -> bambuflow.common.v1.RelationType
+	20, // 16: bambuflow.ingestion.v1.Relation.relation_type:type_name -> bambuflow.common.v1.RelationType
 	10, // 17: bambuflow.ingestion.v1.Relation.object:type_name -> bambuflow.ingestion.v1.Entity
-	20, // 18: bambuflow.ingestion.v1.Chunk.span:type_name -> bambuflow.common.v1.Span
-	2,  // 19: bambuflow.ingestion.v1.WriteDocumentResponse.result:type_name -> bambuflow.ingestion.v1.WriteResult
-	7,  // 20: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:input_type -> bambuflow.ingestion.v1.WriteDocumentRequest
-	5,  // 21: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:input_type -> bambuflow.ingestion.v1.TombstoneDocumentRequest
-	3,  // 22: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:input_type -> bambuflow.ingestion.v1.UpdateAclRequest
-	13, // 23: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:output_type -> bambuflow.ingestion.v1.WriteDocumentResponse
-	6,  // 24: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:output_type -> bambuflow.ingestion.v1.TombstoneDocumentResponse
-	4,  // 25: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:output_type -> bambuflow.ingestion.v1.UpdateAclResponse
-	23, // [23:26] is the sub-list for method output_type
-	20, // [20:23] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	21, // 18: bambuflow.ingestion.v1.Chunk.span:type_name -> bambuflow.common.v1.Span
+	13, // 19: bambuflow.ingestion.v1.Chunk.pii:type_name -> bambuflow.ingestion.v1.SealedPII
+	2,  // 20: bambuflow.ingestion.v1.WriteDocumentResponse.result:type_name -> bambuflow.ingestion.v1.WriteResult
+	7,  // 21: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:input_type -> bambuflow.ingestion.v1.WriteDocumentRequest
+	5,  // 22: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:input_type -> bambuflow.ingestion.v1.TombstoneDocumentRequest
+	3,  // 23: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:input_type -> bambuflow.ingestion.v1.UpdateAclRequest
+	14, // 24: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:output_type -> bambuflow.ingestion.v1.WriteDocumentResponse
+	6,  // 25: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:output_type -> bambuflow.ingestion.v1.TombstoneDocumentResponse
+	4,  // 26: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:output_type -> bambuflow.ingestion.v1.UpdateAclResponse
+	24, // [24:27] is the sub-list for method output_type
+	21, // [21:24] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_ingestion_v1_index_writer_proto_init() }
@@ -1266,7 +1352,7 @@ func file_bambuflow_ingestion_v1_index_writer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_ingestion_v1_index_writer_proto_rawDesc), len(file_bambuflow_ingestion_v1_index_writer_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

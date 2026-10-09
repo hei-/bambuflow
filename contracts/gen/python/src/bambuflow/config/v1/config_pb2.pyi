@@ -16,6 +16,60 @@ TERM_STATUS_UNSPECIFIED: TermStatus
 TERM_STATUS_ACTIVE: TermStatus
 TERM_STATUS_DEPRECATED: TermStatus
 
+class WatchRequest(_message.Message):
+    __slots__ = ("service", "instance_id", "loaded")
+    SERVICE_FIELD_NUMBER: _ClassVar[int]
+    INSTANCE_ID_FIELD_NUMBER: _ClassVar[int]
+    LOADED_FIELD_NUMBER: _ClassVar[int]
+    service: str
+    instance_id: str
+    loaded: str
+    def __init__(self, service: _Optional[str] = ..., instance_id: _Optional[str] = ..., loaded: _Optional[str] = ...) -> None: ...
+
+class WatchResponse(_message.Message):
+    __slots__ = ("service", "snapshot_version")
+    SERVICE_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_VERSION_FIELD_NUMBER: _ClassVar[int]
+    service: str
+    snapshot_version: str
+    def __init__(self, service: _Optional[str] = ..., snapshot_version: _Optional[str] = ...) -> None: ...
+
+class AckRequest(_message.Message):
+    __slots__ = ("service", "instance_id", "snapshot_version", "loaded", "reason")
+    SERVICE_FIELD_NUMBER: _ClassVar[int]
+    INSTANCE_ID_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_VERSION_FIELD_NUMBER: _ClassVar[int]
+    LOADED_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    service: str
+    instance_id: str
+    snapshot_version: str
+    loaded: bool
+    reason: str
+    def __init__(self, service: _Optional[str] = ..., instance_id: _Optional[str] = ..., snapshot_version: _Optional[str] = ..., loaded: _Optional[bool] = ..., reason: _Optional[str] = ...) -> None: ...
+
+class AckResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetSigningKeysRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetSigningKeysResponse(_message.Message):
+    __slots__ = ("keys",)
+    KEYS_FIELD_NUMBER: _ClassVar[int]
+    keys: _containers.RepeatedCompositeFieldContainer[SigningKey]
+    def __init__(self, keys: _Optional[_Iterable[_Union[SigningKey, _Mapping]]] = ...) -> None: ...
+
+class SigningKey(_message.Message):
+    __slots__ = ("key_id", "public_key")
+    KEY_ID_FIELD_NUMBER: _ClassVar[int]
+    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    key_id: str
+    public_key: bytes
+    def __init__(self, key_id: _Optional[str] = ..., public_key: _Optional[bytes] = ...) -> None: ...
+
 class GetSnapshotRequest(_message.Message):
     __slots__ = ("service",)
     SERVICE_FIELD_NUMBER: _ClassVar[int]
@@ -23,16 +77,34 @@ class GetSnapshotRequest(_message.Message):
     def __init__(self, service: _Optional[str] = ...) -> None: ...
 
 class GetSnapshotResponse(_message.Message):
-    __slots__ = ("snapshot_version", "vocabularies", "source_grants", "experiments")
+    __slots__ = ("snapshot_version", "vocabularies", "source_grants", "experiments", "signed_payload", "signature", "signing_key_id", "tenants")
     SNAPSHOT_VERSION_FIELD_NUMBER: _ClassVar[int]
     VOCABULARIES_FIELD_NUMBER: _ClassVar[int]
     SOURCE_GRANTS_FIELD_NUMBER: _ClassVar[int]
     EXPERIMENTS_FIELD_NUMBER: _ClassVar[int]
+    SIGNED_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    SIGNATURE_FIELD_NUMBER: _ClassVar[int]
+    SIGNING_KEY_ID_FIELD_NUMBER: _ClassVar[int]
+    TENANTS_FIELD_NUMBER: _ClassVar[int]
     snapshot_version: str
     vocabularies: _containers.RepeatedCompositeFieldContainer[Vocabulary]
     source_grants: _containers.RepeatedCompositeFieldContainer[SourceGrant]
     experiments: _containers.RepeatedCompositeFieldContainer[RunningExperiment]
-    def __init__(self, snapshot_version: _Optional[str] = ..., vocabularies: _Optional[_Iterable[_Union[Vocabulary, _Mapping]]] = ..., source_grants: _Optional[_Iterable[_Union[SourceGrant, _Mapping]]] = ..., experiments: _Optional[_Iterable[_Union[RunningExperiment, _Mapping]]] = ...) -> None: ...
+    signed_payload: bytes
+    signature: bytes
+    signing_key_id: str
+    tenants: _containers.RepeatedCompositeFieldContainer[TenantConfig]
+    def __init__(self, snapshot_version: _Optional[str] = ..., vocabularies: _Optional[_Iterable[_Union[Vocabulary, _Mapping]]] = ..., source_grants: _Optional[_Iterable[_Union[SourceGrant, _Mapping]]] = ..., experiments: _Optional[_Iterable[_Union[RunningExperiment, _Mapping]]] = ..., signed_payload: _Optional[bytes] = ..., signature: _Optional[bytes] = ..., signing_key_id: _Optional[str] = ..., tenants: _Optional[_Iterable[_Union[TenantConfig, _Mapping]]] = ...) -> None: ...
+
+class TenantConfig(_message.Message):
+    __slots__ = ("tenant", "version_id", "content")
+    TENANT_FIELD_NUMBER: _ClassVar[int]
+    VERSION_ID_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_FIELD_NUMBER: _ClassVar[int]
+    tenant: str
+    version_id: str
+    content: str
+    def __init__(self, tenant: _Optional[str] = ..., version_id: _Optional[str] = ..., content: _Optional[str] = ...) -> None: ...
 
 class RunningExperiment(_message.Message):
     __slots__ = ("exp_id", "tenant", "traffic_percent", "support_threshold", "min_coverage")

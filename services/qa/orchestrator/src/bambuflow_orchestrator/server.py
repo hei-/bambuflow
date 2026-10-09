@@ -22,6 +22,7 @@ from contextlib import aclosing, asynccontextmanager
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol
 
 import grpc
+import httpx
 from bambuflow_vocabulary import Vocabularies
 from opentelemetry import metrics, trace
 
@@ -45,6 +46,7 @@ from bambuflow_orchestrator.budget import AGENT_SECONDS, SINGLE_HOP_SECONDS, Dea
 from bambuflow_orchestrator.experiments import Experiments
 from bambuflow_orchestrator.llm import ChatClient, ChatGeneration
 from bambuflow_orchestrator.session import AgentStates, Session, Sessions, Store, owner_of
+from bambuflow_platform import envelope
 from bambuflow_platform.grpc_server import current_principal, downstream
 
 if TYPE_CHECKING:
@@ -400,8 +402,12 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         admission: Admission,
         experiments: Experiments | None = None,
         sql: tuple[structured.Catalog, structured.QueryService] | None = None,
+        keys: envelope.AsyncKeyService | None = None,
     ) -> None:
         self._retrieval, self._llm, self._nli, self._vocab = retrieval, llm, nli, vocab
+        # 回答记录的信封加密（问题原文、受限级回答快照）；没有配置时不加密另存，
+        # 受限级回答不能回放正文
+        self._keys = keys
         self._records = answer_records
         self._admission = admission
         self._experiments = experiments if experiments is not None else Experiments()
@@ -410,6 +416,11 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         self._sessions, self._agent_states = Sessions(store), AgentStates(store)
         # 会话写入在回答返回后进行；保留任务的引用，避免执行完之前被回收
         self._background: set[asyncio.Task[None]] = set()
+
+    def set_vocab(self, vocab: Vocabularies) -> None:
+        """换成新的词表快照（词条新增、停用后随配置快照下发，governance 详设 6.1）；
+        进行中的请求不受影响。"""
+        self._vocab = vocab
 
     def _listing(self, req: flow.Request) -> tuple[listing.Conditions, types_pb2.Filters] | None:
         cond = listing.understand(req.question, self._vocab, dt.date.today())
@@ -643,6 +654,19 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             latency_ms=int((time.monotonic() - call.started) * 1000),
             usage=call.tokens.total(),
         )
+        if self._keys is not None:
+            try:
+                rec = await asyncio.wait_for(
+                    records.seal(rec, call.req.question, resp, self._keys),
+                    _cap(context, RECORD_WRITE_BUDGET),
+                )
+            except (httpx.HTTPError, KeyError, ValueError, TimeoutError) as e:
+                # 密钥服务不可用：不另存原文与快照（宁可不存），记录照常写入
+                _record_failures.add(1, {"reason": "seal_" + type(e).__name__})
+                _log.warning(
+                    "回答记录加密失败，不另存原文",
+                    extra={"answer_id": call.answer_id, "err": type(e).__name__},
+                )
         try:
             await asyncio.wait_for(self._records.put(rec), _cap(context, RECORD_WRITE_BUDGET))
         except (records.RecordsUnavailableError, TimeoutError) as e:
@@ -723,6 +747,17 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             access = answer_pb2.REPLAY_ACCESS_AUDITOR
         else:
             await context.abort(grpc.StatusCode.NOT_FOUND, "回答不存在")
+        if rec.body_withheld and rec.sealed_answer and self._keys is not None:
+            try:
+                # 受限级回答：解开加密的审计快照，下面照常按调用者现在的权限复核（部署配置清单 P3）
+                rec = await asyncio.wait_for(
+                    records.restore(rec, self._keys), _cap(context, RECORD_READ_BUDGET)
+                )
+            except (httpx.HTTPError, KeyError, ValueError, TimeoutError) as e:
+                # 解不开就按没有快照处理：只返回标识与版本
+                _log.warning(
+                    "解开回答快照失败", extra={"answer_id": rec.answer_id, "err": type(e).__name__}
+                )
         chunk_ids = [c.chunk_id for c in rec.answer.citations]
         doc_ids = [s.document.doc_id for s in rec.answer.sentences if s.HasField("document")]
         try:

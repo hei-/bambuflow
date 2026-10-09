@@ -95,7 +95,7 @@
 | 上下文构建与提示编排 | 证据区隔离并编号引用、按预算取块；提示词模板版本化，规划、回答、汇总各一套 | `orchestrator/context.py`、`prompt.py` | `test_flow.py` |
 | 有据回答 | 引用、引文片段与来源元数据；逐句校验：引文核对 → NLI 支持度 → 权限复核，不通过的句子不发送；计算句由程序重算 | `orchestrator/flow.py`、`libs/grounding/`（`verify.py`、`calc.py`） | `test_flow.py`、grounding 单测；`test_answers.py`；评测集 Groundedness 与引用覆盖率 |
 | 证据不足的处理 | 没有证据或覆盖率不足时 `insufficient_evidence`，模型不可用时只返回证据（`evidence_only`），不编造 | `orchestrator/flow.py` | `test_flow.py`；`test_llm_breaker.py` |
-| 置信度与评分（部分） | 每句的支持度与覆盖率门槛决定能否发送与回答状态；回答级的综合置信度分数还没做 | `libs/grounding/verify.py` | `test_flow.py` |
+| 置信度与评分 | 每句支持度决定能否发送；回答整体给出置信度：引用覆盖率、平均支持度、最高精排分、来源多样性与证据冲突加权后经 sigmoid 得出，分高 / 中 / 低三档，权重版本随回答返回（待用评测集校准） | `orchestrator/confidence.py`、`flow.py` | `test_confidence.py`、`test_flow.py` |
 | “为什么这样回答” | `why` 记录索引、策略、模型、提示词、配置快照、实验分组等全部版本，以及召回路、图路径、agent 轮次、降级项；按回答 ID 回放 | `contracts/bambuflow/answer/v1/answer.proto`、`orchestrator/replay.py` | `test_answer_replay.py` |
 | 枚举、计数与主题汇总 | 先计数再列出、附统计口径说明；主题汇总基于文档摘要分批归纳 | `orchestrator/listing.py`、`topics.py`、`search/docs.go` | `test_listing.py`、`test_summaries.py` |
 | 多类型数据管道 | Wiki、共享盘（PDF、Office、邮件、图片、表格）、日志、数据库表结构；OCR（PP-OCRv5）、按结构分块、增强、向量化 | `ingestion/connectors/internal/`、`ingestion/processing/` | processing 单测；`test_ingestion.py`、`test_fileshare.py`、`test_logs.py`、`test_dbschema.py` |
@@ -103,11 +103,11 @@
 | 增量索引与回滚 | 按内容哈希增量入库、向量缓存复用；版本化索引，发布与回滚走双人复核；删除标记随回滚保留，删数据不会复活 | `indexing/internal/writer/`（`writer.go`、`versions.go`）、`connectors/internal/incremental/` | 单测；`test_index_admin.py`、`test_admin_index_versions.py` |
 | 结构化数据 | 表结构与字段说明入索引；业务数据由只读 sql_query 按调用者的数据库角色查询，只允许白名单视图 | `connectors/internal/dbschema/`、`orchestrator/structured.py` | `test_dbschema.py`、`test_structured_query.py` |
 | 访问控制（RBAC / ABAC） | 租户、群组、部门、密级组成 ACL；OPA 策略；召回前过滤、返回前复核、逐句校验再复核，一律 fail-closed；管理接口按平台角色 RBAC | `retrieval/internal/policy/`、`config/policy/authz.rego`、`gateway/internal/roles/` | 权限评测集（`make eval-perm`，120 项，越权 0） |
-| 数据分级与掩码 | 文档带密级，按调用者密级过滤；身份证、手机号、银行卡号、邮箱在检索返回与送入模型前两道掩码，回答记录同样掩码 | `retrieval/internal/redact/`、`orchestrator/redact.py` | 两种语言共用的样例 `tools/test-upstream/pii_cases.json` |
+| 数据分级与掩码 | 文档带密级，按调用者密级过滤；身份证、手机号、银行卡号、邮箱入库时即等长掩码（索引只存掩码文本），检索返回与送入模型前再各掩码一道，回答记录同样掩码 | `processing/pii.py`、`retrieval/internal/redact/`、`orchestrator/redact.py` | `test_pii.py`；各语言共用的样例 `tools/test-upstream/pii_cases.json` |
 | 审计 | 每个请求一条入口审计（含检索候选、送入模型、展示给用户的三类块），先写本地队列再送开启对象锁的桶，写不进去就拒绝请求；管理审计、变更审计；审计岗按用户、文档、时间查询 | `gateway/internal/audit/`、`governance/internal/changeaudit/`、`auditquery/` | `test_audit.py`、`test_admin_audit.py` |
-| 加密与密钥管理（部分） | 密钥与连接串只在 Vault（Secrets Operator 同步、Agent 注入），Principal 用 Vault 里的 ES256 密钥签名；PII 原值的加密存储与信封加密还没做 | `deploy/helm/bambuflow/templates/vault.yaml`、`gateway/internal/issuer/` | `make helm-smoke` |
+| 加密与密钥管理 | 密钥与连接串只在 Vault（Secrets Operator 同步、Agent 注入），Principal 用 Vault 里的 ES256 密钥签名；PII 原值应用层信封加密：入库时等长掩码，原值用文档级数据密钥 AES-256-GCM 加密，数据密钥由 Vault transit 主密钥包裹，只为策略允许的调用者解开还原，解不开就返回掩码 | `processing/pii.py`、`retrieval/internal/pii/`、`gateway/internal/issuer/` | `test_pii.py`、`test_worker.py`、`pii_test.go`；`make helm-smoke` |
 | 数据治理与溯源 | 数据源注册、属主审批、撤销与租户授权，授权经配置快照下发给 retrieval；紧急拒绝 1 分钟内生效；受控词表；每条引用带出处元数据 | `governance/internal/access/`、`vocab/` | `test_admin_sources.py`、`test_admin_emergency_denials.py` |
-| 存储期限（部分） | 日志数据源默认 30 天到期删除；回答记录的保留期待合规确认，暂不清理 | `connectors/internal/logs/` | `test_logs.py` |
+| 存储期限（部分） | 日志数据源默认 30 天到期删除；按数据源的保留期到期写删除标记（`indexing expire`）；回答记录到期销毁原文与数据密钥、只留审计字段（`orchestrator purge`，年限待合规确认）；删除标记过观察期后物理删除索引侧全部副本并写删除凭证（`indexing purge-deleted`）；对象存储原文与灾备副本未覆盖 | `connectors/internal/logs/`、`indexing/internal/writer/expire.go`、`orchestrator/records.py` | `test_logs.py`、`test_retention.py` |
 | 离线评估与回归 | 回放评测：Recall@10、引用覆盖率、Groundedness、状态正确率、拒答、延迟；同一配置连跑三次，与提交的基线比较；只跑受影响租户 | `services/evaluation/`（`runner.py`、`metrics.py`）、`golden/` | `make eval` |
 | 在线评估与 A/B | 实验登记与灰度、按用户稳定分组、按用户聚合的显著性检验与护栏、每天在线抽样评审 Groundedness | `governance/internal/experiment/`、`orchestrator/experiments.py`、`evaluation/`（`abtest.py`、`online.py`） | 单测；`test_admin_experiments.py`、`test_admin_quality.py` |
 | 运行时保护 | 限流、租户并发与每日 token 配额、每用户流数、全局自适应并发；LLM 熔断与按调用目的排队 | `gateway/internal/admission/`、`ratelimit/`、`orchestrator/circuit.py`、`admission.py` | `test_runtime_protection.py`、`test_llm_breaker.py` |

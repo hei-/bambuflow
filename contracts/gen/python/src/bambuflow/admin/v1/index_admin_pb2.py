@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n$bambuflow/admin/v1/index_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\"\x7f\n\x13\x41\x64\x64\x44\x65nyRulesRequest\x12\x17\n\x07\x64oc_ids\x18\x01 \x03(\tR\x06\x64ocIds\x12\x16\n\x06reason\x18\x02 \x01(\tR\x06reason\x12\x1d\n\nsource_ids\x18\x03 \x03(\tR\tsourceIds\x12\x18\n\x07tenants\x18\x04 \x03(\tR\x07tenants\",\n\x14\x41\x64\x64\x44\x65nyRulesResponse\x12\x14\n\x05\x61\x64\x64\x65\x64\x18\x01 \x01(\x03R\x05\x61\x64\x64\x65\x64\"1\n\x16RemoveDenyRulesRequest\x12\x17\n\x07\x64oc_ids\x18\x01 \x03(\tR\x06\x64ocIds\"3\n\x17RemoveDenyRulesResponse\x12\x18\n\x07removed\x18\x01 \x01(\x03R\x07removed\"\x10\n\x0ePublishRequest\"E\n\x0fPublishResponse\x12\x18\n\x07version\x18\x01 \x01(\tR\x07version\x12\x18\n\x07\x63\x61rried\x18\x02 \x01(\x03R\x07\x63\x61rried\"8\n\x0fRollbackRequest\x12%\n\x0etarget_version\x18\x01 \x01(\tR\rtargetVersion\"T\n\x10RollbackResponse\x12!\n\x0c\x66rom_version\x18\x01 \x01(\tR\x0b\x66romVersion\x12\x1d\n\nto_version\x18\x02 \x01(\tR\ttoVersion2\x92\x03\n\x11IndexAdminService\x12R\n\x07Publish\x12\".bambuflow.admin.v1.PublishRequest\x1a#.bambuflow.admin.v1.PublishResponse\x12Z\n\x08Rollback\x12#.bambuflow.admin.v1.RollbackRequest\x1a$.bambuflow.admin.v1.RollbackResponse\"\x03\x88\x02\x01\x12\x61\n\x0c\x41\x64\x64\x44\x65nyRules\x12\'.bambuflow.admin.v1.AddDenyRulesRequest\x1a(.bambuflow.admin.v1.AddDenyRulesResponse\x12j\n\x0fRemoveDenyRules\x12*.bambuflow.admin.v1.RemoveDenyRulesRequest\x1a+.bambuflow.admin.v1.RemoveDenyRulesResponseB\xde\x01\n\x16\x63om.bambuflow.admin.v1B\x0fIndexAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n$bambuflow/admin/v1/index_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\"a\n\tTermRemap\x12\x1e\n\nvocabulary\x18\x01 \x01(\tR\nvocabulary\x12\x1b\n\tfrom_code\x18\x02 \x01(\tR\x08\x66romCode\x12\x17\n\x07to_code\x18\x03 \x01(\tR\x06toCode\"J\n\x11RemapTermsRequest\x12\x35\n\x06remaps\x18\x01 \x03(\x0b\x32\x1d.bambuflow.admin.v1.TermRemapR\x06remaps\"2\n\x12RemapTermsResponse\x12\x1c\n\tdocuments\x18\x01 \x01(\x03R\tdocuments\"6\n\x13PurgeDeletedRequest\x12\x1f\n\x0bgrace_hours\x18\x01 \x01(\x05R\ngraceHours\".\n\x14PurgeDeletedResponse\x12\x16\n\x06purged\x18\x01 \x01(\x03R\x06purged\"\xc0\x01\n\x16\x45xpireDocumentsRequest\x12\x64\n\x0eretention_days\x18\x01 \x03(\x0b\x32=.bambuflow.admin.v1.ExpireDocumentsRequest.RetentionDaysEntryR\rretentionDays\x1a@\n\x12RetentionDaysEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x05R\x05value:\x02\x38\x01\"\xb5\x01\n\x17\x45xpireDocumentsResponse\x12[\n\ntombstoned\x18\x01 \x03(\x0b\x32;.bambuflow.admin.v1.ExpireDocumentsResponse.TombstonedEntryR\ntombstoned\x1a=\n\x0fTombstonedEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x03R\x05value:\x02\x38\x01\"\x7f\n\x13\x41\x64\x64\x44\x65nyRulesRequest\x12\x17\n\x07\x64oc_ids\x18\x01 \x03(\tR\x06\x64ocIds\x12\x16\n\x06reason\x18\x02 \x01(\tR\x06reason\x12\x1d\n\nsource_ids\x18\x03 \x03(\tR\tsourceIds\x12\x18\n\x07tenants\x18\x04 \x03(\tR\x07tenants\",\n\x14\x41\x64\x64\x44\x65nyRulesResponse\x12\x14\n\x05\x61\x64\x64\x65\x64\x18\x01 \x01(\x03R\x05\x61\x64\x64\x65\x64\"1\n\x16RemoveDenyRulesRequest\x12\x17\n\x07\x64oc_ids\x18\x01 \x03(\tR\x06\x64ocIds\"3\n\x17RemoveDenyRulesResponse\x12\x18\n\x07removed\x18\x01 \x01(\x03R\x07removed\"\x10\n\x0ePublishRequest\"E\n\x0fPublishResponse\x12\x18\n\x07version\x18\x01 \x01(\tR\x07version\x12\x18\n\x07\x63\x61rried\x18\x02 \x01(\x03R\x07\x63\x61rried\"8\n\x0fRollbackRequest\x12%\n\x0etarget_version\x18\x01 \x01(\tR\rtargetVersion\"T\n\x10RollbackResponse\x12!\n\x0c\x66rom_version\x18\x01 \x01(\tR\x0b\x66romVersion\x12\x1d\n\nto_version\x18\x02 \x01(\tR\ttoVersion2\xbe\x05\n\x11IndexAdminService\x12R\n\x07Publish\x12\".bambuflow.admin.v1.PublishRequest\x1a#.bambuflow.admin.v1.PublishResponse\x12Z\n\x08Rollback\x12#.bambuflow.admin.v1.RollbackRequest\x1a$.bambuflow.admin.v1.RollbackResponse\"\x03\x88\x02\x01\x12\x61\n\x0c\x41\x64\x64\x44\x65nyRules\x12\'.bambuflow.admin.v1.AddDenyRulesRequest\x1a(.bambuflow.admin.v1.AddDenyRulesResponse\x12j\n\x0fRemoveDenyRules\x12*.bambuflow.admin.v1.RemoveDenyRulesRequest\x1a+.bambuflow.admin.v1.RemoveDenyRulesResponse\x12j\n\x0f\x45xpireDocuments\x12*.bambuflow.admin.v1.ExpireDocumentsRequest\x1a+.bambuflow.admin.v1.ExpireDocumentsResponse\x12\x61\n\x0cPurgeDeleted\x12\'.bambuflow.admin.v1.PurgeDeletedRequest\x1a(.bambuflow.admin.v1.PurgeDeletedResponse\x12[\n\nRemapTerms\x12%.bambuflow.admin.v1.RemapTermsRequest\x1a&.bambuflow.admin.v1.RemapTermsResponseB\xde\x01\n\x16\x63om.bambuflow.admin.v1B\x0fIndexAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,24 +32,46 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.admin.v1.index_ad
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\026com.bambuflow.admin.v1B\017IndexAdminProtoP\001ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\242\002\003BAX\252\002\022Bambuflow.Admin.V1\312\002\022Bambuflow\\Admin\\V1\342\002\036Bambuflow\\Admin\\V1\\GPBMetadata\352\002\024Bambuflow::Admin::V1'
+  _globals['_EXPIREDOCUMENTSREQUEST_RETENTIONDAYSENTRY']._loaded_options = None
+  _globals['_EXPIREDOCUMENTSREQUEST_RETENTIONDAYSENTRY']._serialized_options = b'8\001'
+  _globals['_EXPIREDOCUMENTSRESPONSE_TOMBSTONEDENTRY']._loaded_options = None
+  _globals['_EXPIREDOCUMENTSRESPONSE_TOMBSTONEDENTRY']._serialized_options = b'8\001'
   _globals['_INDEXADMINSERVICE'].methods_by_name['Rollback']._loaded_options = None
   _globals['_INDEXADMINSERVICE'].methods_by_name['Rollback']._serialized_options = b'\210\002\001'
-  _globals['_ADDDENYRULESREQUEST']._serialized_start=60
-  _globals['_ADDDENYRULESREQUEST']._serialized_end=187
-  _globals['_ADDDENYRULESRESPONSE']._serialized_start=189
-  _globals['_ADDDENYRULESRESPONSE']._serialized_end=233
-  _globals['_REMOVEDENYRULESREQUEST']._serialized_start=235
-  _globals['_REMOVEDENYRULESREQUEST']._serialized_end=284
-  _globals['_REMOVEDENYRULESRESPONSE']._serialized_start=286
-  _globals['_REMOVEDENYRULESRESPONSE']._serialized_end=337
-  _globals['_PUBLISHREQUEST']._serialized_start=339
-  _globals['_PUBLISHREQUEST']._serialized_end=355
-  _globals['_PUBLISHRESPONSE']._serialized_start=357
-  _globals['_PUBLISHRESPONSE']._serialized_end=426
-  _globals['_ROLLBACKREQUEST']._serialized_start=428
-  _globals['_ROLLBACKREQUEST']._serialized_end=484
-  _globals['_ROLLBACKRESPONSE']._serialized_start=486
-  _globals['_ROLLBACKRESPONSE']._serialized_end=570
-  _globals['_INDEXADMINSERVICE']._serialized_start=573
-  _globals['_INDEXADMINSERVICE']._serialized_end=975
+  _globals['_TERMREMAP']._serialized_start=60
+  _globals['_TERMREMAP']._serialized_end=157
+  _globals['_REMAPTERMSREQUEST']._serialized_start=159
+  _globals['_REMAPTERMSREQUEST']._serialized_end=233
+  _globals['_REMAPTERMSRESPONSE']._serialized_start=235
+  _globals['_REMAPTERMSRESPONSE']._serialized_end=285
+  _globals['_PURGEDELETEDREQUEST']._serialized_start=287
+  _globals['_PURGEDELETEDREQUEST']._serialized_end=341
+  _globals['_PURGEDELETEDRESPONSE']._serialized_start=343
+  _globals['_PURGEDELETEDRESPONSE']._serialized_end=389
+  _globals['_EXPIREDOCUMENTSREQUEST']._serialized_start=392
+  _globals['_EXPIREDOCUMENTSREQUEST']._serialized_end=584
+  _globals['_EXPIREDOCUMENTSREQUEST_RETENTIONDAYSENTRY']._serialized_start=520
+  _globals['_EXPIREDOCUMENTSREQUEST_RETENTIONDAYSENTRY']._serialized_end=584
+  _globals['_EXPIREDOCUMENTSRESPONSE']._serialized_start=587
+  _globals['_EXPIREDOCUMENTSRESPONSE']._serialized_end=768
+  _globals['_EXPIREDOCUMENTSRESPONSE_TOMBSTONEDENTRY']._serialized_start=707
+  _globals['_EXPIREDOCUMENTSRESPONSE_TOMBSTONEDENTRY']._serialized_end=768
+  _globals['_ADDDENYRULESREQUEST']._serialized_start=770
+  _globals['_ADDDENYRULESREQUEST']._serialized_end=897
+  _globals['_ADDDENYRULESRESPONSE']._serialized_start=899
+  _globals['_ADDDENYRULESRESPONSE']._serialized_end=943
+  _globals['_REMOVEDENYRULESREQUEST']._serialized_start=945
+  _globals['_REMOVEDENYRULESREQUEST']._serialized_end=994
+  _globals['_REMOVEDENYRULESRESPONSE']._serialized_start=996
+  _globals['_REMOVEDENYRULESRESPONSE']._serialized_end=1047
+  _globals['_PUBLISHREQUEST']._serialized_start=1049
+  _globals['_PUBLISHREQUEST']._serialized_end=1065
+  _globals['_PUBLISHRESPONSE']._serialized_start=1067
+  _globals['_PUBLISHRESPONSE']._serialized_end=1136
+  _globals['_ROLLBACKREQUEST']._serialized_start=1138
+  _globals['_ROLLBACKREQUEST']._serialized_end=1194
+  _globals['_ROLLBACKRESPONSE']._serialized_start=1196
+  _globals['_ROLLBACKRESPONSE']._serialized_end=1280
+  _globals['_INDEXADMINSERVICE']._serialized_start=1283
+  _globals['_INDEXADMINSERVICE']._serialized_end=1985
 # @@protoc_insertion_point(module_scope)

@@ -10,6 +10,7 @@
 package outbox
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -86,6 +87,8 @@ type Relay struct {
 	// MarkSQL 把 $1（event_id 数组）标为已发送，如 UPDATE idx.outbox SET sent_at = now() WHERE event_id = ANY($1)
 	MarkSQL string
 	Log     *slog.Logger
+	// Stream 是目标事件流，为空时发到平台事件流；入库平面的内部事件（如 RefetchRequested）发到自己的流
+	Stream string
 }
 
 // Run 每隔 every 转发一轮，直到 ctx 结束。出错只记日志，下一轮重试（事件留在发件表里，不会丢）。
@@ -137,7 +140,7 @@ func (r *Relay) Once(ctx context.Context) (int, error) {
 		ids := make([]string, 0, len(pending))
 		for _, p := range pending {
 			err := r.Redis.XAdd(ctx, &redis.XAddArgs{
-				Stream: Stream, MaxLen: streamMaxLen, Approx: true,
+				Stream: cmp.Or(r.Stream, Stream), MaxLen: streamMaxLen, Approx: true,
 				Values: map[string]any{"event_id": p.id, "pb": p.pb},
 			}).Err()
 			if err != nil {

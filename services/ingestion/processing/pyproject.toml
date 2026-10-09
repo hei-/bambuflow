@@ -20,6 +20,8 @@ dependencies = [
     "pillow>=11.0",
     "python-docx>=1.2",
     "openpyxl>=3.1",
+    # PII 原值的信封加密（AES-256-GCM）；与 pyjwt[crypto] 用的是同一个库
+    "cryptography>=44",
 ]
 
 [tool.uv.sources]

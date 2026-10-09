@@ -21,6 +21,335 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type TermRemap struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// doc_type、dept、topic
+	Vocabulary    string `protobuf:"bytes,1,opt,name=vocabulary,proto3" json:"vocabulary,omitempty"`
+	FromCode      string `protobuf:"bytes,2,opt,name=from_code,json=fromCode,proto3" json:"from_code,omitempty"`
+	ToCode        string `protobuf:"bytes,3,opt,name=to_code,json=toCode,proto3" json:"to_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TermRemap) Reset() {
+	*x = TermRemap{}
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TermRemap) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TermRemap) ProtoMessage() {}
+
+func (x *TermRemap) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TermRemap.ProtoReflect.Descriptor instead.
+func (*TermRemap) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *TermRemap) GetVocabulary() string {
+	if x != nil {
+		return x.Vocabulary
+	}
+	return ""
+}
+
+func (x *TermRemap) GetFromCode() string {
+	if x != nil {
+		return x.FromCode
+	}
+	return ""
+}
+
+func (x *TermRemap) GetToCode() string {
+	if x != nil {
+		return x.ToCode
+	}
+	return ""
+}
+
+type RemapTermsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Remaps        []*TermRemap           `protobuf:"bytes,1,rep,name=remaps,proto3" json:"remaps,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemapTermsRequest) Reset() {
+	*x = RemapTermsRequest{}
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemapTermsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemapTermsRequest) ProtoMessage() {}
+
+func (x *RemapTermsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemapTermsRequest.ProtoReflect.Descriptor instead.
+func (*RemapTermsRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RemapTermsRequest) GetRemaps() []*TermRemap {
+	if x != nil {
+		return x.Remaps
+	}
+	return nil
+}
+
+type RemapTermsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 改动的文档数
+	Documents     int64 `protobuf:"varint,1,opt,name=documents,proto3" json:"documents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemapTermsResponse) Reset() {
+	*x = RemapTermsResponse{}
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemapTermsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemapTermsResponse) ProtoMessage() {}
+
+func (x *RemapTermsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemapTermsResponse.ProtoReflect.Descriptor instead.
+func (*RemapTermsResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RemapTermsResponse) GetDocuments() int64 {
+	if x != nil {
+		return x.Documents
+	}
+	return 0
+}
+
+type PurgeDeletedRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 删除标记写下后至少过了这么久才物理删除（观察期，期间可以撤销删除标记）；默认 168 小时
+	GraceHours    int32 `protobuf:"varint,1,opt,name=grace_hours,json=graceHours,proto3" json:"grace_hours,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PurgeDeletedRequest) Reset() {
+	*x = PurgeDeletedRequest{}
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PurgeDeletedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PurgeDeletedRequest) ProtoMessage() {}
+
+func (x *PurgeDeletedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PurgeDeletedRequest.ProtoReflect.Descriptor instead.
+func (*PurgeDeletedRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PurgeDeletedRequest) GetGraceHours() int32 {
+	if x != nil {
+		return x.GraceHours
+	}
+	return 0
+}
+
+type PurgeDeletedResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Purged        int64                  `protobuf:"varint,1,opt,name=purged,proto3" json:"purged,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PurgeDeletedResponse) Reset() {
+	*x = PurgeDeletedResponse{}
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PurgeDeletedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PurgeDeletedResponse) ProtoMessage() {}
+
+func (x *PurgeDeletedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PurgeDeletedResponse.ProtoReflect.Descriptor instead.
+func (*PurgeDeletedResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *PurgeDeletedResponse) GetPurged() int64 {
+	if x != nil {
+		return x.Purged
+	}
+	return 0
+}
+
+type ExpireDocumentsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 数据源 → 保留天数（大于 0）；没列出的数据源不按时间过期（与源系统一致）
+	RetentionDays map[string]int32 `protobuf:"bytes,1,rep,name=retention_days,json=retentionDays,proto3" json:"retention_days,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExpireDocumentsRequest) Reset() {
+	*x = ExpireDocumentsRequest{}
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExpireDocumentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExpireDocumentsRequest) ProtoMessage() {}
+
+func (x *ExpireDocumentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExpireDocumentsRequest.ProtoReflect.Descriptor instead.
+func (*ExpireDocumentsRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ExpireDocumentsRequest) GetRetentionDays() map[string]int32 {
+	if x != nil {
+		return x.RetentionDays
+	}
+	return nil
+}
+
+type ExpireDocumentsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 各数据源本次写了删除标记的文档数
+	Tombstoned    map[string]int64 `protobuf:"bytes,1,rep,name=tombstoned,proto3" json:"tombstoned,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExpireDocumentsResponse) Reset() {
+	*x = ExpireDocumentsResponse{}
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExpireDocumentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExpireDocumentsResponse) ProtoMessage() {}
+
+func (x *ExpireDocumentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExpireDocumentsResponse.ProtoReflect.Descriptor instead.
+func (*ExpireDocumentsResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ExpireDocumentsResponse) GetTombstoned() map[string]int64 {
+	if x != nil {
+		return x.Tombstoned
+	}
+	return nil
+}
+
 type AddDenyRulesRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	DocIds []string               `protobuf:"bytes,1,rep,name=doc_ids,json=docIds,proto3" json:"doc_ids,omitempty"`
@@ -36,7 +365,7 @@ type AddDenyRulesRequest struct {
 
 func (x *AddDenyRulesRequest) Reset() {
 	*x = AddDenyRulesRequest{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[0]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +377,7 @@ func (x *AddDenyRulesRequest) String() string {
 func (*AddDenyRulesRequest) ProtoMessage() {}
 
 func (x *AddDenyRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[0]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +390,7 @@ func (x *AddDenyRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddDenyRulesRequest.ProtoReflect.Descriptor instead.
 func (*AddDenyRulesRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{0}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *AddDenyRulesRequest) GetDocIds() []string {
@@ -102,7 +431,7 @@ type AddDenyRulesResponse struct {
 
 func (x *AddDenyRulesResponse) Reset() {
 	*x = AddDenyRulesResponse{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -114,7 +443,7 @@ func (x *AddDenyRulesResponse) String() string {
 func (*AddDenyRulesResponse) ProtoMessage() {}
 
 func (x *AddDenyRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -127,7 +456,7 @@ func (x *AddDenyRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddDenyRulesResponse.ProtoReflect.Descriptor instead.
 func (*AddDenyRulesResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AddDenyRulesResponse) GetAdded() int64 {
@@ -146,7 +475,7 @@ type RemoveDenyRulesRequest struct {
 
 func (x *RemoveDenyRulesRequest) Reset() {
 	*x = RemoveDenyRulesRequest{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -158,7 +487,7 @@ func (x *RemoveDenyRulesRequest) String() string {
 func (*RemoveDenyRulesRequest) ProtoMessage() {}
 
 func (x *RemoveDenyRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -171,7 +500,7 @@ func (x *RemoveDenyRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveDenyRulesRequest.ProtoReflect.Descriptor instead.
 func (*RemoveDenyRulesRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RemoveDenyRulesRequest) GetDocIds() []string {
@@ -190,7 +519,7 @@ type RemoveDenyRulesResponse struct {
 
 func (x *RemoveDenyRulesResponse) Reset() {
 	*x = RemoveDenyRulesResponse{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -202,7 +531,7 @@ func (x *RemoveDenyRulesResponse) String() string {
 func (*RemoveDenyRulesResponse) ProtoMessage() {}
 
 func (x *RemoveDenyRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -215,7 +544,7 @@ func (x *RemoveDenyRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveDenyRulesResponse.ProtoReflect.Descriptor instead.
 func (*RemoveDenyRulesResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RemoveDenyRulesResponse) GetRemoved() int64 {
@@ -233,7 +562,7 @@ type PublishRequest struct {
 
 func (x *PublishRequest) Reset() {
 	*x = PublishRequest{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -245,7 +574,7 @@ func (x *PublishRequest) String() string {
 func (*PublishRequest) ProtoMessage() {}
 
 func (x *PublishRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -258,7 +587,7 @@ func (x *PublishRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishRequest.ProtoReflect.Descriptor instead.
 func (*PublishRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{11}
 }
 
 type PublishResponse struct {
@@ -272,7 +601,7 @@ type PublishResponse struct {
 
 func (x *PublishResponse) Reset() {
 	*x = PublishResponse{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -284,7 +613,7 @@ func (x *PublishResponse) String() string {
 func (*PublishResponse) ProtoMessage() {}
 
 func (x *PublishResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -297,7 +626,7 @@ func (x *PublishResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishResponse.ProtoReflect.Descriptor instead.
 func (*PublishResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PublishResponse) GetVersion() string {
@@ -324,7 +653,7 @@ type RollbackRequest struct {
 
 func (x *RollbackRequest) Reset() {
 	*x = RollbackRequest{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -336,7 +665,7 @@ func (x *RollbackRequest) String() string {
 func (*RollbackRequest) ProtoMessage() {}
 
 func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -349,7 +678,7 @@ func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackRequest.ProtoReflect.Descriptor instead.
 func (*RollbackRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RollbackRequest) GetTargetVersion() string {
@@ -369,7 +698,7 @@ type RollbackResponse struct {
 
 func (x *RollbackResponse) Reset() {
 	*x = RollbackResponse{}
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -381,7 +710,7 @@ func (x *RollbackResponse) String() string {
 func (*RollbackResponse) ProtoMessage() {}
 
 func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_index_admin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -394,7 +723,7 @@ func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackResponse.ProtoReflect.Descriptor instead.
 func (*RollbackResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RollbackResponse) GetFromVersion() string {
@@ -415,7 +744,34 @@ var File_bambuflow_admin_v1_index_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_index_admin_proto_rawDesc = "" +
 	"\n" +
-	"$bambuflow/admin/v1/index_admin.proto\x12\x12bambuflow.admin.v1\"\x7f\n" +
+	"$bambuflow/admin/v1/index_admin.proto\x12\x12bambuflow.admin.v1\"a\n" +
+	"\tTermRemap\x12\x1e\n" +
+	"\n" +
+	"vocabulary\x18\x01 \x01(\tR\n" +
+	"vocabulary\x12\x1b\n" +
+	"\tfrom_code\x18\x02 \x01(\tR\bfromCode\x12\x17\n" +
+	"\ato_code\x18\x03 \x01(\tR\x06toCode\"J\n" +
+	"\x11RemapTermsRequest\x125\n" +
+	"\x06remaps\x18\x01 \x03(\v2\x1d.bambuflow.admin.v1.TermRemapR\x06remaps\"2\n" +
+	"\x12RemapTermsResponse\x12\x1c\n" +
+	"\tdocuments\x18\x01 \x01(\x03R\tdocuments\"6\n" +
+	"\x13PurgeDeletedRequest\x12\x1f\n" +
+	"\vgrace_hours\x18\x01 \x01(\x05R\n" +
+	"graceHours\".\n" +
+	"\x14PurgeDeletedResponse\x12\x16\n" +
+	"\x06purged\x18\x01 \x01(\x03R\x06purged\"\xc0\x01\n" +
+	"\x16ExpireDocumentsRequest\x12d\n" +
+	"\x0eretention_days\x18\x01 \x03(\v2=.bambuflow.admin.v1.ExpireDocumentsRequest.RetentionDaysEntryR\rretentionDays\x1a@\n" +
+	"\x12RetentionDaysEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\xb5\x01\n" +
+	"\x17ExpireDocumentsResponse\x12[\n" +
+	"\n" +
+	"tombstoned\x18\x01 \x03(\v2;.bambuflow.admin.v1.ExpireDocumentsResponse.TombstonedEntryR\n" +
+	"tombstoned\x1a=\n" +
+	"\x0fTombstonedEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\"\x7f\n" +
 	"\x13AddDenyRulesRequest\x12\x17\n" +
 	"\adoc_ids\x18\x01 \x03(\tR\x06docIds\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x1d\n" +
@@ -437,12 +793,16 @@ const file_bambuflow_admin_v1_index_admin_proto_rawDesc = "" +
 	"\x10RollbackResponse\x12!\n" +
 	"\ffrom_version\x18\x01 \x01(\tR\vfromVersion\x12\x1d\n" +
 	"\n" +
-	"to_version\x18\x02 \x01(\tR\ttoVersion2\x92\x03\n" +
+	"to_version\x18\x02 \x01(\tR\ttoVersion2\xbe\x05\n" +
 	"\x11IndexAdminService\x12R\n" +
 	"\aPublish\x12\".bambuflow.admin.v1.PublishRequest\x1a#.bambuflow.admin.v1.PublishResponse\x12Z\n" +
 	"\bRollback\x12#.bambuflow.admin.v1.RollbackRequest\x1a$.bambuflow.admin.v1.RollbackResponse\"\x03\x88\x02\x01\x12a\n" +
 	"\fAddDenyRules\x12'.bambuflow.admin.v1.AddDenyRulesRequest\x1a(.bambuflow.admin.v1.AddDenyRulesResponse\x12j\n" +
-	"\x0fRemoveDenyRules\x12*.bambuflow.admin.v1.RemoveDenyRulesRequest\x1a+.bambuflow.admin.v1.RemoveDenyRulesResponseB\xde\x01\n" +
+	"\x0fRemoveDenyRules\x12*.bambuflow.admin.v1.RemoveDenyRulesRequest\x1a+.bambuflow.admin.v1.RemoveDenyRulesResponse\x12j\n" +
+	"\x0fExpireDocuments\x12*.bambuflow.admin.v1.ExpireDocumentsRequest\x1a+.bambuflow.admin.v1.ExpireDocumentsResponse\x12a\n" +
+	"\fPurgeDeleted\x12'.bambuflow.admin.v1.PurgeDeletedRequest\x1a(.bambuflow.admin.v1.PurgeDeletedResponse\x12[\n" +
+	"\n" +
+	"RemapTerms\x12%.bambuflow.admin.v1.RemapTermsRequest\x1a&.bambuflow.admin.v1.RemapTermsResponseB\xde\x01\n" +
 	"\x16com.bambuflow.admin.v1B\x0fIndexAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
@@ -457,31 +817,49 @@ func file_bambuflow_admin_v1_index_admin_proto_rawDescGZIP() []byte {
 	return file_bambuflow_admin_v1_index_admin_proto_rawDescData
 }
 
-var file_bambuflow_admin_v1_index_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_bambuflow_admin_v1_index_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_bambuflow_admin_v1_index_admin_proto_goTypes = []any{
-	(*AddDenyRulesRequest)(nil),     // 0: bambuflow.admin.v1.AddDenyRulesRequest
-	(*AddDenyRulesResponse)(nil),    // 1: bambuflow.admin.v1.AddDenyRulesResponse
-	(*RemoveDenyRulesRequest)(nil),  // 2: bambuflow.admin.v1.RemoveDenyRulesRequest
-	(*RemoveDenyRulesResponse)(nil), // 3: bambuflow.admin.v1.RemoveDenyRulesResponse
-	(*PublishRequest)(nil),          // 4: bambuflow.admin.v1.PublishRequest
-	(*PublishResponse)(nil),         // 5: bambuflow.admin.v1.PublishResponse
-	(*RollbackRequest)(nil),         // 6: bambuflow.admin.v1.RollbackRequest
-	(*RollbackResponse)(nil),        // 7: bambuflow.admin.v1.RollbackResponse
+	(*TermRemap)(nil),               // 0: bambuflow.admin.v1.TermRemap
+	(*RemapTermsRequest)(nil),       // 1: bambuflow.admin.v1.RemapTermsRequest
+	(*RemapTermsResponse)(nil),      // 2: bambuflow.admin.v1.RemapTermsResponse
+	(*PurgeDeletedRequest)(nil),     // 3: bambuflow.admin.v1.PurgeDeletedRequest
+	(*PurgeDeletedResponse)(nil),    // 4: bambuflow.admin.v1.PurgeDeletedResponse
+	(*ExpireDocumentsRequest)(nil),  // 5: bambuflow.admin.v1.ExpireDocumentsRequest
+	(*ExpireDocumentsResponse)(nil), // 6: bambuflow.admin.v1.ExpireDocumentsResponse
+	(*AddDenyRulesRequest)(nil),     // 7: bambuflow.admin.v1.AddDenyRulesRequest
+	(*AddDenyRulesResponse)(nil),    // 8: bambuflow.admin.v1.AddDenyRulesResponse
+	(*RemoveDenyRulesRequest)(nil),  // 9: bambuflow.admin.v1.RemoveDenyRulesRequest
+	(*RemoveDenyRulesResponse)(nil), // 10: bambuflow.admin.v1.RemoveDenyRulesResponse
+	(*PublishRequest)(nil),          // 11: bambuflow.admin.v1.PublishRequest
+	(*PublishResponse)(nil),         // 12: bambuflow.admin.v1.PublishResponse
+	(*RollbackRequest)(nil),         // 13: bambuflow.admin.v1.RollbackRequest
+	(*RollbackResponse)(nil),        // 14: bambuflow.admin.v1.RollbackResponse
+	nil,                             // 15: bambuflow.admin.v1.ExpireDocumentsRequest.RetentionDaysEntry
+	nil,                             // 16: bambuflow.admin.v1.ExpireDocumentsResponse.TombstonedEntry
 }
 var file_bambuflow_admin_v1_index_admin_proto_depIdxs = []int32{
-	4, // 0: bambuflow.admin.v1.IndexAdminService.Publish:input_type -> bambuflow.admin.v1.PublishRequest
-	6, // 1: bambuflow.admin.v1.IndexAdminService.Rollback:input_type -> bambuflow.admin.v1.RollbackRequest
-	0, // 2: bambuflow.admin.v1.IndexAdminService.AddDenyRules:input_type -> bambuflow.admin.v1.AddDenyRulesRequest
-	2, // 3: bambuflow.admin.v1.IndexAdminService.RemoveDenyRules:input_type -> bambuflow.admin.v1.RemoveDenyRulesRequest
-	5, // 4: bambuflow.admin.v1.IndexAdminService.Publish:output_type -> bambuflow.admin.v1.PublishResponse
-	7, // 5: bambuflow.admin.v1.IndexAdminService.Rollback:output_type -> bambuflow.admin.v1.RollbackResponse
-	1, // 6: bambuflow.admin.v1.IndexAdminService.AddDenyRules:output_type -> bambuflow.admin.v1.AddDenyRulesResponse
-	3, // 7: bambuflow.admin.v1.IndexAdminService.RemoveDenyRules:output_type -> bambuflow.admin.v1.RemoveDenyRulesResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0,  // 0: bambuflow.admin.v1.RemapTermsRequest.remaps:type_name -> bambuflow.admin.v1.TermRemap
+	15, // 1: bambuflow.admin.v1.ExpireDocumentsRequest.retention_days:type_name -> bambuflow.admin.v1.ExpireDocumentsRequest.RetentionDaysEntry
+	16, // 2: bambuflow.admin.v1.ExpireDocumentsResponse.tombstoned:type_name -> bambuflow.admin.v1.ExpireDocumentsResponse.TombstonedEntry
+	11, // 3: bambuflow.admin.v1.IndexAdminService.Publish:input_type -> bambuflow.admin.v1.PublishRequest
+	13, // 4: bambuflow.admin.v1.IndexAdminService.Rollback:input_type -> bambuflow.admin.v1.RollbackRequest
+	7,  // 5: bambuflow.admin.v1.IndexAdminService.AddDenyRules:input_type -> bambuflow.admin.v1.AddDenyRulesRequest
+	9,  // 6: bambuflow.admin.v1.IndexAdminService.RemoveDenyRules:input_type -> bambuflow.admin.v1.RemoveDenyRulesRequest
+	5,  // 7: bambuflow.admin.v1.IndexAdminService.ExpireDocuments:input_type -> bambuflow.admin.v1.ExpireDocumentsRequest
+	3,  // 8: bambuflow.admin.v1.IndexAdminService.PurgeDeleted:input_type -> bambuflow.admin.v1.PurgeDeletedRequest
+	1,  // 9: bambuflow.admin.v1.IndexAdminService.RemapTerms:input_type -> bambuflow.admin.v1.RemapTermsRequest
+	12, // 10: bambuflow.admin.v1.IndexAdminService.Publish:output_type -> bambuflow.admin.v1.PublishResponse
+	14, // 11: bambuflow.admin.v1.IndexAdminService.Rollback:output_type -> bambuflow.admin.v1.RollbackResponse
+	8,  // 12: bambuflow.admin.v1.IndexAdminService.AddDenyRules:output_type -> bambuflow.admin.v1.AddDenyRulesResponse
+	10, // 13: bambuflow.admin.v1.IndexAdminService.RemoveDenyRules:output_type -> bambuflow.admin.v1.RemoveDenyRulesResponse
+	6,  // 14: bambuflow.admin.v1.IndexAdminService.ExpireDocuments:output_type -> bambuflow.admin.v1.ExpireDocumentsResponse
+	4,  // 15: bambuflow.admin.v1.IndexAdminService.PurgeDeleted:output_type -> bambuflow.admin.v1.PurgeDeletedResponse
+	2,  // 16: bambuflow.admin.v1.IndexAdminService.RemapTerms:output_type -> bambuflow.admin.v1.RemapTermsResponse
+	10, // [10:17] is the sub-list for method output_type
+	3,  // [3:10] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_index_admin_proto_init() }
@@ -495,7 +873,7 @@ func file_bambuflow_admin_v1_index_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_admin_v1_index_admin_proto_rawDesc), len(file_bambuflow_admin_v1_index_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

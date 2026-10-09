@@ -727,6 +727,1140 @@ paths:
         "429": { $ref: "#/components/responses/retryable_problem" }
         "503": { $ref: "#/components/responses/retryable_problem" }
 
+  /v1/admin/vocabularies/{vocabulary}/terms:
+    get:
+      operationId: list_vocabulary_terms
+      summary: 受控词表词条
+      description: |
+        文档类型、发文部门、主题三套受控词表（governance 详设 6.1），含已停用的词条。平台管理员可查看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: vocabulary
+          in: path
+          required: true
+          description: 词表
+          schema:
+            type: string
+            enum: [doc_type, dept, topic]
+      responses:
+        "200":
+          description: 词条与当前词表快照的版本
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/vocabulary_term_list"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+    post:
+      operationId: upsert_vocabulary_term
+      summary: 新增或修改词条
+      description: |
+        新增词条（201），或修改已有词条的名称、同义词、上级与归口部门（200）。编码一旦使用就不改义；已停用的词条不能
+        重新启用（409 conflict）。改动立即进入下一版配置快照：入库归一与查询映射随之生效。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: vocabulary
+          in: path
+          required: true
+          description: 词表
+          schema:
+            type: string
+            enum: [doc_type, dept, topic]
+      requestBody:
+        description: 词条
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/vocabulary_term_request"
+      responses:
+        "200":
+          description: 修改后的词条
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/vocabulary_term"
+        "201":
+          description: 新增的词条
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/vocabulary_term"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/vocabularies/{vocabulary}/terms/{code}/deprecate:
+    post:
+      operationId: deprecate_vocabulary_term
+      summary: 停用词条
+      description: |
+        停用并指定替代编码（同一词表里的有效词条）；原因写进变更审计。编码不删除：已入库文档上的旧编码在重新标注前
+        仍可查到。已停用的再停用返回原样。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: vocabulary
+          in: path
+          required: true
+          description: 词表
+          schema:
+            type: string
+            enum: [doc_type, dept, topic]
+        - name: code
+          in: path
+          required: true
+          description: 词条编码
+          schema:
+            type: string
+            pattern: "^[A-Z][A-Z0-9-]{1,63}$"
+      requestBody:
+        description: 替代编码与原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/deprecate_term_request"
+      responses:
+        "200":
+          description: 停用后的词条
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/vocabulary_term"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/documents/{doc_id}/ingest-status:
+    get:
+      operationId: get_ingest_status
+      summary: 文档入库状态
+      description: 最近一次处理到的阶段、结果、最近失败原因与所在的入库批次（重放生成）。平台运维调用，由 processing 实现。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: doc_id
+          in: path
+          required: true
+          description: 文档 ID
+          schema:
+            type: string
+            maxLength: 512
+      responses:
+        "200":
+          description: 入库状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ingest_status"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/dead-letters:
+    get:
+      operationId: list_dead_letters
+      summary: 死信与隔离文档
+      description: |
+        不可重试的失败与重试满 5 次的失败；重放 3 次仍失败的标为隔离。按 doc_id 排序，只有错误摘要，不含文档内容。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/page_size"
+        - $ref: "#/components/parameters/page_token"
+        - name: source_id
+          in: query
+          required: false
+          description: 数据源
+          schema:
+            type: string
+        - name: stage
+          in: query
+          required: false
+          description: 失败阶段
+          schema:
+            $ref: "#/components/schemas/ingest_stage"
+        - name: error_code
+          in: query
+          required: false
+          description: 错误码
+          schema:
+            type: string
+        - name: quarantined
+          in: query
+          required: false
+          description: 为 true 时只看隔离文档
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: 一页死信
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/dead_letter_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/replays:
+    post:
+      operationId: create_replay
+      summary: 按条件重放死信
+      description: |
+        把符合条件的死信里的原事件重新放回事件流，从对象存储里的原文开始处理，不重新从源系统拉取。
+        数据源、阶段、错误码至少给一个，或者用 doc_ids 点名；隔离文档只有点名才重放。没有符合条件的死信时 ingest_batch_id 为空。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 重放条件与原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/replay_request"
+      responses:
+        "200":
+          description: 重放结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/replay_result"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/tombstone-revocations:
+    post:
+      operationId: revoke_tombstones
+      summary: 申请撤销误写的删除标记
+      description: |
+        双人复核：这次调用只创建待复核的操作（202），另一位平台运维调用
+        POST /v1/admin/tombstone-revocations/operations/{operation_id}/approve 后才执行；该数据源已有待复核的撤销时返回它（200）。
+        按数据源与删除时间段（跨度最多 31 天）选删除标记，可再用 doc_ids 限定；没有符合条件的返回 404，超过 10000 份返回 400。
+        执行后这些文档仍检索不到，connectors 下一轮同步重新从源系统拉取，源端仍存在的才恢复。索引回滚会保留删除标记，误删只能用它恢复。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 撤销条件与原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/revoke_tombstones_request"
+      responses:
+        "200":
+          description: 该数据源已有的待复核撤销
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/tombstone_revocation"
+        "202":
+          description: 已创建待复核的操作
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/tombstone_revocation"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/tombstone-revocations/operations/{operation_id}/approve:
+    post:
+      operationId: approve_tombstone_revocation
+      summary: 复核并执行撤销
+      description: |
+        另一位平台运维复核，执行时按申请的条件重新选取删除标记。发起人不能复核自己的操作（403 self_approval_forbidden）；
+        操作已执行、已作废或已过期时返回 409 conflict；复核时已没有符合条件的删除标记时操作记为 failed（200，见 failure_reason）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: operation_id
+          in: path
+          required: true
+          description: 操作 ID
+          schema:
+            type: string
+            pattern: "^op_[a-f0-9]+$"
+      responses:
+        "200":
+          description: 复核后的撤销
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/tombstone_revocation"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "429": { $ref: "#/components/responses/retryable_problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+
+  /v1/admin/sources/{src_id}/sync-status:
+    get:
+      operationId: get_source_sync_status
+      summary: 数据源同步状态
+      description: 最近一轮同步、最近一次成功的同步、新鲜度（距最近一次成功同步的秒数，从没成功过为 -1）、是否暂停。平台运维与数据属主可看，由 connectors 实现。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      responses:
+        "200":
+          description: 同步状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/source_sync_status"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/sources/{src_id}/pause:
+    post:
+      operationId: pause_source
+      summary: 暂停数据源同步
+      description: |
+        之后的每轮同步整轮跳过，直到恢复。注意暂停期间该源的撤权与删除也不再同步；已经暂停时返回原来的暂停记录（changed 为 false）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      requestBody:
+        description: 暂停原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/pause_source_request"
+      responses:
+        "200":
+          description: 暂停记录
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/pause_source_result"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/sources/{src_id}/resume:
+    post:
+      operationId: resume_source
+      summary: 恢复数据源同步
+      description: 下一轮同步照常进行；本来就没有暂停时 changed 为 false。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      responses:
+        "200":
+          description: 恢复结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/resume_source_result"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/sources/{src_id}/pending-deletions:
+    get:
+      operationId: list_pending_deletions
+      summary: 删除保护拦下的待删批次
+      description: 单轮待删超过已同步文档的 5% 或 1000 份时，删除暂停并记成一批，等数据属主确认。包括最近 20 批已结束的。平台运维与数据属主可看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+      responses:
+        "200":
+          description: 批次列表，最近的在前
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/deletion_hold_list"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/sources/{src_id}/pending-deletions/{hold_id}/confirm:
+    post:
+      operationId: confirm_pending_deletion
+      summary: 确认待删批次
+      description: 需两位不同的数据属主：第一位确认后为 awaiting_second，第二位确认后为 confirmed，下一轮同步只删其中源端仍不存在的。同一人复核返回 403 self_approval_forbidden；已结束的批次返回 409 conflict。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+        - name: hold_id
+          in: path
+          required: true
+          description: 待删批次 ID
+          schema:
+            type: string
+            pattern: "^hold_[a-f0-9]+$"
+      requestBody:
+        description: 原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/deletion_hold_action"
+      responses:
+        "200":
+          description: 操作后的批次
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/deletion_hold"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/sources/{src_id}/pending-deletions/{hold_id}/discard:
+    post:
+      operationId: discard_pending_deletion
+      summary: 丢弃待删批次
+      description: 这批删除不执行；源端清单不变时之后的同步也不再为同一批文档拦截。执行前任何一位数据属主都能丢弃；已结束的批次返回 409 conflict。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: src_id
+          in: path
+          required: true
+          description: 数据源 ID
+          schema:
+            type: string
+            pattern: "^src_[A-Za-z0-9]+$"
+        - name: hold_id
+          in: path
+          required: true
+          description: 待删批次 ID
+          schema:
+            type: string
+            pattern: "^hold_[a-f0-9]+$"
+      requestBody:
+        description: 原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/deletion_hold_action"
+      responses:
+        "200":
+          description: 操作后的批次
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/deletion_hold"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/index-rebuilds:
+    post:
+      operationId: start_index_rebuild
+      summary: 申请全量重建
+      description: |
+        换嵌入模型或分块器时使用。双人复核：这次调用只创建待复核的操作（202），另一位平台运维调用
+        POST /v1/admin/index-rebuilds/operations/{operation_id}/approve 后才开始；已有待复核的申请时返回它（200）。
+        有进行中的重建或有待发布版本时返回 409 conflict。开始后各数据源全部重新拉取，按新模型部署的 processing 写进新版本，
+        全部在用文档写完后由定时发布上线；期间旧模型的增量内容更新等重建发布后再写，撤权与删除照常生效。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 目标版本与原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/start_rebuild_request"
+      responses:
+        "200":
+          description: 已有的待复核申请
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rebuild_operation"
+        "202":
+          description: 已创建待复核的操作
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rebuild_operation"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/index-rebuilds/operations/{operation_id}/approve:
+    post:
+      operationId: approve_index_rebuild
+      summary: 复核并开始全量重建
+      description: 另一位平台运维复核；发起人不能复核（403 self_approval_forbidden）；复核时已不能开始（如出现了待发布版本）时操作记为 failed。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: operation_id
+          in: path
+          required: true
+          description: 操作 ID
+          schema:
+            type: string
+            pattern: "^op_[a-f0-9]+$"
+      responses:
+        "200":
+          description: 复核后的操作；开始了就带 rebuild_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rebuild_operation"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/index-rebuilds/{rebuild_id}:
+    get:
+      operationId: get_index_rebuild
+      summary: 全量重建进度
+      description: 已写进新版本的在用文档数与在用文档总数。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: rebuild_id
+          in: path
+          required: true
+          description: 重建 ID
+          schema:
+            type: string
+            pattern: "^rb_[a-f0-9]+$"
+      responses:
+        "200":
+          description: 重建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/index_rebuild"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/index-rebuilds/{rebuild_id}/cancel:
+    post:
+      operationId: cancel_index_rebuild
+      summary: 取消全量重建
+      description: 丢弃重建的待发布版本，线上不受影响；已结束的返回 409 conflict。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: rebuild_id
+          in: path
+          required: true
+          description: 重建 ID
+          schema:
+            type: string
+            pattern: "^rb_[a-f0-9]+$"
+      requestBody:
+        description: 原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/activate_index_version_request"
+      responses:
+        "200":
+          description: 取消后的重建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/index_rebuild"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/plugins:
+    get:
+      operationId: list_plugins
+      summary: 插件登记列表
+      description: 各插件的版本、各租户评估结果、Tool 插件的安全评审状态，以及可被哪些租户的 pipeline.yaml 引用。平台管理员与信息安全可看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/page_size"
+        - $ref: "#/components/parameters/page_token"
+      responses:
+        "200":
+          description: 一页插件
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/plugin_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+    post:
+      operationId: register_plugin
+      summary: 登记插件
+      description: |
+        平台管理员登记一个插件版本；同名同版本已登记时返回 409 conflict。Tool 插件必须声明只读范围（read: 开头），
+        登记后待信息安全评审。评估结果由 CI 写入，评估通过（Tool 还要评审通过）后才能被该租户引用。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 插件
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/register_plugin_request"
+      responses:
+        "201":
+          description: 已登记
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/plugin"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/plugins/{plugin_id}/security-review:
+    post:
+      operationId: review_plugin
+      summary: Tool 插件安全评审
+      description: 信息安全评审；登记人不能评审（403 self_approval_forbidden）；非 Tool 插件或已评审过的返回 409 conflict。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: plugin_id
+          in: path
+          required: true
+          description: 插件 ID
+          schema:
+            type: string
+            pattern: "^plg_[a-f0-9]{24}$"
+      requestBody:
+        description: 评审结论
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/review_plugin_request"
+      responses:
+        "200":
+          description: 评审后的插件
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/plugin"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/eval-gates:
+    get:
+      operationId: list_eval_gates
+      summary: 评测门禁列表
+      description: 评测运行写入的门禁结论，最近的在前；可按涉及的租户、触发方筛选。平台管理员与平台运维可看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/page_size"
+        - $ref: "#/components/parameters/page_token"
+        - name: tenant
+          in: query
+          required: false
+          description: 只看涉及这个租户的门禁
+          schema:
+            type: string
+        - name: trigger
+          in: query
+          required: false
+          description: 触发方
+          schema:
+            type: string
+            enum: [ci, config_release, index_publish, index_rebuild, scheduled, manual]
+      responses:
+        "200":
+          description: 一页门禁
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/eval_gate_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/eval-gates/{gate_id}:
+    get:
+      operationId: get_eval_gate
+      summary: 评测门禁报告
+      description: 门禁结论与完整报告（Markdown）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: gate_id
+          in: path
+          required: true
+          description: 门禁 ID
+          schema:
+            type: string
+            pattern: "^gate_[a-f0-9]{24}$"
+      responses:
+        "200":
+          description: 门禁与报告
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/eval_gate"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/golden-sets/{tenant}/questions:
+    get:
+      operationId: list_golden_questions
+      summary: 评测集题目
+      description: 该租户在已发布评测集里的题（以仓库 golden/ 为准）；include_candidates 为 true 时连同候选题。平台管理员、平台运维与数据属主可看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: tenant
+          in: path
+          required: true
+          description: 租户
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9-]{0,62}$"
+        - name: include_candidates
+          in: query
+          required: false
+          description: 是否包括候选题
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: 题目
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/golden_question_list"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+    post:
+      operationId: submit_golden_candidate
+      summary: 提交候选题
+      description: |
+        数据属主或平台管理员提交；提问身份必须是该评测集里已有、属于这个租户的模板。
+        需业务专家（数据属主）与平台（平台管理员）各一人复核通过后才能入集，入集经合并请求加进 golden/。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: tenant
+          in: path
+          required: true
+          description: 租户
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9-]{0,62}$"
+      requestBody:
+        description: 候选题
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/golden_candidate_request"
+      responses:
+        "201":
+          description: 已提交，待复核
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/golden_question"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/golden-sets/{tenant}/questions/{question_id}/review:
+    post:
+      operationId: review_golden_candidate
+      summary: 复核候选题
+      description: |
+        业务专家（数据属主）与平台（平台管理员）各占一席，同一人不能占两席，提交人不能复核（403 self_approval_forbidden）；
+        席位已满或已复核完返回 409 conflict。任一席驳回即 rejected（须写原因），两席都通过为 accepted。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: tenant
+          in: path
+          required: true
+          description: 租户
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9-]{0,62}$"
+        - name: question_id
+          in: path
+          required: true
+          description: 候选题 ID
+          schema:
+            type: string
+            pattern: "^cand_[a-f0-9]{24}$"
+      requestBody:
+        description: 复核结论
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/golden_review_request"
+      responses:
+        "200":
+          description: 复核后的候选题
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/golden_question"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/retryable_problem" }
+  /v1/admin/tenants:
+    get:
+      operationId: list_tenants
+      summary: 租户与生效配置
+      description: 每个租户当前生效的配置版本（tenant.yaml）。平台管理员可看。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+      responses:
+        "200":
+          description: 租户列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/tenant_list"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+    post:
+      operationId: create_tenant
+      summary: 新建租户
+      description: |
+        生成一张没有 base 的变更单（201），另一位平台管理员审批后才生效；直接以全量（general）开放须附已通过、覆盖该租户的门禁（409 gate_failed）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 新租户的配置
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/create_tenant_request"
+      responses:
+        "201":
+          description: 已生成变更单
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/change_request"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/tenants/{tenant}/config-versions:
+    get:
+      operationId: list_tenant_config_versions
+      summary: 租户配置的版本
+      description: 全部版本（新的在前）与内容，active 标出当前生效的那个；版本对比由调用方对比两个版本的内容。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: tenant
+          in: path
+          required: true
+          description: 租户
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9-]{0,62}$"
+      responses:
+        "200":
+          description: 版本列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/config_version_list"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/change-requests:
+    post:
+      operationId: create_change_request
+      summary: 提交变更单
+      description: |
+        基于当前生效版本（base_version_id；新建对象时不填）提交新内容，提交时即按与 gateway 加载相同的规则校验（400）。
+        base 已不是生效版本时返回 409 stale_base_version；同一对象已有待审批的变更单时返回 409 conflict。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 变更内容
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/create_change_request"
+      responses:
+        "201":
+          description: 已提交，待审批
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/change_request"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/change-requests/{chg_id}/approve:
+    post:
+      operationId: approve_change_request
+      summary: 审批变更单
+      description: |
+        作者以外的平台管理员审批（作者审批返回 403 self_approval_forbidden），审批后立即生效并推给 gateway。
+        生效版本已不是 base 时变更单作废（409 stale_base_version），须基于最新版本重新提交。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: chg_id
+          in: path
+          required: true
+          description: 变更单 ID
+          schema:
+            type: string
+            pattern: "^chg_[a-f0-9]{24}$"
+      responses:
+        "200":
+          description: 审批后的变更单
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/change_request"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/change-requests/{chg_id}/reject:
+    post:
+      operationId: reject_change_request
+      summary: 驳回或撤回变更单
+      description: 任一平台管理员驳回，作者也可以撤回；须写原因。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: chg_id
+          in: path
+          required: true
+          description: 变更单 ID
+          schema:
+            type: string
+            pattern: "^chg_[a-f0-9]{24}$"
+      requestBody:
+        description: 原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/activate_index_version_request"
+      responses:
+        "200":
+          description: 驳回后的变更单
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/change_request"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/releases:
+    post:
+      operationId: create_release
+      summary: 发起发布
+      description: |
+        Git 合并后由 CI 发起（source_ref 为 git:<提交>），返回 202 待审批；内容按与 gateway 加载相同的规则校验。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+      requestBody:
+        description: 发布内容
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/create_release_request"
+      responses:
+        "202":
+          description: 待审批的发布
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/release"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/releases/{rel_id}:
+    get:
+      operationId: get_release
+      summary: 发布详情
+      description: 发布的版本、来源、门禁与状态。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - name: rel_id
+          in: path
+          required: true
+          description: 发布 ID
+          schema:
+            type: string
+            pattern: "^rel_[a-f0-9]{24}$"
+      responses:
+        "200":
+          description: 发布
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/release"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/releases/{rel_id}/approve:
+    post:
+      operationId: approve_release
+      summary: 审批发布
+      description: 发起人以外的平台管理员审批后生效；生效版本已经变了时发布作废（409 stale_base_version）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: rel_id
+          in: path
+          required: true
+          description: 发布 ID
+          schema:
+            type: string
+            pattern: "^rel_[a-f0-9]{24}$"
+      responses:
+        "200":
+          description: 生效的发布
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/release"
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
+  /v1/admin/releases/{rel_id}/rollback:
+    post:
+      operationId: rollback_release
+      summary: 回退发布
+      description: 只能回退当前生效的发布，切回它之前的版本，一人执行；回退本身也是一次发布（source 为 rollback）。
+      parameters:
+        - $ref: "#/components/parameters/traceparent"
+        - $ref: "#/components/parameters/required_idempotency_key"
+        - name: rel_id
+          in: path
+          required: true
+          description: 发布 ID
+          schema:
+            type: string
+            pattern: "^rel_[a-f0-9]{24}$"
+      requestBody:
+        description: 原因
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/activate_index_version_request"
+      responses:
+        "200":
+          description: 回退生成的发布
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/release"
+        "400": { $ref: "#/components/responses/problem" }
+        "401": { $ref: "#/components/responses/problem" }
+        "403": { $ref: "#/components/responses/problem" }
+        "404": { $ref: "#/components/responses/problem" }
+        "409": { $ref: "#/components/responses/problem" }
+        "503": { $ref: "#/components/responses/problem" }
   /v1/admin/audit:
     get:
       operationId: query_audit
@@ -1722,6 +2856,1030 @@ components:
           type: boolean
           description: 7 天均值比 30 天均值低 3 个点以上
 
+    vocabulary_term:
+      type: object
+      description: 一个受控词表词条。
+      required: [vocabulary, code, name, synonyms, status]
+      properties:
+        vocabulary:
+          type: string
+          enum: [doc_type, dept, topic]
+        code:
+          type: string
+          description: 稳定编码，一旦使用就不删除、不改义
+        name:
+          type: string
+        synonyms:
+          type: array
+          items:
+            type: string
+        parent:
+          type: string
+          description: 上级编码；按上级查询时包含所有下级
+        status:
+          type: string
+          enum: [active, deprecated]
+        replaced_by:
+          type: string
+          description: 停用时的替代编码
+        owner:
+          type: string
+          description: 维护部门
+
+    vocabulary_term_list:
+      type: object
+      description: 一个词表的全部词条。
+      required: [terms, snapshot_version]
+      properties:
+        terms:
+          type: array
+          items:
+            $ref: "#/components/schemas/vocabulary_term"
+        snapshot_version:
+          type: string
+          description: 当前词表快照的版本
+
+    vocabulary_term_request:
+      type: object
+      description: 新增或修改的词条。
+      required: [code, name]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          pattern: "^[A-Z][A-Z0-9-]{1,63}$"
+        name:
+          type: string
+          maxLength: 100
+        synonyms:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 100
+        parent:
+          type: string
+          description: 上级编码（同一词表里的词条）
+        owner:
+          type: string
+          maxLength: 100
+          description: 维护部门
+
+    deprecate_term_request:
+      type: object
+      description: 停用的替代编码与原因。
+      required: [replaced_by, reason]
+      additionalProperties: false
+      properties:
+        replaced_by:
+          type: string
+          pattern: "^[A-Z][A-Z0-9-]{1,63}$"
+        reason:
+          type: string
+          maxLength: 500
+
+    ingest_stage:
+      type: string
+      description: 入库阶段
+      enum: [fetch, parse, mask, enrich, embed, write]
+
+    ingest_error:
+      type: object
+      description: 一次入库失败。
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 错误码，如 bad_document、unsupported_format、rpc_unavailable
+        message:
+          type: string
+          maxLength: 200
+          description: 错误摘要，不含文档内容
+
+    ingest_status:
+      type: object
+      description: 一份文档的入库状态。
+      required: [doc_id, source_id, event_id, stage, state, attempts, updated_at]
+      properties:
+        doc_id:
+          type: string
+        source_id:
+          type: string
+        event_id:
+          type: string
+        stage:
+          type: string
+          description: 最近处理到的阶段（含 delete、acl 两条快速通道）
+          enum: [fetch, parse, mask, enrich, embed, write, delete, acl]
+        state:
+          type: string
+          enum: [written, unchanged, stale, deleted, acl_updated, retrying, dead_letter, quarantined, queued]
+        last_error:
+          $ref: "#/components/schemas/ingest_error"
+        attempts:
+          type: integer
+          description: 本事件已失败的次数
+        ingest_batch_id:
+          type: string
+          description: 重放生成的入库批次
+          pattern: "^ing_[a-f0-9]+$"
+        updated_at:
+          type: string
+          format: date-time
+
+    dead_letter:
+      type: object
+      description: 一条死信。
+      required: [doc_id, source_id, event_id, stage, error, pipeline_version, attempts, replays, quarantined, first_failed_at, last_failed_at]
+      properties:
+        doc_id:
+          type: string
+        source_id:
+          type: string
+        event_id:
+          type: string
+        stage:
+          $ref: "#/components/schemas/ingest_stage"
+        error:
+          $ref: "#/components/schemas/ingest_error"
+        pipeline_version:
+          type: string
+          description: 处理时的流水线版本
+        attempts:
+          type: integer
+        replays:
+          type: integer
+        quarantined:
+          type: boolean
+          description: 重放 3 次仍失败，只有点名才重放
+        first_failed_at:
+          type: string
+          format: date-time
+        last_failed_at:
+          type: string
+          format: date-time
+
+    dead_letter_list:
+      type: object
+      description: 一页死信。
+      required: [dead_letters]
+      properties:
+        dead_letters:
+          type: array
+          items:
+            $ref: "#/components/schemas/dead_letter"
+        next_page_token:
+          type: string
+
+    replay_request:
+      type: object
+      description: 重放条件与原因。
+      required: [reason]
+      additionalProperties: false
+      properties:
+        source_id:
+          type: string
+        stage:
+          $ref: "#/components/schemas/ingest_stage"
+        error_code:
+          type: string
+        doc_ids:
+          type: array
+          maxItems: 500
+          items:
+            type: string
+        reason:
+          type: string
+          maxLength: 500
+
+    replay_result:
+      type: object
+      description: 重放结果。
+      required: [replayed, skipped_quarantined]
+      properties:
+        ingest_batch_id:
+          type: string
+          description: 入库批次；没有符合条件的死信时不返回
+          pattern: "^ing_[a-f0-9]+$"
+        replayed:
+          type: integer
+        skipped_quarantined:
+          type: integer
+          description: 符合条件但因隔离而跳过的条数
+
+    revoke_tombstones_request:
+      type: object
+      description: 撤销删除标记的条件与原因。
+      required: [source_id, tombstoned_since, tombstoned_until, reason]
+      additionalProperties: false
+      properties:
+        source_id:
+          type: string
+          pattern: "^src_"
+        tombstoned_since:
+          type: string
+          format: date-time
+          description: 删除事件发生时间的下界（含）
+        tombstoned_until:
+          type: string
+          format: date-time
+          description: 上界（不含），与下界相差最多 31 天
+        doc_ids:
+          type: array
+          maxItems: 1000
+          items:
+            type: string
+        reason:
+          type: string
+          maxLength: 500
+
+    tombstone_revocation:
+      type: object
+      description: 一次撤销删除标记的操作（双人复核）。
+      required: [operation_id, source_id, tombstoned_since, tombstoned_until, doc_ids, reason, matched_docs, revoked_docs, requested_by, requested_at, status, expires_at]
+      properties:
+        operation_id:
+          type: string
+          pattern: "^op_[a-f0-9]+$"
+        source_id:
+          type: string
+        tombstoned_since:
+          type: string
+          format: date-time
+        tombstoned_until:
+          type: string
+          format: date-time
+        doc_ids:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+        matched_docs:
+          type: integer
+          description: 申请时符合条件的删除标记数
+        revoked_docs:
+          type: integer
+          description: 执行时实际撤销的数量
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, executed, failed, expired]
+        approved_by:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        failure_reason:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        refetch_event_id:
+          type: string
+          description: 执行时发出的重新拉取事件（RefetchRequested）
+          pattern: "^evt_"
+
+    sync_run:
+      type: object
+      description: 一轮同步的结果。
+      required: [command, started_at, finished_at, result, documents, upserts, acl_only, deletes, deletes_paused, refetched]
+      properties:
+        command:
+          type: string
+          description: 同步命令，如 sync-wiki
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        result:
+          type: string
+          enum: [succeeded, failed, skipped_paused]
+        error:
+          type: string
+          maxLength: 200
+        documents:
+          type: integer
+        upserts:
+          type: integer
+        acl_only:
+          type: integer
+        deletes:
+          type: integer
+        deletes_paused:
+          type: boolean
+          description: 删除保护触发，本轮的删除暂停
+        deletes_paused_reason:
+          type: string
+          enum: [empty_listing, over_threshold]
+        refetched:
+          type: integer
+          description: 按撤销删除标记的要求重新拉取的文档数
+
+    source_pause:
+      type: object
+      description: 暂停记录。
+      required: [paused_by, paused_at, reason]
+      properties:
+        paused_by:
+          type: string
+        paused_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+
+    source_sync_status:
+      type: object
+      description: 数据源的同步状态。
+      required: [source_id, freshness_seconds]
+      properties:
+        source_id:
+          type: string
+        last_run:
+          $ref: "#/components/schemas/sync_run"
+        last_success:
+          $ref: "#/components/schemas/sync_run"
+        freshness_seconds:
+          type: integer
+          description: 距最近一次成功同步结束的秒数；从没成功过为 -1
+        pause:
+          $ref: "#/components/schemas/source_pause"
+
+    pause_source_request:
+      type: object
+      description: 暂停原因。
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+
+    pause_source_result:
+      type: object
+      description: 暂停结果。
+      required: [pause, changed]
+      properties:
+        pause:
+          $ref: "#/components/schemas/source_pause"
+        changed:
+          type: boolean
+          description: false 表示本来就是暂停的
+
+    resume_source_result:
+      type: object
+      description: 恢复结果。
+      required: [changed]
+      properties:
+        changed:
+          type: boolean
+          description: false 表示本来就没有暂停
+
+    deletion_hold:
+      type: object
+      description: 删除保护拦下的一批待删文档。
+      required: [hold_id, source_id, doc_ids, synced_docs, detected_at, status, applied_docs, updated_at]
+      properties:
+        hold_id:
+          type: string
+          pattern: "^hold_[a-f0-9]+$"
+        source_id:
+          type: string
+        doc_ids:
+          type: array
+          items:
+            type: string
+        synced_docs:
+          type: integer
+          description: 拦下时已同步的文档数
+        detected_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, awaiting_second, confirmed, applied, discarded, superseded]
+        confirmed_by:
+          type: string
+        approved_by:
+          type: string
+        discarded_by:
+          type: string
+        reason:
+          type: string
+        applied_docs:
+          type: integer
+          description: 执行时实际删除的数量
+        updated_at:
+          type: string
+          format: date-time
+
+    deletion_hold_list:
+      type: object
+      description: 待删批次列表。
+      required: [holds]
+      properties:
+        holds:
+          type: array
+          items:
+            $ref: "#/components/schemas/deletion_hold"
+
+    deletion_hold_action:
+      type: object
+      description: 确认或丢弃的原因。
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+
+    start_rebuild_request:
+      type: object
+      description: 全量重建的目标版本与原因；不填的沿用线上版本的，至少一项与线上不同。
+      required: [reason]
+      additionalProperties: false
+      properties:
+        embedding_model:
+          type: string
+          maxLength: 128
+        chunker_version:
+          type: string
+          maxLength: 128
+        reason:
+          type: string
+          maxLength: 500
+
+    rebuild_operation:
+      type: object
+      description: 待复核的全量重建申请。
+      required: [operation_id, embedding_model, chunker_version, live_version, reason, requested_by, requested_at, status, expires_at]
+      properties:
+        operation_id:
+          type: string
+          pattern: "^op_[a-f0-9]+$"
+        embedding_model:
+          type: string
+        chunker_version:
+          type: string
+        live_version:
+          type: string
+        reason:
+          type: string
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, executed, failed, expired]
+        approved_by:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        failure_reason:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        rebuild_id:
+          type: string
+          pattern: "^rb_[a-f0-9]+$"
+
+    index_rebuild:
+      type: object
+      description: 一次全量重建与进度。
+      required: [rebuild_id, version, embedding_model, chunker_version, status, written_docs, total_docs, requested_by, approved_by, started_at, reason]
+      properties:
+        rebuild_id:
+          type: string
+          pattern: "^rb_[a-f0-9]+$"
+        version:
+          type: string
+          description: 重建写入的待发布版本
+        embedding_model:
+          type: string
+        chunker_version:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, cancelled]
+        written_docs:
+          type: integer
+        total_docs:
+          type: integer
+        requested_by:
+          type: string
+        approved_by:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        cancelled_by:
+          type: string
+        reason:
+          type: string
+
+    plugin:
+      type: object
+      description: 一个插件版本的登记。
+      required: [plugin_id, kind, name, version, host, description, tool_scopes, registered_by, registered_at, evaluations, security_review, usable_tenants]
+      properties:
+        plugin_id:
+          type: string
+          pattern: "^plg_[a-f0-9]{24}$"
+        kind:
+          type: string
+          enum: [connector, parser, chunker, retriever, reranker, model, tool]
+        name:
+          type: string
+        version:
+          type: string
+        host:
+          type: string
+          description: 宿主模块
+          enum: [connectors, processing, retrieval, orchestrator]
+        description:
+          type: string
+        tool_scopes:
+          type: array
+          items:
+            type: string
+        registered_by:
+          type: string
+        registered_at:
+          type: string
+          format: date-time
+        evaluations:
+          type: array
+          description: 各租户最近一次评估
+          items:
+            type: object
+            required: [tenant, passed, report_ref, evaluated_at]
+            properties:
+              tenant:
+                type: string
+              passed:
+                type: boolean
+              report_ref:
+                type: string
+              evaluated_at:
+                type: string
+                format: date-time
+        security_review:
+          type: string
+          enum: [not_required, pending, approved, rejected]
+        reviewed_by:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        review_note:
+          type: string
+        usable_tenants:
+          type: array
+          description: 可被这些租户的 pipeline.yaml 引用
+          items:
+            type: string
+
+    plugin_list:
+      type: object
+      description: 一页插件。
+      required: [plugins]
+      properties:
+        plugins:
+          type: array
+          items:
+            $ref: "#/components/schemas/plugin"
+        next_page_token:
+          type: string
+
+    register_plugin_request:
+      type: object
+      description: 登记的插件。
+      required: [kind, name, version, description]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [connector, parser, chunker, retriever, reranker, model, tool]
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{1,63}$"
+        version:
+          type: string
+          maxLength: 64
+        description:
+          type: string
+          maxLength: 500
+        tool_scopes:
+          type: array
+          description: Tool 插件必填，只能是只读范围
+          maxItems: 20
+          items:
+            type: string
+            pattern: "^read:"
+
+    review_plugin_request:
+      type: object
+      description: 安全评审结论。
+      required: [approved, note]
+      additionalProperties: false
+      properties:
+        approved:
+          type: boolean
+        note:
+          type: string
+          maxLength: 500
+
+    eval_gate:
+      type: object
+      description: 一次评测门禁的结论。
+      required: [gate_id, trigger, golden_set, golden_version, tenants, conclusion, reasons, unstable, metrics, config, repeats, created_at]
+      properties:
+        gate_id:
+          type: string
+          pattern: "^gate_[a-f0-9]{24}$"
+        trigger:
+          type: string
+          enum: [ci, config_release, index_publish, index_rebuild, scheduled, manual]
+        golden_set:
+          type: string
+        golden_version:
+          type: string
+        tenants:
+          type: array
+          items:
+            type: string
+        conclusion:
+          type: string
+          enum: [passed, failed, indeterminate]
+        reasons:
+          type: array
+          items:
+            type: string
+        unstable:
+          type: array
+          description: 多次运行间结果不同的题，只作参考
+          items:
+            type: string
+        metrics:
+          type: object
+          description: 指标名 → 值；没有样本时为 null
+          additionalProperties:
+            type: [number, "null"]
+        config:
+          type: object
+          description: 评测配置（快照版本、索引版本、模型等）
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        repeats:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        report_markdown:
+          type: string
+          description: 完整报告，只在查询单个门禁时返回
+
+    eval_gate_list:
+      type: object
+      description: 一页门禁。
+      required: [gates]
+      properties:
+        gates:
+          type: array
+          items:
+            $ref: "#/components/schemas/eval_gate"
+        next_page_token:
+          type: string
+
+    golden_expected:
+      type: object
+      description: 标准答案。
+      required: [status, key_points, must_cite, must_not_cite]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [answered, insufficient_evidence, refused]
+        key_points:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 200
+        must_cite:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        must_not_cite:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+
+    golden_question:
+      type: object
+      description: 一道评测题（已入集的或候选题）。
+      required: [question_id, golden_set, bucket, asker, question, expected, status, origin]
+      properties:
+        question_id:
+          type: string
+        golden_set:
+          type: string
+        bucket:
+          type: string
+        asker:
+          type: string
+          description: 提问身份模板
+        question:
+          type: string
+        expected:
+          $ref: "#/components/schemas/golden_expected"
+        status:
+          type: string
+          enum: [in_set, pending, accepted, rejected]
+        origin:
+          type: string
+        submitted_by:
+          type: string
+        submitted_at:
+          type: string
+          format: date-time
+        expert_reviewer:
+          type: string
+        platform_reviewer:
+          type: string
+        reject_reason:
+          type: string
+
+    golden_question_list:
+      type: object
+      description: 评测题。
+      required: [questions, golden_versions]
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/golden_question"
+        golden_versions:
+          type: array
+          description: 评测集版本（集合@版本）
+          items:
+            type: string
+
+    golden_candidate_request:
+      type: object
+      description: 候选题。
+      required: [golden_set, bucket, asker, question, expected, origin]
+      additionalProperties: false
+      properties:
+        golden_set:
+          type: string
+        bucket:
+          type: string
+        asker:
+          type: string
+        question:
+          type: string
+          maxLength: 500
+        expected:
+          $ref: "#/components/schemas/golden_expected"
+        origin:
+          type: string
+          enum: [expert, feedback, online_sample, llm_generated]
+
+    golden_review_request:
+      type: object
+      description: 复核结论；驳回时必须写原因。
+      required: [approved]
+      additionalProperties: false
+      properties:
+        approved:
+          type: boolean
+        reason:
+          type: string
+          maxLength: 500
+
+    config_version:
+      type: object
+      description: 配置对象的一个不可变版本。
+      required: [version_id, object, scope, number, content, content_hash, created_by, created_at, source_ref, active]
+      properties:
+        version_id:
+          type: string
+          pattern: "^cfv_[a-f0-9]{24}$"
+        object:
+          type: string
+          enum: [tenant]
+        scope:
+          type: string
+        number:
+          type: integer
+        content:
+          type: string
+        content_hash:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        source_ref:
+          type: string
+          description: bootstrap:<文件>、git:<提交>、chg_…
+        active:
+          type: boolean
+
+    config_version_list:
+      type: object
+      description: 版本列表。
+      required: [versions]
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/config_version"
+
+    tenant_list:
+      type: object
+      description: 租户与生效配置。
+      required: [tenants]
+      properties:
+        tenants:
+          type: array
+          items:
+            type: object
+            required: [tenant, rollout, active]
+            properties:
+              tenant:
+                type: string
+              rollout:
+                type: string
+                enum: [pilot, general]
+              active:
+                $ref: "#/components/schemas/config_version"
+
+    create_tenant_request:
+      type: object
+      description: 新租户。
+      required: [tenant, content, reason]
+      additionalProperties: false
+      properties:
+        tenant:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{0,62}$"
+        content:
+          type: string
+          description: tenant.yaml 原文
+        reason:
+          type: string
+          maxLength: 500
+        gate_id:
+          type: string
+
+    create_change_request:
+      type: object
+      description: 变更内容。
+      required: [object, scope, content, reason]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          enum: [tenant]
+        scope:
+          type: string
+        base_version_id:
+          type: string
+        content:
+          type: string
+        reason:
+          type: string
+          maxLength: 500
+        gate_id:
+          type: string
+          description: 租户切到全量时附已通过、覆盖该租户的门禁
+
+    change_request:
+      type: object
+      description: 变更单。
+      required: [chg_id, object, scope, version, reason, author, created_at, status]
+      properties:
+        chg_id:
+          type: string
+          pattern: "^chg_[a-f0-9]{24}$"
+        object:
+          type: string
+        scope:
+          type: string
+        base_version_id:
+          type: string
+        version:
+          $ref: "#/components/schemas/config_version"
+        reason:
+          type: string
+        gate_id:
+          type: string
+        author:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [open, approved, rejected, stale]
+        decided_by:
+          type: string
+        decided_at:
+          type: string
+          format: date-time
+        reject_reason:
+          type: string
+        release_id:
+          type: string
+
+    create_release_request:
+      type: object
+      description: CI 发起的发布。
+      required: [object, scope, content, source_ref, reason]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          enum: [tenant]
+        scope:
+          type: string
+        content:
+          type: string
+        source_ref:
+          type: string
+          pattern: "^git:[0-9a-f]{7,64}$"
+        gate_id:
+          type: string
+        reason:
+          type: string
+          maxLength: 500
+
+    release:
+      type: object
+      description: 一次发布。
+      required: [release_id, object, scope, version, source, source_ref, status, reason, requested_by, requested_at]
+      properties:
+        release_id:
+          type: string
+          pattern: "^rel_[a-f0-9]{24}$"
+        object:
+          type: string
+        scope:
+          type: string
+        version:
+          $ref: "#/components/schemas/config_version"
+        from_version_id:
+          type: string
+          description: 发布时的生效版本，回退切回它
+        source:
+          type: string
+          enum: [ci, change_request, rollback, bootstrap]
+        source_ref:
+          type: string
+        gate_id:
+          type: string
+        status:
+          type: string
+          enum: [pending_approval, active, superseded, rolled_back, rejected, stale]
+        reason:
+          type: string
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        approved_by:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        rolled_back_by:
+          type: string
+        rolled_back_at:
+          type: string
+          format: date-time
+
     emergency_denial:
       type: object
       description: 一条紧急拒绝规则（只能新增，解除走变更单）。
@@ -1873,6 +4031,43 @@ components:
           type: string
           pattern: "^conv_[A-Za-z0-9]{1,64}$"
           description: 本轮所属的会话，下一轮请求带上它。
+        confidence:
+          $ref: "#/components/schemas/confidence"
+
+    confidence:
+      type: object
+      description: |
+        回答整体的置信度：“这个回答正确且有据”的可能性（技术设计文档 7.8）。由引用覆盖率、平均支持度、最高精排分、
+        来源多样性与证据冲突加权后经 sigmoid 得出；权重由评测集校准，版本见 weights_version。
+        拒答、仅证据与清单类回答没有这个字段。低档建议提示用户核实原文。
+      required: [score, level, weights_version, coverage, mean_support, top_rerank, source_diversity, conflict]
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        level:
+          type: string
+          enum: [low, medium, high]
+          description: high ≥ 0.8，medium 0.5–0.8，low < 0.5
+        weights_version:
+          type: string
+          description: 计算所用的权重版本
+        coverage:
+          type: number
+          description: 引用覆盖率：通过校验的句子数 / 陈述总数
+        mean_support:
+          type: number
+          description: 各句支持度的平均值
+        top_rerank:
+          type: number
+          description: 证据里最高的精排分；没有精排时为 0.5
+        source_diversity:
+          type: number
+          description: min(被引用的独立文档数, 3) / 3
+        conflict:
+          type: boolean
+          description: 是否存在未解决的证据冲突
 
     answer_replay:
       description: 回放结果：回答契约（按调用者当前权限调整过）加上记录时的信息。answer_id、trace_id 是当时的值。
@@ -2003,6 +4198,8 @@ components:
           $ref: "#/components/schemas/why"
         answer_kind:
           $ref: "#/components/schemas/answer_kind"
+        confidence:
+          $ref: "#/components/schemas/confidence"
 
     sentence:
       description: 一条已通过校验的陈述。

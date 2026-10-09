@@ -1,11 +1,15 @@
 """python -m bambuflow_evaluation run --golden <目录> [--tenants a,b] [--repeat 3] [--out <目录>]
-                                     [--write-baseline]
+                                     [--write-baseline] [--trigger ci|…]
+    配置了 BF_PG_DSN 时把门禁结论与报告写进 evaluation.gate_runs（/v1/admin/eval-gates 查询）
 python -m bambuflow_evaluation affected --golden <目录> < 改动文件列表   输出受影响租户（逗号分隔）
-python -m bambuflow_evaluation serve    常驻服务：A/B 分析接口（evaluation 详设 2、8.2）
+python -m bambuflow_evaluation serve    常驻服务：A/B 分析、质量趋势、门禁报告与异步门禁
+                                        （evaluation 详设 2、8.2）
 python -m bambuflow_evaluation guard    检查运行中实验的护栏，触发即停止（每天由调度方运行）
 python -m bambuflow_evaluation online-sample [--day YYYY-MM-DD]
     在线抽样评审（默认前一天，每天由调度方运行）
 python -m bambuflow_evaluation migrate  建 evaluation 自有的表（升级前执行）
+python -m bambuflow_evaluation candidates --tenant <租户>
+    导出已通过复核的候选题（YAML），走合并请求加进 golden/<集合>/questions.yaml
 
 退出码：0 通过；1 不通过；2 无法判定。报告写到 --out：report.md、report.json；--write-baseline 时
 改写 <基线名>.md、<基线名>.json（--baseline，默认 baseline；基线随评测集提交，之后的运行与它比较）。
@@ -15,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import datetime as dt
 import json
 import logging
@@ -28,11 +33,27 @@ from typing import Any
 import grpc
 import httpx
 
-from bambuflow.admin.v1 import experiment_analysis_pb2_grpc, quality_trend_pb2_grpc
+from bambuflow.admin.v1 import (
+    eval_gate_admin_pb2_grpc,
+    experiment_analysis_pb2_grpc,
+    golden_admin_pb2_grpc,
+    quality_trend_pb2_grpc,
+)
 from bambuflow.answer.v1 import answer_pb2_grpc, records_pb2_grpc
 from bambuflow.config.v1 import experiment_control_pb2_grpc
+from bambuflow.evaluation.v1 import gate_pb2_grpc
 from bambuflow.retrieval.v1 import retrieval_pb2_grpc
-from bambuflow_evaluation import affected, golden, online, report, retrieval, service
+from bambuflow_evaluation import (
+    affected,
+    candidates,
+    gaterun,
+    gates,
+    golden,
+    online,
+    report,
+    retrieval,
+    service,
+)
 from bambuflow_evaluation.metrics import average, judge
 from bambuflow_evaluation.runner import Runner
 from bambuflow_evaluation.signer import Signer
@@ -94,6 +115,11 @@ async def evaluate(args: argparse.Namespace) -> int:
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     print(md)
+    if env.get("BF_PG_DSN") and not args.write_baseline:
+        tenants = sorted({q.asker.tenant for q in gs.questions})
+        gate = gates.new_gate(args.trigger, tenants, data, md)
+        await gates.PGStore(env["BF_PG_DSN"]).put(gate)
+        _log.info("已记录门禁 %s：%s", gate.gate_id, gate.conclusion)
     return EXIT[verdict.conclusion]
 
 
@@ -137,14 +163,19 @@ GRACE_SECONDS = 10
 
 async def serve() -> None:
     env = os.environ
-    async with (
-        grpc.aio.insecure_channel(env["BF_CONFIG_ADDR"]) as gch,
-        grpc.aio.insecure_channel(env["BF_ORCHESTRATOR_ADDR"]) as och,
-    ):
+    async with contextlib.AsyncExitStack() as stack:
+        gch = await stack.enter_async_context(grpc.aio.insecure_channel(env["BF_CONFIG_ADDR"]))
+        och = await stack.enter_async_context(
+            grpc.aio.insecure_channel(env["BF_ORCHESTRATOR_ADDR"])
+        )
         server = grpc.aio.server(
-            # 分析与趋势接口只经 gateway 的管理接口调用，只接受管理 Principal
+            # 管理接口只经 gateway 调用，只接受管理 Principal；
+            # EvalService 是服务间接口（indexing、governance、CI）
             interceptors=[
-                AuthInterceptor(Verifier(JWKS(env["BF_PRINCIPAL_JWKS_URL"]), operator=True))
+                AuthInterceptor(
+                    Verifier(JWKS(env["BF_PRINCIPAL_JWKS_URL"]), operator=True),
+                    internal=frozenset({"bambuflow.evaluation.v1.EvalService"}),
+                )
             ]
         )
         experiment_analysis_pb2_grpc.add_ExperimentAnalysisServiceServicer_to_server(
@@ -157,6 +188,42 @@ async def serve() -> None:
         quality_trend_pb2_grpc.add_QualityTrendServiceServicer_to_server(
             online.TrendService(online.PGStore(env["BF_PG_DSN"])), server
         )
+        eval_gate_admin_pb2_grpc.add_EvalGateAdminServiceServicer_to_server(
+            gates.GateService(gates.PGStore(env["BF_PG_DSN"])), server
+        )
+        # 评测集随镜像发布（golden/），启动时读一次
+        sets = candidates.golden_sets(Path(env.get("BF_GOLDEN_DIR", "golden")))
+        golden_admin_pb2_grpc.add_GoldenSetAdminServiceServicer_to_server(
+            candidates.GoldenService(candidates.PGStore(env["BF_PG_DSN"]), lambda: sets), server
+        )
+        # 异步门禁跑在评测副本上（BF_EVAL_MODE 的 orchestrator 与 retrieval，evaluation 详设 4.2）；
+        # 没有配置评测副本时不提供 EvalService，调用方拿不到门禁结论就按不通过处理
+        if env.get("BF_EVAL_ORCHESTRATOR_ADDR") and env.get("BF_EVAL_RETRIEVAL_ADDR"):
+            gate_store = gates.PGStore(env["BF_PG_DSN"])
+            if n := await gate_store.abandon_running():
+                _log.warning("上次运行中断的门禁按不通过结束：%d 个", n)
+            rch = await stack.enter_async_context(
+                grpc.aio.insecure_channel(env["BF_EVAL_RETRIEVAL_ADDR"])
+            )
+            ech = await stack.enter_async_context(
+                grpc.aio.insecure_channel(env["BF_EVAL_ORCHESTRATOR_ADDR"])
+            )
+            http = await stack.enter_async_context(httpx.AsyncClient(timeout=10))
+            signer = Signer(env["VAULT_ADDR"], env["VAULT_TOKEN"])
+            nli = KServeNLI(env["BF_NLI_URL"], http, env.get("BF_EVAL_NLI_MODEL") or "nli")
+
+            def runner(index_version: str) -> Runner:
+                return Runner(
+                    retrieval_pb2_grpc.RetrievalServiceStub(rch),
+                    answer_pb2_grpc.AnswerServiceStub(ech),
+                    signer,
+                    nli,
+                    index_version,
+                )
+
+            gate_pb2_grpc.add_EvalServiceServicer_to_server(
+                gaterun.EvalService(gate_store, lambda: sets, runner), server
+            )
         server.add_insecure_port(env.get("BF_LISTEN", "0.0.0.0:9090"))
         await server.start()
         _log.info("evaluation 已启动")
@@ -224,6 +291,8 @@ def main() -> int:
     run.add_argument("--write-baseline", action="store_true")
     # 基线随评测环境区分：模拟服务（CI 回归用）与真实模型的指标不可比，各有一份
     run.add_argument("--baseline", default="baseline")
+    # 门禁的触发方，写进门禁记录（evaluation 详设 5.1）
+    run.add_argument("--trigger", choices=gates.TRIGGERS, default="manual")
     ret = sub.add_parser("retrieval")
     ret.add_argument("--set", required=True)
     ret.add_argument("--out", default="/out")
@@ -237,11 +306,19 @@ def main() -> int:
     sub.add_parser("serve")
     sub.add_parser("guard")
     sub.add_parser("migrate")
+    cand = sub.add_parser("candidates")
+    cand.add_argument("--tenant", required=True)
     on = sub.add_parser("online-sample")
     on.add_argument("--day", default="")
     args = p.parse_args()
     if args.cmd == "migrate":
         asyncio.run(online.PGStore(os.environ["BF_PG_DSN"]).migrate())
+        asyncio.run(gates.PGStore(os.environ["BF_PG_DSN"]).migrate())
+        asyncio.run(candidates.PGStore(os.environ["BF_PG_DSN"]).migrate())
+        return 0
+    if args.cmd == "candidates":
+        found = asyncio.run(candidates.PGStore(os.environ["BF_PG_DSN"]).list(args.tenant))
+        print(candidates.export_yaml(found), end="")
         return 0
     if args.cmd == "online-sample":
         yesterday = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=1)

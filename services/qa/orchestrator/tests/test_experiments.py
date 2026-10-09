@@ -77,3 +77,58 @@ def test_refresh_replaces_and_keeps_last_on_failure() -> None:
         asyncio.run(go())
     assert calls == 3
     assert xs.assignment("credit", "u1") == assign(exp(50), "u1")
+
+
+def test_refresh_keeps_last_on_invalid_signature_and_acks() -> None:
+    from bambuflow_platform.snapshot import InvalidSnapshotError
+
+    xs = Experiments([exp()])
+    acks: list[tuple[str, str]] = []
+    calls = 0
+
+    async def fetch() -> config_pb2.GetSnapshotResponse:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise InvalidSnapshotError("签名不对")
+        if calls == 2:
+            return config_pb2.GetSnapshotResponse(snapshot_version="v2", experiments=[exp(50)])
+        raise asyncio.CancelledError
+
+    async def ack(version: str, reason: str) -> None:
+        acks.append((version, reason))
+
+    async def go() -> None:
+        await experiments.refresh(xs, fetch, every=0, wake=asyncio.Event(), ack=ack)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(go())
+    assert acks == [("", "signature_invalid"), ("v2", "")]
+
+
+def test_refresh_replaces_vocabulary_from_same_snapshot() -> None:
+    from bambuflow_vocabulary import Vocabularies
+
+    got: list[Vocabularies] = []
+    calls = 0
+
+    async def fetch() -> config_pb2.GetSnapshotResponse:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            snap = config_pb2.GetSnapshotResponse(snapshot_version="v2")
+            for name in ("doc_type", "dept", "topic"):
+                v = snap.vocabularies.add(name=name)
+                v.terms.add(code="X-" + name.upper().replace("_", "-"), name=name)
+            return snap
+        if calls == 2:
+            # 缺了词表的快照不用
+            return config_pb2.GetSnapshotResponse(snapshot_version="v3")
+        raise asyncio.CancelledError
+
+    async def go() -> None:
+        await experiments.refresh(Experiments(), fetch, every=0, on_vocab=got.append)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(go())
+    assert len(got) == 1 and got[0].version == "v2"

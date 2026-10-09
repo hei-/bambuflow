@@ -5,6 +5,10 @@
 //	connectors sync-fileshare  读取共享盘样例目录（PDF、Office、邮件、图片），同上
 //	connectors sync-logs       读取日志平台消息主题里的新消息，按服务一天一份文档发出（internal/logs）
 //	connectors sync-dbschema   读取白名单视图的表结构与字段说明，一个视图一份文档发出（internal/dbschema，部署时每小时一次）
+//	connectors serve-admin     常驻的数据源运维接口：同步状态、暂停与恢复、待删批次（internal/admin）
+//	connectors healthcheck     容器健康检查：管理服务的端口可连
+//
+// 每轮同步的结果写进同步状态（internal/syncstatus）；数据源暂停时整轮跳过。
 package main
 
 import (
@@ -12,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"os/signal"
@@ -21,14 +26,22 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
 
+	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/admin"
 	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/dbschema"
 	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/fileshare"
+	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/holds"
 	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/incremental"
 	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/logs"
 	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/publish"
+	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/refetch"
+	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/syncstatus"
 	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/wiki"
 )
 
@@ -53,12 +66,18 @@ func main() {
 	var err error
 	cmd, listed := commands[os.Args[1]]
 	switch {
+	case os.Args[1] == "serve-admin":
+		err = serveAdmin(ctx, log)
+	case os.Args[1] == "healthcheck":
+		err = healthcheck(ctx)
 	case os.Args[1] == "sync-logs":
-		err = syncLogs(ctx, log)
+		err = recorded(ctx, log, os.Args[1], syncLogs)
 	case os.Args[1] == "sync-dbschema":
-		err = syncDBSchema(ctx, log)
+		err = recorded(ctx, log, os.Args[1], syncDBSchema)
 	case listed:
-		err = syncSource(ctx, log, cmd.dirEnv, cmd.uriEnv, cmd.list)
+		err = recorded(ctx, log, os.Args[1], func(ctx context.Context, log *slog.Logger, run *syncstatus.Run) error {
+			return syncSource(ctx, log, run, cmd.dirEnv, cmd.uriEnv, cmd.list)
+		})
 	default:
 		usage()
 	}
@@ -69,8 +88,82 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "用法: connectors sync-wiki | sync-fileshare | sync-logs | sync-dbschema")
+	fmt.Fprintln(os.Stderr, "用法: connectors sync-wiki | sync-fileshare | sync-logs | sync-dbschema | serve-admin | healthcheck")
 	os.Exit(2)
+}
+
+type syncFunc func(ctx context.Context, log *slog.Logger, run *syncstatus.Run) error
+
+// recorded 跑一轮同步并把结果写进同步状态；数据源暂停时整轮跳过（入库管道详设 14.4）。
+func recorded(ctx context.Context, log *slog.Logger, command string, sync syncFunc) error {
+	vals, err := envs("BF_SOURCE_ID", "BF_REDIS_ADDR")
+	if err != nil {
+		return err
+	}
+	sourceID := vals[0]
+	rdb := redis.NewClient(&redis.Options{Addr: vals[1]})
+	defer func() { _ = rdb.Close() }()
+	store := syncstatus.Store{Client: rdb}
+	run := syncstatus.Run{Command: command, StartedAt: time.Now()}
+	// 读不到暂停状态就不同步：暂停常常正是为了让这个源停下
+	paused, err := store.Paused(ctx, sourceID)
+	if err != nil {
+		return fmt.Errorf("读取暂停状态: %w", err)
+	}
+	if paused {
+		log.Warn("数据源已暂停，本轮跳过", slog.String("source", sourceID))
+		run.FinishedAt, run.Result = time.Now(), syncstatus.SkippedPaused
+		return store.Record(ctx, sourceID, run)
+	}
+	err = sync(ctx, log, &run)
+	run.Finish(err, time.Now())
+	// 收到停止信号时也要把这一轮记下来
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if rerr := store.Record(rctx, sourceID, run); rerr != nil {
+		return errors.Join(err, fmt.Errorf("写同步状态: %w", rerr))
+	}
+	return err
+}
+
+// serveAdmin 是数据源运维接口（internal/admin），只接受 gateway 签发的管理 Principal。
+func serveAdmin(ctx context.Context, log *slog.Logger) error {
+	vals, err := envs("BF_REDIS_ADDR", "BF_PRINCIPAL_JWKS_URL")
+	if err != nil {
+		return err
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: vals[0]})
+	defer func() { _ = rdb.Close() }()
+	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listenAddr())
+	if err != nil {
+		return err
+	}
+	s := grpc.NewServer(grpc.UnaryInterceptor(grpcmw.UnaryServer(principal.NewOperatorVerifier(principal.NewJWKS(vals[1], nil)), log)))
+	adminv1.RegisterConnectorAdminServiceServer(s, &admin.Server{Store: syncstatus.Store{Client: rdb}, Holds: holds.Store{Client: rdb},
+		Log: log, Now: time.Now})
+	go func() {
+		<-ctx.Done()
+		s.GracefulStop()
+	}()
+	log.Info("connectors 管理服务已启动")
+	return s.Serve(lis)
+}
+
+func listenAddr() string {
+	if v := os.Getenv("BF_LISTEN"); v != "" {
+		return v
+	}
+	return ":9090"
+}
+
+func healthcheck(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", "127.0.0.1"+listenAddr())
+	if err != nil {
+		return err
+	}
+	return conn.Close()
 }
 
 func env(name string) (string, error) {
@@ -152,7 +245,7 @@ func connect(ctx context.Context) (*minio.Client, string, *redis.Client, error) 
 }
 
 // syncLogs 是日志数据源的一轮同步（internal/logs）。配置文件给出主题、入库的服务与级别、服务归属的运维组与保留期。
-func syncLogs(ctx context.Context, log *slog.Logger) error {
+func syncLogs(ctx context.Context, log *slog.Logger, run *syncstatus.Run) error {
 	vals, err := envs("BF_SOURCE_ID", "BF_LOG_CONFIG", "BF_LOG_BASE_URI")
 	if err != nil {
 		return err
@@ -180,6 +273,7 @@ func syncLogs(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	run.Documents, run.Upserts, run.ACLOnly = st.Upserts+st.ACLOnly, st.Upserts, st.ACLOnly
 	log.Info("日志同步完成", slog.String("source", sourceID), slog.Int("read", st.Read), slog.Int("accepted", st.Accepted),
 		slog.Int("duplicates", st.Duplicates), slog.Int("upserts", st.Upserts), slog.Int("acl_only", st.ACLOnly),
 		slog.Int("expired", st.Expired))
@@ -188,7 +282,7 @@ func syncLogs(ctx context.Context, log *slog.Logger) error {
 
 // syncDBSchema 是关系型数据库数据源的一轮同步（internal/dbschema）。元数据默认用只读账号读系统表；
 // 接数据平台的元数据目录时只换 Catalog 的实现。
-func syncDBSchema(ctx context.Context, log *slog.Logger) error {
+func syncDBSchema(ctx context.Context, log *slog.Logger, run *syncstatus.Run) error {
 	vals, err := envs("BF_SOURCE_ID", "BF_DBSCHEMA_CONFIG", "BF_DBSCHEMA_DSN", "BF_DBSCHEMA_BASE_URI")
 	if err != nil {
 		return err
@@ -219,6 +313,8 @@ func syncDBSchema(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	run.Documents, run.Upserts, run.ACLOnly, run.Deletes = st.Views, st.Upserts, st.ACLOnly, st.Deletes
+	run.DeletesPaused, run.DeletesPausedReason = st.DeletesPaused != "", st.DeletesPaused
 	if st.DeletesPaused != "" {
 		log.Warn("删除已暂停，等待确认", slog.String("reason", st.DeletesPaused), slog.String("source", sourceID))
 	}
@@ -227,7 +323,23 @@ func syncDBSchema(ctx context.Context, log *slog.Logger) error {
 	return nil
 }
 
-func syncSource(ctx context.Context, log *slog.Logger, dirEnv, uriEnv string, list lister) error {
+// splitHeld 把被拦下的待删文档分成两部分：不在已确认批次里的（仍需确认）与在批次里的（本轮执行）。
+func splitHeld(held, confirmed []string) (rest, apply []string) {
+	in := make(map[string]bool, len(confirmed))
+	for _, id := range confirmed {
+		in[id] = true
+	}
+	for _, id := range held {
+		if in[id] {
+			apply = append(apply, id)
+		} else {
+			rest = append(rest, id)
+		}
+	}
+	return rest, apply
+}
+
+func syncSource(ctx context.Context, log *slog.Logger, run *syncstatus.Run, dirEnv, uriEnv string, list lister) (err error) {
 	vals, err := envs("BF_SOURCE_ID", dirEnv, uriEnv)
 	if err != nil {
 		return err
@@ -247,6 +359,13 @@ func syncSource(ctx context.Context, log *slog.Logger, dirEnv, uriEnv string, li
 	p := &publish.Publisher{S3: s3, Bucket: bucket, Redis: rdb, SourceID: sourceID}
 	// 已发出的状态：doc_id → 内容摘要|权限摘要。只发新增与变化的文档（增量入库），两种样例源共用
 	stateKey := "bf:connector:" + sourceID + ":state"
+	// 撤销删除标记后要求重新拉取的文档：先从状态里去掉，本轮就会作为新文档重新发出（internal/refetch）
+	host, _ := os.Hostname()
+	refetched, err := refetch.Apply(ctx, &refetch.RedisStream{Client: rdb, SourceID: sourceID, Consumer: host},
+		&refetch.RedisState{Client: rdb, Key: stateKey}, sourceID, log)
+	if err != nil {
+		return fmt.Errorf("处理重新拉取请求: %w", err)
+	}
 	state, err := rdb.HGetAll(ctx, stateKey).Result()
 	if err != nil {
 		return fmt.Errorf("读取同步状态: %w", err)
@@ -276,6 +395,36 @@ func syncSource(ctx context.Context, log *slog.Logger, dirEnv, uriEnv string, li
 			}
 		}
 	}
+	// 删除保护（入库管道详设第 5 节）：执行两位数据属主确认过的批次，只删其中本轮源端仍不存在的；
+	// 本轮仍被拦下的其余待删文档记成一批，等确认
+	holdStore := holds.Store{Client: rdb}
+	confirmed, err := holdStore.Confirmed(ctx, sourceID)
+	if err != nil {
+		return fmt.Errorf("读取待删批次: %w", err)
+	}
+	if confirmed != nil {
+		var applied []string
+		plan.Held, applied = splitHeld(plan.Held, confirmed.DocIDs)
+		plan.Deletes = append(plan.Deletes, applied...)
+		defer func() {
+			// 删除全部发出后才记为已执行；中途失败时批次仍是 confirmed，下一轮重做
+			if err == nil {
+				err = holdStore.MarkApplied(context.WithoutCancel(ctx), sourceID, confirmed.ID, len(applied), time.Now())
+			}
+		}()
+	}
+	if len(plan.Held) > 0 {
+		h, err := holdStore.Observe(ctx, sourceID, plan.Held, len(state), now)
+		if err != nil {
+			return fmt.Errorf("记录待删批次: %w", err)
+		}
+		log.Warn("删除保护拦下一批待删文档", slog.String("hold_id", h.ID), slog.String("status", h.Status),
+			slog.Int("docs", len(plan.Held)), slog.String("source", sourceID))
+	}
+	if plan.Reason == "over_threshold" && len(plan.Held) == 0 {
+		// 拦下的都在已确认的批次里，本轮已执行
+		plan.DeletesPaused, plan.Reason = false, ""
+	}
 	for _, id := range plan.Deletes {
 		if err := p.Delete(ctx, id, now); err != nil {
 			return errors.Join(fmt.Errorf("删除 %s", id), err)
@@ -284,11 +433,15 @@ func syncSource(ctx context.Context, log *slog.Logger, dirEnv, uriEnv string, li
 			return err
 		}
 	}
+	run.Documents, run.Upserts, run.ACLOnly, run.Deletes = len(docs), len(plan.Upserts), len(plan.AclOnly), len(plan.Deletes)
+	run.DeletesPaused, run.DeletesPausedReason, run.Refetched = plan.DeletesPaused, plan.Reason, refetched
 	if plan.DeletesPaused {
-		// 删除保护：等管理员确认后用 BF_CONFIRM_DELETES=1 重跑（入库管道详设第 5 节）
+		// 删除保护：等两位数据属主在 /v1/admin/sources/{src_id}/pending-deletions 确认（入库管道详设第 5 节）；
+		// BF_CONFIRM_DELETES=1 是运维直接确认本轮全部删除的应急开关（如数据源下线）
 		log.Warn("删除已暂停，等待确认", slog.String("reason", plan.Reason), slog.String("source", sourceID))
 	}
 	log.Info("同步完成", slog.String("source", sourceID), slog.Int("documents", len(docs)),
-		slog.Int("upserts", len(plan.Upserts)), slog.Int("acl_only", len(plan.AclOnly)), slog.Int("deletes", len(plan.Deletes)))
+		slog.Int("upserts", len(plan.Upserts)), slog.Int("acl_only", len(plan.AclOnly)), slog.Int("deletes", len(plan.Deletes)),
+		slog.Int("refetched", refetched))
 	return nil
 }

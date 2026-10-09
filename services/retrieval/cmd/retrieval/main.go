@@ -28,11 +28,13 @@ import (
 	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/snapshot"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/telemetry"
 	"github.com/bambu-ai/bambuflow/libs/textseg"
 	"github.com/bambu-ai/bambuflow/services/retrieval/internal/embed"
 	"github.com/bambu-ai/bambuflow/services/retrieval/internal/grants"
 	"github.com/bambu-ai/bambuflow/services/retrieval/internal/guard"
+	"github.com/bambu-ai/bambuflow/services/retrieval/internal/pii"
 	"github.com/bambu-ai/bambuflow/services/retrieval/internal/policy"
 	"github.com/bambu-ai/bambuflow/services/retrieval/internal/search"
 	"github.com/bambu-ai/bambuflow/services/retrieval/internal/store"
@@ -129,9 +131,13 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = configConn.Close() }()
-	grantsWatcher := &grants.Watcher{Client: configv1.NewConfigServiceClient(configConn), Every: 10 * time.Second,
+	configClient := configv1.NewConfigServiceClient(configConn)
+	host, _ := os.Hostname()
+	verifier := &snapshot.Verifier{Client: configClient, Now: time.Now}
+	grantsWatcher := &grants.Watcher{Client: configClient, Open: verifier.Open, Instance: host, Every: 10 * time.Second,
 		MaxAge: 5 * time.Minute, Log: log, Now: time.Now}
 	go grantsWatcher.Run(ctx)
+	go grantsWatcher.Watch(ctx)
 
 	srv := &search.Server{Store: st, Embedder: embed.New(embedderURL, envOr("BF_EMBEDDING_MODEL", "bge-m3")), Grants: grantsWatcher, Log: log}
 	// 熔断与准入（详设 9.2）：单路预算 150 ms；租户令牌桶与在途上限是运行参数，按副本规格在部署配置里调
@@ -149,6 +155,15 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	// 精排是可选环节：未配置地址时不精排，响应的 degraded 里注明（详设 9.4）
 	if u := os.Getenv("BF_RERANKER_URL"); u != "" {
 		srv.Reranker = embed.NewReranker(u, envOr("BF_RERANKER_MODEL", "bge-reranker-v2-m3"))
+	}
+	// PII 原值的还原（技术设计文档 8.6）：经 Vault transit 解开入库时包裹的数据密钥。没有配置 Vault 时，
+	// 能看 PII 的调用者也只看到掩码（fail-closed）
+	if addr := os.Getenv("VAULT_ADDR"); addr != "" {
+		srv.PII = &pii.Restorer{
+			Keys: &pii.VaultTransit{Addr: addr, Token: os.Getenv("VAULT_TOKEN"), TokenFile: os.Getenv("VAULT_TOKEN_FILE"),
+				HTTP: &http.Client{Timeout: 2 * time.Second}},
+			TTL: 10 * time.Minute, Max: 10000, Now: time.Now,
+		}
 	}
 	// 分词词典加载失败时关键词路降级（Tokenize 为 nil），稠密路照常；不因此拒绝启动
 	if err := textseg.Load(); err != nil {
@@ -170,8 +185,11 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// 评测副本（BF_EVAL_MODE=1）接受指定索引版本的请求，线上实例收到就拒绝（evaluation 详设 4.2）
+	srv.EvalMode = os.Getenv("BF_EVAL_MODE") == "1"
 	gs := grpc.NewServer(telemetry.ServerOption(),
-		grpc.UnaryInterceptor(grpcmw.UnaryServer(principal.NewVerifier(principal.NewJWKS(jwksURL, nil)), log)))
+		grpc.ChainUnaryInterceptor(grpcmw.UnaryServer(principal.NewVerifier(principal.NewJWKS(jwksURL, nil)), log),
+			search.EvalPinInterceptor(srv.EvalMode)))
 	retrievalv1.RegisterRetrievalServiceServer(gs, srv)
 
 	internal := http.NewServeMux()

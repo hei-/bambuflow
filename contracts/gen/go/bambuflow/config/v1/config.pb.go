@@ -70,6 +70,366 @@ func (TermStatus) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{0}
 }
 
+type WatchRequest struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Service    string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	InstanceId string                 `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	// 实例当前已加载的版本；与当前版本相同时连接建立后不推通知
+	Loaded        string `protobuf:"bytes,3,opt,name=loaded,proto3" json:"loaded,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchRequest) Reset() {
+	*x = WatchRequest{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchRequest) ProtoMessage() {}
+
+func (x *WatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchRequest.ProtoReflect.Descriptor instead.
+func (*WatchRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *WatchRequest) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *WatchRequest) GetInstanceId() string {
+	if x != nil {
+		return x.InstanceId
+	}
+	return ""
+}
+
+func (x *WatchRequest) GetLoaded() string {
+	if x != nil {
+		return x.Loaded
+	}
+	return ""
+}
+
+// 一条版本变化的通知。
+type WatchResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Service         string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	SnapshotVersion string                 `protobuf:"bytes,2,opt,name=snapshot_version,json=snapshotVersion,proto3" json:"snapshot_version,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *WatchResponse) Reset() {
+	*x = WatchResponse{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchResponse) ProtoMessage() {}
+
+func (x *WatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchResponse.ProtoReflect.Descriptor instead.
+func (*WatchResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *WatchResponse) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *WatchResponse) GetSnapshotVersion() string {
+	if x != nil {
+		return x.SnapshotVersion
+	}
+	return ""
+}
+
+type AckRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Service         string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	InstanceId      string                 `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	SnapshotVersion string                 `protobuf:"bytes,3,opt,name=snapshot_version,json=snapshotVersion,proto3" json:"snapshot_version,omitempty"`
+	// false 时 reason 写失败原因（如 signature_invalid、fetch_failed）
+	Loaded        bool   `protobuf:"varint,4,opt,name=loaded,proto3" json:"loaded,omitempty"`
+	Reason        string `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AckRequest) Reset() {
+	*x = AckRequest{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AckRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AckRequest) ProtoMessage() {}
+
+func (x *AckRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AckRequest.ProtoReflect.Descriptor instead.
+func (*AckRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AckRequest) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *AckRequest) GetInstanceId() string {
+	if x != nil {
+		return x.InstanceId
+	}
+	return ""
+}
+
+func (x *AckRequest) GetSnapshotVersion() string {
+	if x != nil {
+		return x.SnapshotVersion
+	}
+	return ""
+}
+
+func (x *AckRequest) GetLoaded() bool {
+	if x != nil {
+		return x.Loaded
+	}
+	return false
+}
+
+func (x *AckRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type AckResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AckResponse) Reset() {
+	*x = AckResponse{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AckResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AckResponse) ProtoMessage() {}
+
+func (x *AckResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AckResponse.ProtoReflect.Descriptor instead.
+func (*AckResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{3}
+}
+
+type GetSigningKeysRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSigningKeysRequest) Reset() {
+	*x = GetSigningKeysRequest{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSigningKeysRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSigningKeysRequest) ProtoMessage() {}
+
+func (x *GetSigningKeysRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSigningKeysRequest.ProtoReflect.Descriptor instead.
+func (*GetSigningKeysRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{4}
+}
+
+type GetSigningKeysResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keys          []*SigningKey          `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSigningKeysResponse) Reset() {
+	*x = GetSigningKeysResponse{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSigningKeysResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSigningKeysResponse) ProtoMessage() {}
+
+func (x *GetSigningKeysResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSigningKeysResponse.ProtoReflect.Descriptor instead.
+func (*GetSigningKeysResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetSigningKeysResponse) GetKeys() []*SigningKey {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+type SigningKey struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	KeyId string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	// P-256 公钥，SubjectPublicKeyInfo 的 DER 编码；签名为 ECDSA（ASN.1 DER）over SHA-256
+	PublicKey     []byte `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SigningKey) Reset() {
+	*x = SigningKey{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SigningKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SigningKey) ProtoMessage() {}
+
+func (x *SigningKey) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SigningKey.ProtoReflect.Descriptor instead.
+func (*SigningKey) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SigningKey) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+func (x *SigningKey) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
 type GetSnapshotRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 调用方服务名（processing、orchestrator 等），决定快照里放哪些对象。
@@ -80,7 +440,7 @@ type GetSnapshotRequest struct {
 
 func (x *GetSnapshotRequest) Reset() {
 	*x = GetSnapshotRequest{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -92,7 +452,7 @@ func (x *GetSnapshotRequest) String() string {
 func (*GetSnapshotRequest) ProtoMessage() {}
 
 func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -105,7 +465,7 @@ func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*GetSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{0}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetSnapshotRequest) GetService() string {
@@ -125,14 +485,21 @@ type GetSnapshotResponse struct {
 	// 这是租户授权的唯一来源：没有授权的数据源不能检索（技术设计文档 9.1）。
 	SourceGrants []*SourceGrant `protobuf:"bytes,3,rep,name=source_grants,json=sourceGrants,proto3" json:"source_grants,omitempty"`
 	// 运行中的 A/B 实验，只在 orchestrator 的快照里；每个租户至多一个（governance 详设 3.1）。
-	Experiments   []*RunningExperiment `protobuf:"bytes,4,rep,name=experiments,proto3" json:"experiments,omitempty"`
+	Experiments []*RunningExperiment `protobuf:"bytes,4,rep,name=experiments,proto3" json:"experiments,omitempty"`
+	// 签过名的快照本体：GetSnapshotResponse 序列化后的字节（其中 signed_payload、signature、signing_key_id 为空）。
+	// 使用方先验签，再从它解析出快照使用，不读外层的同名字段，避免两种语言的序列化差异影响验签。
+	SignedPayload []byte `protobuf:"bytes,5,opt,name=signed_payload,json=signedPayload,proto3" json:"signed_payload,omitempty"`
+	Signature     []byte `protobuf:"bytes,6,opt,name=signature,proto3" json:"signature,omitempty"`
+	SigningKeyId  string `protobuf:"bytes,7,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
+	// 生效的租户配置（tenant.yaml，governance 详设 3.1、4），只在 gateway 的快照里；按租户名排序。
+	Tenants       []*TenantConfig `protobuf:"bytes,8,rep,name=tenants,proto3" json:"tenants,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetSnapshotResponse) Reset() {
 	*x = GetSnapshotResponse{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -144,7 +511,7 @@ func (x *GetSnapshotResponse) String() string {
 func (*GetSnapshotResponse) ProtoMessage() {}
 
 func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -157,7 +524,7 @@ func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*GetSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetSnapshotResponse) GetSnapshotVersion() string {
@@ -188,6 +555,97 @@ func (x *GetSnapshotResponse) GetExperiments() []*RunningExperiment {
 	return nil
 }
 
+func (x *GetSnapshotResponse) GetSignedPayload() []byte {
+	if x != nil {
+		return x.SignedPayload
+	}
+	return nil
+}
+
+func (x *GetSnapshotResponse) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *GetSnapshotResponse) GetSigningKeyId() string {
+	if x != nil {
+		return x.SigningKeyId
+	}
+	return ""
+}
+
+func (x *GetSnapshotResponse) GetTenants() []*TenantConfig {
+	if x != nil {
+		return x.Tenants
+	}
+	return nil
+}
+
+// TenantConfig 是一个租户当前生效的配置版本。
+type TenantConfig struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Tenant string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// 配置版本，cfv_ 前缀
+	VersionId string `protobuf:"bytes,2,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	// tenant.yaml 原文；使用方用 libs/platform-go/tenancy 解析与校验（与 governance 发布前的校验是同一份代码）
+	Content       string `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TenantConfig) Reset() {
+	*x = TenantConfig{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TenantConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TenantConfig) ProtoMessage() {}
+
+func (x *TenantConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TenantConfig.ProtoReflect.Descriptor instead.
+func (*TenantConfig) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *TenantConfig) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *TenantConfig) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
+}
+
+func (x *TenantConfig) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
 // RunningExperiment 是 orchestrator 分组与替换配置需要的部分（orchestrator 详设 12.3）。
 type RunningExperiment struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
@@ -204,7 +662,7 @@ type RunningExperiment struct {
 
 func (x *RunningExperiment) Reset() {
 	*x = RunningExperiment{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -216,7 +674,7 @@ func (x *RunningExperiment) String() string {
 func (*RunningExperiment) ProtoMessage() {}
 
 func (x *RunningExperiment) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -229,7 +687,7 @@ func (x *RunningExperiment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunningExperiment.ProtoReflect.Descriptor instead.
 func (*RunningExperiment) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RunningExperiment) GetExpId() string {
@@ -277,7 +735,7 @@ type SourceGrant struct {
 
 func (x *SourceGrant) Reset() {
 	*x = SourceGrant{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -289,7 +747,7 @@ func (x *SourceGrant) String() string {
 func (*SourceGrant) ProtoMessage() {}
 
 func (x *SourceGrant) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -302,7 +760,7 @@ func (x *SourceGrant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceGrant.ProtoReflect.Descriptor instead.
 func (*SourceGrant) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SourceGrant) GetTenant() string {
@@ -330,7 +788,7 @@ type Vocabulary struct {
 
 func (x *Vocabulary) Reset() {
 	*x = Vocabulary{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -342,7 +800,7 @@ func (x *Vocabulary) String() string {
 func (*Vocabulary) ProtoMessage() {}
 
 func (x *Vocabulary) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -355,7 +813,7 @@ func (x *Vocabulary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Vocabulary.ProtoReflect.Descriptor instead.
 func (*Vocabulary) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Vocabulary) GetName() string {
@@ -390,7 +848,7 @@ type VocabularyTerm struct {
 
 func (x *VocabularyTerm) Reset() {
 	*x = VocabularyTerm{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -402,7 +860,7 @@ func (x *VocabularyTerm) String() string {
 func (*VocabularyTerm) ProtoMessage() {}
 
 func (x *VocabularyTerm) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -415,7 +873,7 @@ func (x *VocabularyTerm) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VocabularyTerm.ProtoReflect.Descriptor instead.
 func (*VocabularyTerm) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *VocabularyTerm) GetCode() string {
@@ -464,14 +922,48 @@ var File_bambuflow_config_v1_config_proto protoreflect.FileDescriptor
 
 const file_bambuflow_config_v1_config_proto_rawDesc = "" +
 	"\n" +
-	" bambuflow/config/v1/config.proto\x12\x13bambuflow.config.v1\".\n" +
+	" bambuflow/config/v1/config.proto\x12\x13bambuflow.config.v1\"a\n" +
+	"\fWatchRequest\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x1f\n" +
+	"\vinstance_id\x18\x02 \x01(\tR\n" +
+	"instanceId\x12\x16\n" +
+	"\x06loaded\x18\x03 \x01(\tR\x06loaded\"T\n" +
+	"\rWatchResponse\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12)\n" +
+	"\x10snapshot_version\x18\x02 \x01(\tR\x0fsnapshotVersion\"\xa2\x01\n" +
+	"\n" +
+	"AckRequest\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x1f\n" +
+	"\vinstance_id\x18\x02 \x01(\tR\n" +
+	"instanceId\x12)\n" +
+	"\x10snapshot_version\x18\x03 \x01(\tR\x0fsnapshotVersion\x12\x16\n" +
+	"\x06loaded\x18\x04 \x01(\bR\x06loaded\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\"\r\n" +
+	"\vAckResponse\"\x17\n" +
+	"\x15GetSigningKeysRequest\"M\n" +
+	"\x16GetSigningKeysResponse\x123\n" +
+	"\x04keys\x18\x01 \x03(\v2\x1f.bambuflow.config.v1.SigningKeyR\x04keys\"B\n" +
+	"\n" +
+	"SigningKey\x12\x15\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\".\n" +
 	"\x12GetSnapshotRequest\x12\x18\n" +
-	"\aservice\x18\x01 \x01(\tR\aservice\"\x96\x02\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\"\xbe\x03\n" +
 	"\x13GetSnapshotResponse\x12)\n" +
 	"\x10snapshot_version\x18\x01 \x01(\tR\x0fsnapshotVersion\x12C\n" +
 	"\fvocabularies\x18\x02 \x03(\v2\x1f.bambuflow.config.v1.VocabularyR\fvocabularies\x12E\n" +
 	"\rsource_grants\x18\x03 \x03(\v2 .bambuflow.config.v1.SourceGrantR\fsourceGrants\x12H\n" +
-	"\vexperiments\x18\x04 \x03(\v2&.bambuflow.config.v1.RunningExperimentR\vexperiments\"\xec\x01\n" +
+	"\vexperiments\x18\x04 \x03(\v2&.bambuflow.config.v1.RunningExperimentR\vexperiments\x12%\n" +
+	"\x0esigned_payload\x18\x05 \x01(\fR\rsignedPayload\x12\x1c\n" +
+	"\tsignature\x18\x06 \x01(\fR\tsignature\x12$\n" +
+	"\x0esigning_key_id\x18\a \x01(\tR\fsigningKeyId\x12;\n" +
+	"\atenants\x18\b \x03(\v2!.bambuflow.config.v1.TenantConfigR\atenants\"_\n" +
+	"\fTenantConfig\x12\x16\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\x02 \x01(\tR\tversionId\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\"\xec\x01\n" +
 	"\x11RunningExperiment\x12\x15\n" +
 	"\x06exp_id\x18\x01 \x01(\tR\x05expId\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12'\n" +
@@ -499,9 +991,12 @@ const file_bambuflow_config_v1_config_proto_rawDesc = "" +
 	"TermStatus\x12\x1b\n" +
 	"\x17TERM_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12TERM_STATUS_ACTIVE\x10\x01\x12\x1a\n" +
-	"\x16TERM_STATUS_DEPRECATED\x10\x022q\n" +
+	"\x16TERM_STATUS_DEPRECATED\x10\x022\xf8\x02\n" +
 	"\rConfigService\x12`\n" +
-	"\vGetSnapshot\x12'.bambuflow.config.v1.GetSnapshotRequest\x1a(.bambuflow.config.v1.GetSnapshotResponseB\xe1\x01\n" +
+	"\vGetSnapshot\x12'.bambuflow.config.v1.GetSnapshotRequest\x1a(.bambuflow.config.v1.GetSnapshotResponse\x12P\n" +
+	"\x05Watch\x12!.bambuflow.config.v1.WatchRequest\x1a\".bambuflow.config.v1.WatchResponse0\x01\x12H\n" +
+	"\x03Ack\x12\x1f.bambuflow.config.v1.AckRequest\x1a .bambuflow.config.v1.AckResponse\x12i\n" +
+	"\x0eGetSigningKeys\x12*.bambuflow.config.v1.GetSigningKeysRequest\x1a+.bambuflow.config.v1.GetSigningKeysResponseB\xe1\x01\n" +
 	"\x17com.bambuflow.config.v1B\vConfigProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\xa2\x02\x03BCX\xaa\x02\x13Bambuflow.Config.V1\xca\x02\x13Bambuflow\\Config\\V1\xe2\x02\x1fBambuflow\\Config\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Config::V1b\x06proto3"
 
 var (
@@ -517,29 +1012,45 @@ func file_bambuflow_config_v1_config_proto_rawDescGZIP() []byte {
 }
 
 var file_bambuflow_config_v1_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_bambuflow_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_bambuflow_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_bambuflow_config_v1_config_proto_goTypes = []any{
-	(TermStatus)(0),             // 0: bambuflow.config.v1.TermStatus
-	(*GetSnapshotRequest)(nil),  // 1: bambuflow.config.v1.GetSnapshotRequest
-	(*GetSnapshotResponse)(nil), // 2: bambuflow.config.v1.GetSnapshotResponse
-	(*RunningExperiment)(nil),   // 3: bambuflow.config.v1.RunningExperiment
-	(*SourceGrant)(nil),         // 4: bambuflow.config.v1.SourceGrant
-	(*Vocabulary)(nil),          // 5: bambuflow.config.v1.Vocabulary
-	(*VocabularyTerm)(nil),      // 6: bambuflow.config.v1.VocabularyTerm
+	(TermStatus)(0),                // 0: bambuflow.config.v1.TermStatus
+	(*WatchRequest)(nil),           // 1: bambuflow.config.v1.WatchRequest
+	(*WatchResponse)(nil),          // 2: bambuflow.config.v1.WatchResponse
+	(*AckRequest)(nil),             // 3: bambuflow.config.v1.AckRequest
+	(*AckResponse)(nil),            // 4: bambuflow.config.v1.AckResponse
+	(*GetSigningKeysRequest)(nil),  // 5: bambuflow.config.v1.GetSigningKeysRequest
+	(*GetSigningKeysResponse)(nil), // 6: bambuflow.config.v1.GetSigningKeysResponse
+	(*SigningKey)(nil),             // 7: bambuflow.config.v1.SigningKey
+	(*GetSnapshotRequest)(nil),     // 8: bambuflow.config.v1.GetSnapshotRequest
+	(*GetSnapshotResponse)(nil),    // 9: bambuflow.config.v1.GetSnapshotResponse
+	(*TenantConfig)(nil),           // 10: bambuflow.config.v1.TenantConfig
+	(*RunningExperiment)(nil),      // 11: bambuflow.config.v1.RunningExperiment
+	(*SourceGrant)(nil),            // 12: bambuflow.config.v1.SourceGrant
+	(*Vocabulary)(nil),             // 13: bambuflow.config.v1.Vocabulary
+	(*VocabularyTerm)(nil),         // 14: bambuflow.config.v1.VocabularyTerm
 }
 var file_bambuflow_config_v1_config_proto_depIdxs = []int32{
-	5, // 0: bambuflow.config.v1.GetSnapshotResponse.vocabularies:type_name -> bambuflow.config.v1.Vocabulary
-	4, // 1: bambuflow.config.v1.GetSnapshotResponse.source_grants:type_name -> bambuflow.config.v1.SourceGrant
-	3, // 2: bambuflow.config.v1.GetSnapshotResponse.experiments:type_name -> bambuflow.config.v1.RunningExperiment
-	6, // 3: bambuflow.config.v1.Vocabulary.terms:type_name -> bambuflow.config.v1.VocabularyTerm
-	0, // 4: bambuflow.config.v1.VocabularyTerm.status:type_name -> bambuflow.config.v1.TermStatus
-	1, // 5: bambuflow.config.v1.ConfigService.GetSnapshot:input_type -> bambuflow.config.v1.GetSnapshotRequest
-	2, // 6: bambuflow.config.v1.ConfigService.GetSnapshot:output_type -> bambuflow.config.v1.GetSnapshotResponse
-	6, // [6:7] is the sub-list for method output_type
-	5, // [5:6] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	7,  // 0: bambuflow.config.v1.GetSigningKeysResponse.keys:type_name -> bambuflow.config.v1.SigningKey
+	13, // 1: bambuflow.config.v1.GetSnapshotResponse.vocabularies:type_name -> bambuflow.config.v1.Vocabulary
+	12, // 2: bambuflow.config.v1.GetSnapshotResponse.source_grants:type_name -> bambuflow.config.v1.SourceGrant
+	11, // 3: bambuflow.config.v1.GetSnapshotResponse.experiments:type_name -> bambuflow.config.v1.RunningExperiment
+	10, // 4: bambuflow.config.v1.GetSnapshotResponse.tenants:type_name -> bambuflow.config.v1.TenantConfig
+	14, // 5: bambuflow.config.v1.Vocabulary.terms:type_name -> bambuflow.config.v1.VocabularyTerm
+	0,  // 6: bambuflow.config.v1.VocabularyTerm.status:type_name -> bambuflow.config.v1.TermStatus
+	8,  // 7: bambuflow.config.v1.ConfigService.GetSnapshot:input_type -> bambuflow.config.v1.GetSnapshotRequest
+	1,  // 8: bambuflow.config.v1.ConfigService.Watch:input_type -> bambuflow.config.v1.WatchRequest
+	3,  // 9: bambuflow.config.v1.ConfigService.Ack:input_type -> bambuflow.config.v1.AckRequest
+	5,  // 10: bambuflow.config.v1.ConfigService.GetSigningKeys:input_type -> bambuflow.config.v1.GetSigningKeysRequest
+	9,  // 11: bambuflow.config.v1.ConfigService.GetSnapshot:output_type -> bambuflow.config.v1.GetSnapshotResponse
+	2,  // 12: bambuflow.config.v1.ConfigService.Watch:output_type -> bambuflow.config.v1.WatchResponse
+	4,  // 13: bambuflow.config.v1.ConfigService.Ack:output_type -> bambuflow.config.v1.AckResponse
+	6,  // 14: bambuflow.config.v1.ConfigService.GetSigningKeys:output_type -> bambuflow.config.v1.GetSigningKeysResponse
+	11, // [11:15] is the sub-list for method output_type
+	7,  // [7:11] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_config_v1_config_proto_init() }
@@ -547,14 +1058,14 @@ func file_bambuflow_config_v1_config_proto_init() {
 	if File_bambuflow_config_v1_config_proto != nil {
 		return
 	}
-	file_bambuflow_config_v1_config_proto_msgTypes[2].OneofWrappers = []any{}
+	file_bambuflow_config_v1_config_proto_msgTypes[10].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_config_v1_config_proto_rawDesc), len(file_bambuflow_config_v1_config_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   6,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

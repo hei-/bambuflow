@@ -278,6 +278,7 @@ version = "0.1.0"
 source = { editable = "libs/platform-py" }
 dependencies = [
     { name = "bambuflow-contracts" },
+    { name = "cryptography" },
     { name = "grpcio" },
     { name = "httpx" },
     { name = "opentelemetry-api" },
@@ -290,6 +291,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "bambuflow-contracts", editable = "contracts/gen/python" },
+    { name = "cryptography", specifier = ">=44" },
     { name = "grpcio", specifier = ">=1.84.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "opentelemetry-api", specifier = ">=1.38" },
@@ -307,6 +309,7 @@ dependencies = [
     { name = "bambuflow-contracts" },
     { name = "bambuflow-platform" },
     { name = "bambuflow-vocabulary" },
+    { name = "cryptography" },
     { name = "grpcio" },
     { name = "httpx" },
     { name = "minio" },
@@ -323,6 +326,7 @@ requires-dist = [
     { name = "bambuflow-contracts", editable = "contracts/gen/python" },
     { name = "bambuflow-platform", editable = "libs/platform-py" },
     { name = "bambuflow-vocabulary", editable = "libs/vocabulary" },
+    { name = "cryptography", specifier = ">=44" },
     { name = "grpcio", specifier = ">=1.84.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "minio", specifier = ">=7.2" },

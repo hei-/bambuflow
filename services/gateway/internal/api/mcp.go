@@ -13,8 +13,8 @@ import (
 	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
 	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenancy"
 )
 
 // MCP 端点（gateway 详设第 7 节、技术设计文档 13.6）：外部 agent 经 Streamable HTTP 调用平台的只读工具。

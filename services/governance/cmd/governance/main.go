@@ -21,7 +21,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -29,7 +31,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
@@ -40,13 +44,16 @@ import (
 	"github.com/bambu-ai/bambuflow/libs/platform-go/pgmigrate"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/telemetry"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/vault"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/worm"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/access"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/auditquery"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/changeaudit"
+	"github.com/bambu-ai/bambuflow/services/governance/internal/config"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/experiment"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/identitysync"
+	"github.com/bambu-ai/bambuflow/services/governance/internal/plugin"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/schema"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/vocab"
 	"github.com/bambu-ai/bambuflow/services/governance/internal/webhook"
@@ -157,7 +164,7 @@ func runVocabLoad(ctx context.Context, log *slog.Logger, path string) error {
 		return err
 	}
 	defer pool.Close()
-	if err := (vocab.Store{Pool: pool}).Upsert(ctx, terms); err != nil {
+	if err := (vocab.Store{Pool: pool}).Upsert(ctx, terms, nil); err != nil {
 		return err
 	}
 	log.Info("词表已写入", slog.Int("terms", len(terms)))
@@ -207,7 +214,26 @@ func runServe(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = indexConn.Close() }()
+	// 租户切到全量要核对评测门禁（evaluation 的 EvalGateAdminService，转发调用者的管理 Principal）
+	evalAddr, err := env("BF_EVALUATION_ADDR")
+	if err != nil {
+		return err
+	}
+	evalConn, err := grpc.NewClient(evalAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), telemetry.DialOption())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = evalConn.Close() }()
 
+	// 快照签名私钥在 Vault（governance 详设 9.2）；读不到就不启动：没有签名的快照不能下发
+	vc, err := vault.FromEnv()
+	if err != nil {
+		return err
+	}
+	signer, err := vocab.LoadSigner(ctx, vc, envOr("BF_VAULT_KV_MOUNT", "secret"))
+	if err != nil {
+		return err
+	}
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", envOr("BF_LISTEN", ":9090"))
 	if err != nil {
 		return err
@@ -216,22 +242,46 @@ func runServe(ctx context.Context, log *slog.Logger) error {
 	denials := &access.DenialServer{Store: store, Audit: changes, Index: adminv1.NewIndexAdminServiceClient(indexConn), Log: log}
 	sources := &access.SourceServer{Store: store, Audit: changes, Denials: denials, WriteEvent: access.WriteEvent, Log: log, Now: time.Now}
 	experiments := &experiment.Server{Store: &experiment.PG{Pool: pool}, Audit: changes, Log: log, Now: time.Now}
-	// 服务间 mTLS 由服务网格提供（技术设计文档 12.6）；ConfigService 与 ExperimentControlService 是服务间接口，不要求 Principal
+	configs := &config.Server{Store: &config.PG{Pool: pool}, Audit: changes, Gate: gateChecker(adminv1.NewEvalGateAdminServiceClient(evalConn)),
+		PlatformClients: strings.Split(envOr("BF_PLATFORM_CLIENTS", "console"), ","), Log: log, Now: time.Now}
+	// 部署目录里的 tenant.yaml 只用作初始版本：已有版本的租户不动，之后的修改只走变更单与发布（governance 详设 3、4）
+	if dir := os.Getenv("BF_TENANTS_SEED_DIR"); dir != "" {
+		files, err := tenancy.Files(dir)
+		if err != nil {
+			return err
+		}
+		n, err := configs.Bootstrap(ctx, files)
+		if err != nil {
+			return fmt.Errorf("导入初始租户配置: %w", err)
+		}
+		log.Info("初始租户配置", slog.Int("imported", n), slog.Int("files", len(files)))
+	}
+	// 服务间 mTLS 由服务网格提供（技术设计文档 12.6）；ConfigService、ExperimentControlService 与 PluginEvaluationService 是服务间接口，不要求 Principal
 	gs := grpc.NewServer(telemetry.ServerOption(), grpc.UnaryInterceptor(grpcmw.UnaryServerFor(
 		[]string{"bambuflow.admin.v1.EmergencyDenialAdminService", "bambuflow.admin.v1.AuditAdminService",
-			"bambuflow.admin.v1.SourceAdminService", "bambuflow.admin.v1.ExperimentAdminService"},
+			"bambuflow.admin.v1.SourceAdminService", "bambuflow.admin.v1.ExperimentAdminService",
+			"bambuflow.admin.v1.VocabularyAdminService", "bambuflow.admin.v1.PluginAdminService", "bambuflow.admin.v1.ConfigAdminService"},
 		principal.NewOperatorVerifier(principal.NewJWKS(jwksURL, nil)), log)))
 	configv1.RegisterConfigServiceServer(gs, &vocab.Server{Store: vocab.Store{Pool: pool}, Retrieval: sources.Snapshot,
-		Experiments: experiments.Snapshot, Log: log})
+		Experiments: experiments.Snapshot, Tenants: configs.Snapshot, Signer: signer, Acks: vocab.Store{Pool: pool}, WatchEvery: 2 * time.Second, Log: log})
 	adminv1.RegisterSourceAdminServiceServer(gs, sources)
 	adminv1.RegisterEmergencyDenialAdminServiceServer(gs, denials)
 	adminv1.RegisterAuditAdminServiceServer(gs, &auditquery.Server{Store: auditBucket, Audit: changes, Log: log})
 	adminv1.RegisterExperimentAdminServiceServer(gs, experiments)
+	remapper := &vocab.Remapper{Store: vocab.Store{Pool: pool}, Index: adminv1.NewIndexAdminServiceClient(indexConn), Log: log}
+	adminv1.RegisterVocabularyAdminServiceServer(gs, &vocab.Admin{Store: vocab.Store{Pool: pool}, Audit: changes, Log: log, Remap: remapper})
 	configv1.RegisterExperimentControlServiceServer(gs, &experiment.ControlServer{Experiments: experiments})
+	plugins := &plugin.Server{Store: &plugin.PG{Pool: pool}, Audit: changes, Log: log, Now: time.Now}
+	adminv1.RegisterPluginAdminServiceServer(gs, plugins)
+	adminv1.RegisterConfigAdminServiceServer(gs, configs)
+	// 插件评估结果由 CI 写入：服务间接口，不要求 Principal，由服务网格只放行 CI 的服务身份
+	adminv1.RegisterPluginEvaluationServiceServer(gs, plugins)
 	errc := make(chan error, 1)
 	go func() { errc <- gs.Serve(lis) }()
 	// 还没写进拒绝名单的规则每 10 秒重试一次，1 分钟内生效的要求留出余量（governance 详设 4.2）
 	go denials.Reconcile(ctx, 10*time.Second)
+	// 停用编码的重新标注定期重放：停用当时 indexing 不可用、或之后又有带旧编码的文档入库时补上
+	go remapper.Run(ctx, 10*time.Minute)
 	// 发件表里的平台事件（source.revoked）转发到事件流；Redis 暂时不可用时事件留在发件表里，恢复后补发
 	rdb := redis.NewClient(&redis.Options{Addr: redisAddr, Password: os.Getenv("BF_REDIS_PASSWORD")})
 	defer func() { _ = rdb.Close() }()
@@ -417,4 +467,25 @@ func webhookHealthcheck(ctx context.Context) error {
 		return err
 	}
 	return conn.Close()
+}
+
+// gateChecker 核对评测门禁已通过且覆盖该租户（evaluation 详设 3.1、5.2）。转发调用者的管理 Principal：
+// 只有能看门禁报告的平台角色才能据此发布。
+func gateChecker(c adminv1.EvalGateAdminServiceClient) config.GateChecker {
+	return func(ctx context.Context, gateID, tenant string) error {
+		ctx, cancel := context.WithTimeout(grpcmw.ForwardPrincipal(ctx), 5*time.Second)
+		defer cancel()
+		r, err := c.GetGate(ctx, &adminv1.GetGateRequest{GateId: gateID})
+		if status.Code(err) == codes.NotFound {
+			return fmt.Errorf("%w：门禁 %s 不存在", config.ErrGateFailed, gateID)
+		}
+		if err != nil {
+			return status.Error(codes.Unavailable, "评测门禁暂时查不到")
+		}
+		g := r.GetGate()
+		if g.GetConclusion() != "passed" || !slices.Contains(g.GetTenants(), tenant) {
+			return fmt.Errorf("%w：门禁 %s 的结论是 %s，覆盖租户 %v", config.ErrGateFailed, gateID, g.GetConclusion(), g.GetTenants())
+		}
+		return nil
+	}
 }

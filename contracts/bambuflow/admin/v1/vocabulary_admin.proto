@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+// VocabularyAdminService 是受控词表的管理接口（governance 详设 6.1、7.2），由 governance 实现，
+// gateway 的 /v1/admin/vocabularies/{vocabulary}/terms 调用，调用方须带管理 Principal（平台管理员）。
+// 编码一旦使用就不删除、不改义，只能停用并指定替代编码。改动立即进入下一版配置快照，经 Watch 通知各服务。
+service VocabularyAdminService {
+  rpc ListTerms(ListTermsRequest) returns (ListTermsResponse);
+  // 新增词条，或修改已有词条的名称、同义词、上级与归口部门。已停用的词条不能经它重新启用。
+  rpc UpsertTerm(UpsertTermRequest) returns (UpsertTermResponse);
+  // 停用词条并指定替代编码。已停用的再停用返回原样。
+  rpc DeprecateTerm(DeprecateTermRequest) returns (DeprecateTermResponse);
+}
+
+message Term {
+  // doc_type、dept、topic 之一
+  string vocabulary = 1;
+  // 稳定编码，大写字母、数字与连字符
+  string code = 2;
+  string name = 3;
+  repeated string synonyms = 4;
+  // 上级编码；查询上级时包含所有下级
+  string parent = 5;
+  // active 或 deprecated
+  string status = 6;
+  string replaced_by = 7;
+  // 维护部门
+  string owner = 8;
+}
+
+message ListTermsRequest {
+  string vocabulary = 1;
+}
+
+message ListTermsResponse {
+  repeated Term terms = 1;
+  // 当前词表快照的版本（新增与修改都会改变它）
+  string snapshot_version = 2;
+}
+
+message UpsertTermRequest {
+  string vocabulary = 1;
+  string code = 2;
+  string name = 3;
+  repeated string synonyms = 4;
+  string parent = 5;
+  string owner = 6;
+}
+
+message UpsertTermResponse {
+  Term term = 1;
+  // false 表示修改的是已有词条
+  bool created = 2;
+}
+
+message DeprecateTermRequest {
+  string vocabulary = 1;
+  string code = 2;
+  // 必填：替代它的编码（同一词表里的有效词条）
+  string replaced_by = 3;
+  // 原因必填，最多 500 字，写进变更审计
+  string reason = 4;
+}
+
+message DeprecateTermResponse {
+  Term term = 1;
+}

@@ -38,6 +38,7 @@ import (
 	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/audit"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/authn"
@@ -46,7 +47,6 @@ import (
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/ratelimit"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenancy"
 )
 
 const platformIssuer = "http://keycloak:8080/realms/bambuflow"
@@ -337,7 +337,7 @@ func newEnv(t *testing.T) *env {
 	}}
 	s := &Server{
 		Verifier:   authn.NewVerifier(principal.NewJWKS(e.authz.srv.URL, e.authz.srv.Client()), platformIssuer, "service-account-"),
-		Identities: e.identities, Tenants: tenants, Issuer: iss,
+		Identities: e.identities, Tenants: func() *tenancy.Registry { return tenants }, Issuer: iss,
 		Retrieval: retrievalv1.NewRetrievalServiceClient(conn), Orchestrator: answerv1.NewAnswerServiceClient(conn),
 		Batches: batchv1.NewBatchServiceClient(conn),
 		Audit:   e.audit, Limits: e.limits,

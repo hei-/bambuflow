@@ -133,6 +133,57 @@ func (Detection) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{1}
 }
 
+type RefetchReason int32
+
+const (
+	RefetchReason_REFETCH_REASON_UNSPECIFIED RefetchReason = 0
+	// 撤销了误写的删除标记（TombstoneAdminService）
+	RefetchReason_REFETCH_REASON_TOMBSTONE_REVOKED RefetchReason = 1
+	// 全量重建（RebuildAdminService）：全部文档按新的嵌入模型或分块器重算
+	RefetchReason_REFETCH_REASON_FULL_REBUILD RefetchReason = 2
+)
+
+// Enum value maps for RefetchReason.
+var (
+	RefetchReason_name = map[int32]string{
+		0: "REFETCH_REASON_UNSPECIFIED",
+		1: "REFETCH_REASON_TOMBSTONE_REVOKED",
+		2: "REFETCH_REASON_FULL_REBUILD",
+	}
+	RefetchReason_value = map[string]int32{
+		"REFETCH_REASON_UNSPECIFIED":       0,
+		"REFETCH_REASON_TOMBSTONE_REVOKED": 1,
+		"REFETCH_REASON_FULL_REBUILD":      2,
+	}
+)
+
+func (x RefetchReason) Enum() *RefetchReason {
+	p := new(RefetchReason)
+	*p = x
+	return p
+}
+
+func (x RefetchReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RefetchReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_bambuflow_ingestion_v1_events_proto_enumTypes[2].Descriptor()
+}
+
+func (RefetchReason) Type() protoreflect.EnumType {
+	return &file_bambuflow_ingestion_v1_events_proto_enumTypes[2]
+}
+
+func (x RefetchReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RefetchReason.Descriptor instead.
+func (RefetchReason) EnumDescriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{2}
+}
+
 // DocumentChanged 由 connectors 发出，表示源系统中一份文档发生了变化。
 type DocumentChanged struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -255,6 +306,87 @@ func (x *DocumentChanged) GetRawRef() string {
 	return ""
 }
 
+// RefetchRequested 要求 connectors 重新从源系统拉取这些文档（入库管道详设第 5、14 节），由 indexing 产生，
+// 经事件流 ingest:refetch-requested 发出。connectors 下一轮同步前把它们从已同步状态里去掉，
+// 源端仍存在的就作为新文档重新发出 DocumentChanged。
+type RefetchRequested struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 前缀 evt_。
+	EventId string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	// 前缀 src_。
+	SourceId      string                 `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	DocIds        []string               `protobuf:"bytes,3,rep,name=doc_ids,json=docIds,proto3" json:"doc_ids,omitempty"`
+	Reason        RefetchReason          `protobuf:"varint,4,opt,name=reason,proto3,enum=bambuflow.ingestion.v1.RefetchReason" json:"reason,omitempty"`
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefetchRequested) Reset() {
+	*x = RefetchRequested{}
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefetchRequested) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefetchRequested) ProtoMessage() {}
+
+func (x *RefetchRequested) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefetchRequested.ProtoReflect.Descriptor instead.
+func (*RefetchRequested) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RefetchRequested) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *RefetchRequested) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *RefetchRequested) GetDocIds() []string {
+	if x != nil {
+		return x.DocIds
+	}
+	return nil
+}
+
+func (x *RefetchRequested) GetReason() RefetchReason {
+	if x != nil {
+		return x.Reason
+	}
+	return RefetchReason_REFETCH_REASON_UNSPECIFIED
+}
+
+func (x *RefetchRequested) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
 var File_bambuflow_ingestion_v1_events_proto protoreflect.FileDescriptor
 
 const file_bambuflow_ingestion_v1_events_proto_rawDesc = "" +
@@ -274,7 +406,14 @@ const file_bambuflow_ingestion_v1_events_proto_rawDesc = "" +
 	"detectedAt\x12?\n" +
 	"\tdetection\x18\t \x01(\x0e2!.bambuflow.ingestion.v1.DetectionR\tdetection\x12\x17\n" +
 	"\araw_ref\x18\n" +
-	" \x01(\tR\x06rawRef*s\n" +
+	" \x01(\tR\x06rawRef\"\xdf\x01\n" +
+	"\x10RefetchRequested\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1b\n" +
+	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x17\n" +
+	"\adoc_ids\x18\x03 \x03(\tR\x06docIds\x12=\n" +
+	"\x06reason\x18\x04 \x01(\x0e2%.bambuflow.ingestion.v1.RefetchReasonR\x06reason\x12;\n" +
+	"\voccurred_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt*s\n" +
 	"\n" +
 	"ChangeType\x12\x1b\n" +
 	"\x17CHANGE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -287,7 +426,11 @@ const file_bambuflow_ingestion_v1_events_proto_rawDesc = "" +
 	"\x0eDETECTION_POLL\x10\x02\x12\x15\n" +
 	"\x11DETECTION_LISTING\x10\x03\x12\x17\n" +
 	"\x13DETECTION_RECONCILE\x10\x04\x12\x12\n" +
-	"\x0eDETECTION_PUSH\x10\x05B\xf6\x01\n" +
+	"\x0eDETECTION_PUSH\x10\x05*v\n" +
+	"\rRefetchReason\x12\x1e\n" +
+	"\x1aREFETCH_REASON_UNSPECIFIED\x10\x00\x12$\n" +
+	" REFETCH_REASON_TOMBSTONE_REVOKED\x10\x01\x12\x1f\n" +
+	"\x1bREFETCH_REASON_FULL_REBUILD\x10\x02B\xf6\x01\n" +
 	"\x1acom.bambuflow.ingestion.v1B\vEventsProtoP\x01ZQgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\xa2\x02\x03BIX\xaa\x02\x16Bambuflow.Ingestion.V1\xca\x02\x16Bambuflow\\Ingestion\\V1\xe2\x02\"Bambuflow\\Ingestion\\V1\\GPBMetadata\xea\x02\x18Bambuflow::Ingestion::V1b\x06proto3"
 
 var (
@@ -302,24 +445,28 @@ func file_bambuflow_ingestion_v1_events_proto_rawDescGZIP() []byte {
 	return file_bambuflow_ingestion_v1_events_proto_rawDescData
 }
 
-var file_bambuflow_ingestion_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_bambuflow_ingestion_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_bambuflow_ingestion_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_bambuflow_ingestion_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_bambuflow_ingestion_v1_events_proto_goTypes = []any{
 	(ChangeType)(0),               // 0: bambuflow.ingestion.v1.ChangeType
 	(Detection)(0),                // 1: bambuflow.ingestion.v1.Detection
-	(*DocumentChanged)(nil),       // 2: bambuflow.ingestion.v1.DocumentChanged
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(RefetchReason)(0),            // 2: bambuflow.ingestion.v1.RefetchReason
+	(*DocumentChanged)(nil),       // 3: bambuflow.ingestion.v1.DocumentChanged
+	(*RefetchRequested)(nil),      // 4: bambuflow.ingestion.v1.RefetchRequested
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_bambuflow_ingestion_v1_events_proto_depIdxs = []int32{
 	0, // 0: bambuflow.ingestion.v1.DocumentChanged.change_type:type_name -> bambuflow.ingestion.v1.ChangeType
-	3, // 1: bambuflow.ingestion.v1.DocumentChanged.occurred_at:type_name -> google.protobuf.Timestamp
-	3, // 2: bambuflow.ingestion.v1.DocumentChanged.detected_at:type_name -> google.protobuf.Timestamp
+	5, // 1: bambuflow.ingestion.v1.DocumentChanged.occurred_at:type_name -> google.protobuf.Timestamp
+	5, // 2: bambuflow.ingestion.v1.DocumentChanged.detected_at:type_name -> google.protobuf.Timestamp
 	1, // 3: bambuflow.ingestion.v1.DocumentChanged.detection:type_name -> bambuflow.ingestion.v1.Detection
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	2, // 4: bambuflow.ingestion.v1.RefetchRequested.reason:type_name -> bambuflow.ingestion.v1.RefetchReason
+	5, // 5: bambuflow.ingestion.v1.RefetchRequested.occurred_at:type_name -> google.protobuf.Timestamp
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_ingestion_v1_events_proto_init() }
@@ -332,8 +479,8 @@ func file_bambuflow_ingestion_v1_events_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_ingestion_v1_events_proto_rawDesc), len(file_bambuflow_ingestion_v1_events_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   1,
+			NumEnums:      3,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// IngestAdminService 是入库运维接口（入库管道详设 11、14.4），由 processing 的管理服务实现，
+// gateway 的 /v1/admin/documents/{doc_id}/ingest-status、/v1/admin/dead-letters、/v1/admin/replays 调用，
+// 调用方须带管理 Principal（平台运维）。
+service IngestAdminService {
+  rpc GetIngestStatus(GetIngestStatusRequest) returns (GetIngestStatusResponse);
+  // 死信与隔离文档，按数据源、阶段、错误码筛选。不含文档内容。
+  rpc ListDeadLetters(ListDeadLettersRequest) returns (ListDeadLettersResponse);
+  // 按条件重放：把死信里的原事件重新放回事件流，从对象存储里的原文开始处理，不重新从源系统拉取。
+  rpc Replay(ReplayRequest) returns (ReplayResponse);
+}
+
+message GetIngestStatusRequest {
+  string doc_id = 1;
+}
+
+message IngestError {
+  // 错误码，如 bad_document、unsupported_format、rpc_unavailable
+  string code = 1;
+  // 错误摘要，最多 200 字，不含文档内容
+  string message = 2;
+}
+
+message GetIngestStatusResponse {
+  string doc_id = 1;
+  string source_id = 2;
+  // 最近处理的事件，前缀 evt_
+  string event_id = 3;
+  // fetch、parse、mask、embed、write、delete、acl 之一：最近一次处理到的阶段
+  string stage = 4;
+  // written、unchanged、stale、deleted、acl_updated、retrying、dead_letter、quarantined、queued 之一
+  string state = 5;
+  // 最近一次失败；成功后清空
+  IngestError last_error = 6;
+  // 本事件已失败的次数
+  int32 attempts = 7;
+  // 重放生成的入库批次，前缀 ing_；不是重放的为空
+  string ingest_batch_id = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message DeadLetter {
+  string doc_id = 1;
+  string source_id = 2;
+  string event_id = 3;
+  string stage = 4;
+  IngestError error = 5;
+  // 处理时的流水线版本（组件版本）
+  string pipeline_version = 6;
+  int32 attempts = 7;
+  // 已重放的次数
+  int32 replays = 8;
+  // 重放 3 次仍失败：不再随按条件重放处理，只有按 doc_id 点名才重放
+  bool quarantined = 9;
+  google.protobuf.Timestamp first_failed_at = 10;
+  google.protobuf.Timestamp last_failed_at = 11;
+}
+
+message ListDeadLettersRequest {
+  string source_id = 1;
+  string stage = 2;
+  string error_code = 3;
+  // 只看隔离文档
+  bool quarantined_only = 4;
+  // 默认 50，最多 200
+  int32 page_size = 5;
+  string page_token = 6;
+}
+
+message ListDeadLettersResponse {
+  repeated DeadLetter dead_letters = 1;
+  string next_page_token = 2;
+}
+
+message ReplayRequest {
+  // 按条件：数据源、阶段、错误码至少给一个，或者给 doc_ids
+  string source_id = 1;
+  string stage = 2;
+  string error_code = 3;
+  // 点名重放，可以包括隔离文档；最多 500 个
+  repeated string doc_ids = 4;
+  // 原因必填，最多 500 字
+  string reason = 5;
+}
+
+message ReplayResponse {
+  // 入库批次，前缀 ing_；没有符合条件的死信时为空
+  string ingest_batch_id = 1;
+  int32 replayed = 2;
+  // 按条件匹配到但因隔离而跳过的
+  int32 skipped_quarantined = 3;
+}

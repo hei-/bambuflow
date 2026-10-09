@@ -17,6 +17,50 @@ service IndexAdminService {
   rpc AddDenyRules(AddDenyRulesRequest) returns (AddDenyRulesResponse);
   // RemoveDenyRules 撤销按文档的拒绝规则。
   rpc RemoveDenyRules(RemoveDenyRulesRequest) returns (RemoveDenyRulesResponse);
+  // ExpireDocuments 按数据源的保留期给到期文档写删除标记（技术设计文档 9.2）：文档的源端时间（occurred_at）
+  // 早于“现在 - 保留天数”的，与源端删除一样立即对线上生效，物理删除在之后的全量合并。由每天的 indexing expire 调用。
+  rpc ExpireDocuments(ExpireDocumentsRequest) returns (ExpireDocumentsResponse);
+  // PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本（块、关键词与向量索引、章节摘要、图谱边、
+  // 版本清单、文档标题等元数据），每份文档写一份删除凭证。由每天的 indexing purge-deleted 调用。
+  rpc PurgeDeleted(PurgeDeletedRequest) returns (PurgeDeletedResponse);
+  // RemapTerms 把文档元数据里已停用的受控词表编码改成替代编码（governance 详设 6.1：编码只停用不删除，
+  // 已入库文档按替代编码重新标注）。对线上立即生效；幂等，governance 停用词条后调用，并定期兜底重放。
+  rpc RemapTerms(RemapTermsRequest) returns (RemapTermsResponse);
+}
+
+message TermRemap {
+  // doc_type、dept、topic
+  string vocabulary = 1;
+  string from_code = 2;
+  string to_code = 3;
+}
+
+message RemapTermsRequest {
+  repeated TermRemap remaps = 1;
+}
+
+message RemapTermsResponse {
+  // 改动的文档数
+  int64 documents = 1;
+}
+
+message PurgeDeletedRequest {
+  // 删除标记写下后至少过了这么久才物理删除（观察期，期间可以撤销删除标记）；默认 168 小时
+  int32 grace_hours = 1;
+}
+
+message PurgeDeletedResponse {
+  int64 purged = 1;
+}
+
+message ExpireDocumentsRequest {
+  // 数据源 → 保留天数（大于 0）；没列出的数据源不按时间过期（与源系统一致）
+  map<string, int32> retention_days = 1;
+}
+
+message ExpireDocumentsResponse {
+  // 各数据源本次写了删除标记的文档数
+  map<string, int64> tombstoned = 1;
 }
 
 message AddDenyRulesRequest {

@@ -177,7 +177,7 @@ class Relation(_message.Message):
     def __init__(self, subject: _Optional[_Union[Entity, _Mapping]] = ..., relation_type: _Optional[_Union[_types_pb2.RelationType, str]] = ..., object: _Optional[_Union[Entity, _Mapping]] = ..., evidence_chunk_id: _Optional[str] = ..., confidence: _Optional[float] = ..., extractor_version: _Optional[str] = ...) -> None: ...
 
 class Chunk(_message.Message):
-    __slots__ = ("chunk_id", "parent_chunk_id", "heading_path", "text", "text_hash", "span", "embedding", "injection_flag")
+    __slots__ = ("chunk_id", "parent_chunk_id", "heading_path", "text", "text_hash", "span", "embedding", "injection_flag", "pii")
     CHUNK_ID_FIELD_NUMBER: _ClassVar[int]
     PARENT_CHUNK_ID_FIELD_NUMBER: _ClassVar[int]
     HEADING_PATH_FIELD_NUMBER: _ClassVar[int]
@@ -186,6 +186,7 @@ class Chunk(_message.Message):
     SPAN_FIELD_NUMBER: _ClassVar[int]
     EMBEDDING_FIELD_NUMBER: _ClassVar[int]
     INJECTION_FLAG_FIELD_NUMBER: _ClassVar[int]
+    PII_FIELD_NUMBER: _ClassVar[int]
     chunk_id: str
     parent_chunk_id: str
     heading_path: _containers.RepeatedScalarFieldContainer[str]
@@ -194,7 +195,18 @@ class Chunk(_message.Message):
     span: _types_pb2.Span
     embedding: _containers.RepeatedScalarFieldContainer[float]
     injection_flag: bool
-    def __init__(self, chunk_id: _Optional[str] = ..., parent_chunk_id: _Optional[str] = ..., heading_path: _Optional[_Iterable[str]] = ..., text: _Optional[str] = ..., text_hash: _Optional[str] = ..., span: _Optional[_Union[_types_pb2.Span, _Mapping]] = ..., embedding: _Optional[_Iterable[float]] = ..., injection_flag: _Optional[bool] = ...) -> None: ...
+    pii: SealedPII
+    def __init__(self, chunk_id: _Optional[str] = ..., parent_chunk_id: _Optional[str] = ..., heading_path: _Optional[_Iterable[str]] = ..., text: _Optional[str] = ..., text_hash: _Optional[str] = ..., span: _Optional[_Union[_types_pb2.Span, _Mapping]] = ..., embedding: _Optional[_Iterable[float]] = ..., injection_flag: _Optional[bool] = ..., pii: _Optional[_Union[SealedPII, _Mapping]] = ...) -> None: ...
+
+class SealedPII(_message.Message):
+    __slots__ = ("ciphertext", "wrapped_key", "key_id")
+    CIPHERTEXT_FIELD_NUMBER: _ClassVar[int]
+    WRAPPED_KEY_FIELD_NUMBER: _ClassVar[int]
+    KEY_ID_FIELD_NUMBER: _ClassVar[int]
+    ciphertext: bytes
+    wrapped_key: str
+    key_id: str
+    def __init__(self, ciphertext: _Optional[bytes] = ..., wrapped_key: _Optional[str] = ..., key_id: _Optional[str] = ...) -> None: ...
 
 class WriteDocumentResponse(_message.Message):
     __slots__ = ("result", "doc_version", "written_chunks", "index_version")

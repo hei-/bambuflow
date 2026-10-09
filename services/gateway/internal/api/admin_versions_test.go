@@ -82,11 +82,11 @@ func TestIndexVersionRoutes(t *testing.T) {
 		method, path, token string
 		status              int
 	}{
-		"审计岗不能看":       {http.MethodGet, "/v1/admin/index-versions", e.authz.token(t, "audra", "console"), 403},
-		"非法的操作 ID":     {http.MethodPost, "/v1/admin/index-versions/operations/op_XYZ/approve", oscar, 404},
-		"非法的版本号":       {http.MethodPost, "/v1/admin/index-versions/a%20b/activate", olga, 404},
-		"多余字段":         {http.MethodPost, "/v1/admin/index-versions/operations/op_1a/approve", oscar, 400},
-		"未登记的 rebuild": {http.MethodPost, "/v1/admin/index-rebuilds", olga, 404},
+		"审计岗不能看":   {http.MethodGet, "/v1/admin/index-versions", e.authz.token(t, "audra", "console"), 403},
+		"非法的操作 ID": {http.MethodPost, "/v1/admin/index-versions/operations/op_XYZ/approve", oscar, 404},
+		"非法的版本号":   {http.MethodPost, "/v1/admin/index-versions/a%20b/activate", olga, 404},
+		"多余字段":     {http.MethodPost, "/v1/admin/index-versions/operations/op_1a/approve", oscar, 400},
+		"未登记的删除版本": {http.MethodDelete, "/v1/admin/index-versions/ix-1", olga, 404},
 	} {
 		n++
 		body := ""

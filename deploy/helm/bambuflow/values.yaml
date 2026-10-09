@@ -10,6 +10,9 @@ storageClass: ""
 
 vault:
   addr: ""
+  # 在线服务的角色：读 <kvMount>/bambuflow/*、<kvMount>/gateway/*、<kvMount>/governance/*（快照签名私钥），
+  # 以及 transit/decrypt/bambuflow-pii
+  # （retrieval 为能看 PII 原文的调用者解开入库时加密的原值）
   role: ""
   # webhook 的角色：只能读写 <kvMount>/webhooks/*（订阅的签名密钥），与在线服务的角色分开
   webhookRole: ""
@@ -31,7 +34,8 @@ otel:
 events:
   redisAddr: ""
 
-# 租户配置（gateway 详设 1.3；governance 分发租户配置前由部署方在这里给出）：键是租户名，
+# 租户配置的初始版本（governance 详设 3、4）：governance 启动时只为还没有任何版本的租户导入，之后经变更单与发布修改、
+# 由配置快照推给 gateway，再改这里不会生效。键是租户名，
 # 值是 tenant.yaml 除 tenant 以外的字段（rollout、member_groups、pilot_groups、bound_clients、mcp_agents、mcp_tools、
 # auditor_groups：可回放本租户任何人回答的审计岗群组；quota：租户这一层的限制，gateway 详设 5.1）。
 # quota 的 max_concurrency 为在线并发上限，daily_tokens 为每日 token 配额；不填时取保守默认值（20 路、200 万 token），
@@ -87,6 +91,16 @@ retrieval:
 indexing:
   addr: ""
 
+# 入库平面 processing 的管理服务（不在本 chart 里）：gateway 把入库状态、死信、重放的管理接口转给它（host:port）。
+# 它的 BF_PRINCIPAL_JWKS_URL 同样指向本 release 的 gateway:8081，入库平面的网络策略要放行 gateway → processing-admin:9090
+processingAdmin:
+  addr: ""
+
+# 入库平面 connectors 的管理服务（不在本 chart 里）：gateway 把数据源同步状态、暂停与恢复的管理接口转给它（host:port）。
+# 入库平面的网络策略要放行 gateway → connectors-admin:9090
+connectorsAdmin:
+  addr: ""
+
 # ConfigService：向 orchestrator 下发受控词表快照（governance 详设 7.1）；管理接口（紧急拒绝规则等）经 gateway 调用。
 # 数据库连接串与审计桶凭证经 Vault 注入
 governance:
@@ -114,6 +128,10 @@ orchestrator:
   # views（白名单视图：name、title、description、classification、terms、columns）。为空时不开放。
   # 数据平台只读查询服务的默认实现直连只读账号，连接串 BF_SQL_DSN 经 Vault 注入（bambuflow/orchestrator）
   sqlCatalog: {}
+  # 回答记录的保留天数（技术设计文档 9.2，部署配置清单 N4，由合规给出）：配置后每天销毁过期记录的原文（数据密钥与密文、
+  # 掩码问题、正文），只留审计字段；为 0 时不清理（年限确定之前保留全部记录）
+  answerRetentionDays: 0
+  purgeSchedule: "30 3 * * *"
   resources:
     requests: {cpu: 500m, memory: 1Gi}
     limits: {memory: 2Gi}

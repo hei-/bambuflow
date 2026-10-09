@@ -375,6 +375,28 @@ type answerResult struct {
 	// fact / enumeration / count / summary（K2 详设第 7 节）
 	AnswerKind     string `json:"answer_kind"`
 	ConversationID string `json:"conversation_id,omitempty"`
+	// 回答整体的置信度（技术设计文档 7.8）；拒答、仅证据与清单类回答没有
+	Confidence *confidenceJSON `json:"confidence,omitempty"`
+}
+
+type confidenceJSON struct {
+	Score           float64 `json:"score"`
+	Level           string  `json:"level"`
+	WeightsVersion  string  `json:"weights_version"`
+	Coverage        float64 `json:"coverage"`
+	MeanSupport     float64 `json:"mean_support"`
+	TopRerank       float64 `json:"top_rerank"`
+	SourceDiversity float64 `json:"source_diversity"`
+	Conflict        bool    `json:"conflict"`
+}
+
+func confidenceOf(c *answerv1.Confidence) *confidenceJSON {
+	if c == nil {
+		return nil
+	}
+	return &confidenceJSON{Score: c.GetScore(), Level: enumName(c.GetLevel()), WeightsVersion: c.GetWeightsVersion(),
+		Coverage: c.GetCoverage(), MeanSupport: c.GetMeanSupport(), TopRerank: c.GetTopRerank(),
+		SourceDiversity: c.GetSourceDiversity(), Conflict: c.GetConflict()}
 }
 
 func (s *Server) answers(w http.ResponseWriter, r *http.Request, c *call) (any, error) {
@@ -443,7 +465,7 @@ func answerJSON(c *call, resp *answerv1.AnswerResponse) answerResult {
 	out := answerResult{
 		AnswerID: c.answerID, TraceID: c.traceID, Status: enumName(resp.GetStatus()), Answer: resp.GetAnswer(),
 		Sentences: []sentenceJSON{}, Blocks: []blockJSON{}, Citations: []citationJSON{}, Why: whyOf(resp.GetWhy()),
-		AnswerKind: answerKind(resp.GetAnswerKind()), ConversationID: resp.GetConversationId(),
+		AnswerKind: answerKind(resp.GetAnswerKind()), ConversationID: resp.GetConversationId(), Confidence: confidenceOf(resp.GetConfidence()),
 	}
 	for _, x := range resp.GetSentences() {
 		out.Sentences = append(out.Sentences, sentenceOf(x))

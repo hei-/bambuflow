@@ -2,14 +2,21 @@ package vocab
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"google.golang.org/grpc"
 
 	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/snapshot"
 )
 
 func TestDevSeedIsValid(t *testing.T) {
@@ -50,10 +57,23 @@ func TestSnapshotGroupsTermsByVocabulary(t *testing.T) {
 		{Vocabulary: "doc_type", Code: "DT-RULE", Name: "规定", Status: "deprecated", ReplacedBy: "DT-POLICY"},
 		{Vocabulary: "topic", Code: "T-1", Name: "信贷", Status: "active"},
 	}
-	s := &Server{Store: terms, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	resp, err := s.GetSnapshot(context.Background(), &configv1.GetSnapshotRequest{Service: "processing"})
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	signer, _ := NewSigner(key)
+	acks := &memAcks{}
+	s := &Server{Store: terms, Signer: signer, Acks: acks, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	signed, err := s.GetSnapshot(context.Background(), &configv1.GetSnapshotRequest{Service: "processing"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// 使用方用同一个库验签（libs/platform-go/snapshot），公钥来自 GetSigningKeys
+	v := &snapshot.Verifier{Client: keyClient{s}, Now: time.Now}
+	resp, err := v.Open(context.Background(), signed)
+	if err != nil {
+		t.Fatalf("验签: %v", err)
+	}
+	if _, err := s.Ack(context.Background(), &configv1.AckRequest{Service: "processing", InstanceId: "p-1",
+		SnapshotVersion: resp.GetSnapshotVersion(), Loaded: true}); err != nil || len(acks.got) != 1 {
+		t.Fatalf("Ack: %v %v", acks.got, err)
 	}
 	if len(resp.GetVocabularies()) != 3 || !strings.HasPrefix(resp.GetSnapshotVersion(), "vocab-") {
 		t.Fatalf("快照: %v", resp)
@@ -66,4 +86,18 @@ func TestSnapshotGroupsTermsByVocabulary(t *testing.T) {
 	if Version(terms) != Version(fixed(append([]Term{}, terms...))) || Version(terms) == Version(terms[:2]) {
 		t.Fatal("快照版本应随内容变化")
 	}
+}
+
+type memAcks struct{ got []*configv1.AckRequest }
+
+func (m *memAcks) SaveAck(_ context.Context, a *configv1.AckRequest) error {
+	m.got = append(m.got, a)
+	return nil
+}
+
+// keyClient 把 Server 的 GetSigningKeys 当成 gRPC 客户端用
+type keyClient struct{ s *Server }
+
+func (k keyClient) GetSigningKeys(ctx context.Context, in *configv1.GetSigningKeysRequest, _ ...grpc.CallOption) (*configv1.GetSigningKeysResponse, error) {
+	return k.s.GetSigningKeys(ctx, in)
 }

@@ -20,6 +20,7 @@ from bambuflow_evaluation.golden import Question
 from bambuflow_evaluation.metrics import Outcome
 from bambuflow_evaluation.signer import Signer
 from bambuflow_grounding import SUPPORT_THRESHOLD, KServeNLI
+from bambuflow_platform.grpc_server import EVAL_INDEX_HEADER
 
 if TYPE_CHECKING:
     from bambuflow.answer.v1.answer_pb2_grpc import AnswerServiceAsyncStub
@@ -63,8 +64,12 @@ class Runner:
         orchestrator: AnswerServiceAsyncStub,
         signer: Signer,
         judge_nli: KServeNLI,
+        index_version: str = "",
     ) -> None:
         self._retrieval = retrieval
+        # 门禁评测待发布版本时指定的索引版本（evaluation 详设 4.2）：
+        # 经 metadata 传给评测副本，空 = 线上版本
+        self._index_version = index_version
         self._orchestrator = orchestrator
         self._signer = signer
         self._nli = judge_nli
@@ -78,7 +83,13 @@ class Runner:
         token = self._signer.sign(q.asker)
 
         def md(purpose: str) -> tuple[tuple[str, str], ...]:
-            return (("authorization", "Bearer " + token), ("x-call-purpose", purpose))
+            out: tuple[tuple[str, str], ...] = (
+                ("authorization", "Bearer " + token),
+                ("x-call-purpose", purpose),
+            )
+            if self._index_version:
+                out += ((EVAL_INDEX_HEADER, self._index_version),)
+            return out
 
         # must_cite 在当前索引里已不存在（NOT_FOUND）的题标为待复核，不计入指标（评测详设 3.3）
         pending = False

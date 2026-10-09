@@ -11,15 +11,18 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import grpc
+from bambuflow_vocabulary import Vocabularies
 
 from bambuflow.answer.v1 import answer_pb2
 from bambuflow.config.v1 import config_pb2
+from bambuflow_platform.snapshot import InvalidSnapshotError
 
 _log = logging.getLogger(__name__)
 
@@ -74,17 +77,47 @@ async def refresh(
     experiments: Experiments,
     fetch: Callable[[], Awaitable[config_pb2.GetSnapshotResponse]],
     every: float = REFRESH_SECONDS,
+    wake: asyncio.Event | None = None,
+    ack: Callable[[str, str], Awaitable[None]] | None = None,
+    on_vocab: Callable[[Vocabularies], None] | None = None,
 ) -> None:
-    """定期拉取快照并替换运行中的实验，直到被取消。"""
+    """拉取快照并替换运行中的实验与受控词表（on_vocab），直到被取消。
+
+    收到版本变化的通知（wake）立即拉，否则每 every 秒兜底拉一次。
+
+    fetch 返回的是已验签的快照；验签不过时保留上一份，
+    经 ack 上报失败原因（governance 详设 8.1）。"""
     version = ""
     while True:
-        await asyncio.sleep(every)
+        if wake is None:
+            await asyncio.sleep(every)
+        else:
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(wake.wait(), every)
+            wake.clear()
         try:
             snap = await fetch()
+        except InvalidSnapshotError as e:
+            _log.error("配置快照验签失败，沿用上一份", extra={"err": str(e)})
+            if ack is not None:
+                await ack("", "signature_invalid")
+            continue
         except (grpc.RpcError, TimeoutError, OSError) as e:
             _log.warning("拉取实验配置失败，沿用上一份", extra={"err": type(e).__name__})
             continue
+        try:
+            vocab = Vocabularies.from_snapshot(snap) if on_vocab is not None else None
+        except ValueError as e:
+            # 词表不完整：整份快照都不用，沿用上一份
+            _log.error("配置快照的词表不完整，沿用上一份", extra={"err": str(e)})
+            if ack is not None:
+                await ack(snap.snapshot_version, "invalid_vocabulary")
+            continue
         experiments.replace(list(snap.experiments))
+        if on_vocab is not None and vocab is not None:
+            on_vocab(vocab)
+        if ack is not None:
+            await ack(snap.snapshot_version, "")
         if snap.snapshot_version != version:
             version = snap.snapshot_version
             _log.info(

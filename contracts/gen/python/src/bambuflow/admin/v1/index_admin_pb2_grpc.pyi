@@ -55,6 +55,18 @@ class IndexAdminServiceStub:
     """
     RemoveDenyRules: _grpc.UnaryUnaryMultiCallable[_index_admin_pb2.RemoveDenyRulesRequest, _index_admin_pb2.RemoveDenyRulesResponse]
     """RemoveDenyRules 撤销按文档的拒绝规则。"""
+    ExpireDocuments: _grpc.UnaryUnaryMultiCallable[_index_admin_pb2.ExpireDocumentsRequest, _index_admin_pb2.ExpireDocumentsResponse]
+    """ExpireDocuments 按数据源的保留期给到期文档写删除标记（技术设计文档 9.2）：文档的源端时间（occurred_at）
+    早于“现在 - 保留天数”的，与源端删除一样立即对线上生效，物理删除在之后的全量合并。由每天的 indexing expire 调用。
+    """
+    PurgeDeleted: _grpc.UnaryUnaryMultiCallable[_index_admin_pb2.PurgeDeletedRequest, _index_admin_pb2.PurgeDeletedResponse]
+    """PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本（块、关键词与向量索引、章节摘要、图谱边、
+    版本清单、文档标题等元数据），每份文档写一份删除凭证。由每天的 indexing purge-deleted 调用。
+    """
+    RemapTerms: _grpc.UnaryUnaryMultiCallable[_index_admin_pb2.RemapTermsRequest, _index_admin_pb2.RemapTermsResponse]
+    """RemapTerms 把文档元数据里已停用的受控词表编码改成替代编码（governance 详设 6.1：编码只停用不删除，
+    已入库文档按替代编码重新标注）。对线上立即生效；幂等，governance 停用词条后调用，并定期兜底重放。
+    """
 
 @_typing.type_check_only
 class IndexAdminServiceAsyncStub(IndexAdminServiceStub):
@@ -77,6 +89,18 @@ class IndexAdminServiceAsyncStub(IndexAdminServiceStub):
     """
     RemoveDenyRules: _aio.UnaryUnaryMultiCallable[_index_admin_pb2.RemoveDenyRulesRequest, _index_admin_pb2.RemoveDenyRulesResponse]  # type: ignore[assignment]
     """RemoveDenyRules 撤销按文档的拒绝规则。"""
+    ExpireDocuments: _aio.UnaryUnaryMultiCallable[_index_admin_pb2.ExpireDocumentsRequest, _index_admin_pb2.ExpireDocumentsResponse]  # type: ignore[assignment]
+    """ExpireDocuments 按数据源的保留期给到期文档写删除标记（技术设计文档 9.2）：文档的源端时间（occurred_at）
+    早于“现在 - 保留天数”的，与源端删除一样立即对线上生效，物理删除在之后的全量合并。由每天的 indexing expire 调用。
+    """
+    PurgeDeleted: _aio.UnaryUnaryMultiCallable[_index_admin_pb2.PurgeDeletedRequest, _index_admin_pb2.PurgeDeletedResponse]  # type: ignore[assignment]
+    """PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本（块、关键词与向量索引、章节摘要、图谱边、
+    版本清单、文档标题等元数据），每份文档写一份删除凭证。由每天的 indexing purge-deleted 调用。
+    """
+    RemapTerms: _aio.UnaryUnaryMultiCallable[_index_admin_pb2.RemapTermsRequest, _index_admin_pb2.RemapTermsResponse]  # type: ignore[assignment]
+    """RemapTerms 把文档元数据里已停用的受控词表编码改成替代编码（governance 详设 6.1：编码只停用不删除，
+    已入库文档按替代编码重新标注）。对线上立即生效；幂等，governance 停用词条后调用，并定期兜底重放。
+    """
 
 class IndexAdminServiceServicer(metaclass=_abc_1.ABCMeta):
     """IndexAdminService 是索引管理接口（入库管道详设 14.4），由 indexing 实现。
@@ -119,5 +143,35 @@ class IndexAdminServiceServicer(metaclass=_abc_1.ABCMeta):
         context: _ServicerContext,
     ) -> _typing.Union[_index_admin_pb2.RemoveDenyRulesResponse, _abc.Awaitable[_index_admin_pb2.RemoveDenyRulesResponse]]:
         """RemoveDenyRules 撤销按文档的拒绝规则。"""
+
+    @_abc_1.abstractmethod
+    def ExpireDocuments(
+        self,
+        request: _index_admin_pb2.ExpireDocumentsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_index_admin_pb2.ExpireDocumentsResponse, _abc.Awaitable[_index_admin_pb2.ExpireDocumentsResponse]]:
+        """ExpireDocuments 按数据源的保留期给到期文档写删除标记（技术设计文档 9.2）：文档的源端时间（occurred_at）
+        早于“现在 - 保留天数”的，与源端删除一样立即对线上生效，物理删除在之后的全量合并。由每天的 indexing expire 调用。
+        """
+
+    @_abc_1.abstractmethod
+    def PurgeDeleted(
+        self,
+        request: _index_admin_pb2.PurgeDeletedRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_index_admin_pb2.PurgeDeletedResponse, _abc.Awaitable[_index_admin_pb2.PurgeDeletedResponse]]:
+        """PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本（块、关键词与向量索引、章节摘要、图谱边、
+        版本清单、文档标题等元数据），每份文档写一份删除凭证。由每天的 indexing purge-deleted 调用。
+        """
+
+    @_abc_1.abstractmethod
+    def RemapTerms(
+        self,
+        request: _index_admin_pb2.RemapTermsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_index_admin_pb2.RemapTermsResponse, _abc.Awaitable[_index_admin_pb2.RemapTermsResponse]]:
+        """RemapTerms 把文档元数据里已停用的受控词表编码改成替代编码（governance 详设 6.1：编码只停用不删除，
+        已入库文档按替代编码重新标注）。对线上立即生效；幂等，governance 停用词条后调用，并定期兜底重放。
+        """
 
 def add_IndexAdminServiceServicer_to_server(servicer: IndexAdminServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

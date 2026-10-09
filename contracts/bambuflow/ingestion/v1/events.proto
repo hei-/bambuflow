@@ -42,3 +42,24 @@ enum Detection {
   DETECTION_RECONCILE = 4;
   DETECTION_PUSH = 5;
 }
+
+// RefetchRequested 要求 connectors 重新从源系统拉取这些文档（入库管道详设第 5、14 节），由 indexing 产生，
+// 经事件流 ingest:refetch-requested 发出。connectors 下一轮同步前把它们从已同步状态里去掉，
+// 源端仍存在的就作为新文档重新发出 DocumentChanged。
+message RefetchRequested {
+  // 前缀 evt_。
+  string event_id = 1;
+  // 前缀 src_。
+  string source_id = 2;
+  repeated string doc_ids = 3;
+  RefetchReason reason = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+enum RefetchReason {
+  REFETCH_REASON_UNSPECIFIED = 0;
+  // 撤销了误写的删除标记（TombstoneAdminService）
+  REFETCH_REASON_TOMBSTONE_REVOKED = 1;
+  // 全量重建（RebuildAdminService）：全部文档按新的嵌入模型或分块器重算
+  REFETCH_REASON_FULL_REBUILD = 2;
+}

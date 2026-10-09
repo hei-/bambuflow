@@ -33,6 +33,14 @@ policyData:
 indexing:
   addr: indexing:9090
 
+# compose 栈里的 processing 管理服务（入库运维接口）
+processingAdmin:
+  addr: processing-admin:9090
+
+# compose 栈里的 connectors 管理服务（数据源同步状态、暂停与恢复）
+connectorsAdmin:
+  addr: connectors-admin:9090
+
 gateway:
   replicas: 2
   platformIssuer: http://keycloak:8080/realms/bambuflow

@@ -13,7 +13,7 @@ import (
 
 	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenancy"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
 )
 
 // GetAnswer 模拟 orchestrator 的判定：alice 是提问人；审计岗凭 as_auditor 可看；其余一律 NOT_FOUND。

@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package bambuflow.evaluation.v1;
+
+import "google/protobuf/duration.proto";
+
+// EvalService 是评测门禁（evaluation 详设 5、8.1），服务间接口：调用方是 indexing（增量发布、全量重建）、
+// governance（配置发布）与 CI，由服务网格限定调用方身份。RunGate 异步执行，立即返回 gate_id；
+// 调用方按 gate_id 轮询 GetGate，超时未得到结论一律按不通过处理，没有跳过门禁的入口。
+//
+// 门禁在评测副本上跑（BF_EVAL_MODE 的 orchestrator 与 retrieval，不接任何来自 gateway 的流量）：
+// 请求里的索引版本经 metadata x-eval-index-version 传给它们，因此可以在待发布版本上线之前评测它。
+service EvalService {
+  rpc RunGate(RunGateRequest) returns (RunGateResponse);
+  rpc GetGate(GetGateRequest) returns (GetGateResponse);
+}
+
+// EvalConfig 是候选的评测配置（evaluation 详设 4.1）。
+message EvalConfig {
+  // 要评测的索引版本（如待发布版本）；不填为当前线上版本
+  string index_version = 1;
+  // 配置快照版本；现在评测副本用自己加载的快照，这里只记录
+  string snapshot_version = 2;
+}
+
+message RunGateRequest {
+  // ci、config_release、index_publish、index_rebuild、scheduled
+  string trigger = 1;
+  EvalConfig candidate = 2;
+  // 空 = 评测集里的全部租户
+  repeated string tenants = 3;
+  // 增量发布时本批文档（记录用；按文档挑权限题还没有做）
+  repeated string doc_ids = 4;
+  // 规则集，默认按 trigger 选：index_publish 用每租户 30 题的冒烟集，其余用全部题
+  string ruleset = 5;
+  // 不填按 trigger 取：index_publish 5 分钟，其余 30 分钟，index_rebuild 4 小时
+  google.protobuf.Duration deadline = 6;
+  // 同一个候选重复调用返回同一个 gate_id
+  string idempotency_key = 7;
+}
+
+message RunGateResponse {
+  // gate_ 前缀
+  string gate_id = 1;
+}
+
+message GetGateRequest {
+  string gate_id = 1;
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED = 0;
+  VERDICT_RUNNING = 1;
+  VERDICT_PASSED = 2;
+  VERDICT_FAILED = 3;
+  VERDICT_INDETERMINATE = 4;
+}
+
+message GetGateResponse {
+  string gate_id = 1;
+  Verdict verdict = 2;
+  // 报告位置：管理接口 /v1/admin/eval-gates/{gate_id}
+  string report_uri = 3;
+  // 不通过的原因（变差的指标、超时等）
+  repeated string violations = 4;
+}

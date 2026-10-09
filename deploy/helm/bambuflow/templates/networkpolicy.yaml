@@ -2,9 +2,10 @@
 入站白名单（技术设计文档 12.6）：本 release 的在线服务默认拒绝所有入站，只放行
 - 入口所在命名空间 → gateway:8080；
 - gateway、orchestrator、qa/batch → retrieval:9090；gateway、qa/batch → orchestrator:9090；orchestrator → governance:9090（词表快照）；retrieval → governance:9090（租户授权）；
-  gateway → evaluation:9090（A/B 分析、在线质量趋势）；evaluation 与它的护栏检查（evaluation-guard）→ governance:9090（实验）、
+  gateway → evaluation:9090（A/B 分析、在线质量趋势、门禁报告）；governance → evaluation:9090（租户转全量前核对门禁）；
+  gateway → governance:9090 另有租户配置快照；evaluation 与它的护栏检查（evaluation-guard）→ governance:9090（实验）、
   orchestrator:9090（回答记录导出）；在线抽样评审（evaluation-online）→ orchestrator:9090；
-  gateway → governance:9090（管理接口，gateway 详设 4.2）；gateway、governance → indexing:9090 在入库平面（不在本 chart），出站由服务网格管理；
+  gateway → governance:9090（管理接口，gateway 详设 4.2）；gateway、governance → indexing:9090、gateway → processing-admin:9090、connectors-admin:9090 在入库平面（不在本 chart），出站由服务网格管理；
 - gateway → qa/batch:9090（受理批次）；qa/batch → gateway:9090（换发 Principal，gateway 详设 3.3）；
 - retrieval、orchestrator、qa/batch、governance、evaluation 与入库平面（networkPolicy.ingestNamespace，indexing）→ gateway:8081（取 Principal 验签公钥）；
 - 监控命名空间 → 各服务的内部端口（指标）。
@@ -38,7 +39,7 @@ webhook 只有出站（事件流、Vault、订阅方回调地址），它的订�
   "governance" (list
     (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "orchestrator")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "gateway")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "retrieval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation-guard")))))
   "evaluation" (list
-    (dict "port" 9090 "from" (include "bambuflow.peer" (dict "root" $ "component" "gateway"))))
+    (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "gateway")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "governance")))))
   "batch" (list
     (dict "port" 9090 "from" (include "bambuflow.peer" (dict "root" $ "component" "gateway"))))
   "webhook" (list)

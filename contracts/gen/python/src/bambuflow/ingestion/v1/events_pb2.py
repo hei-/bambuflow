@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n#bambuflow/ingestion/v1/events.proto\x12\x16\x62\x61mbuflow.ingestion.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc5\x03\n\x0f\x44ocumentChanged\x12\x19\n\x08\x65vent_id\x18\x01 \x01(\tR\x07\x65ventId\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\x12\x15\n\x06\x64oc_id\x18\x03 \x01(\tR\x05\x64ocId\x12\x43\n\x0b\x63hange_type\x18\x04 \x01(\x0e\x32\".bambuflow.ingestion.v1.ChangeTypeR\nchangeType\x12!\n\x0c\x63ontent_hash\x18\x05 \x01(\tR\x0b\x63ontentHash\x12\'\n\x0f\x61\x63l_fingerprint\x18\x06 \x01(\tR\x0e\x61\x63lFingerprint\x12;\n\x0boccurred_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAt\x12;\n\x0b\x64\x65tected_at\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\ndetectedAt\x12?\n\tdetection\x18\t \x01(\x0e\x32!.bambuflow.ingestion.v1.DetectionR\tdetection\x12\x17\n\x07raw_ref\x18\n \x01(\tR\x06rawRef*s\n\nChangeType\x12\x1b\n\x17\x43HANGE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n\x12\x43HANGE_TYPE_UPSERT\x10\x01\x12\x16\n\x12\x43HANGE_TYPE_DELETE\x10\x02\x12\x18\n\x14\x43HANGE_TYPE_ACL_ONLY\x10\x03*\x95\x01\n\tDetection\x12\x19\n\x15\x44\x45TECTION_UNSPECIFIED\x10\x00\x12\x15\n\x11\x44\x45TECTION_WEBHOOK\x10\x01\x12\x12\n\x0e\x44\x45TECTION_POLL\x10\x02\x12\x15\n\x11\x44\x45TECTION_LISTING\x10\x03\x12\x17\n\x13\x44\x45TECTION_RECONCILE\x10\x04\x12\x12\n\x0e\x44\x45TECTION_PUSH\x10\x05\x42\xf6\x01\n\x1a\x63om.bambuflow.ingestion.v1B\x0b\x45ventsProtoP\x01ZQgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\xa2\x02\x03\x42IX\xaa\x02\x16\x42\x61mbuflow.Ingestion.V1\xca\x02\x16\x42\x61mbuflow\\Ingestion\\V1\xe2\x02\"Bambuflow\\Ingestion\\V1\\GPBMetadata\xea\x02\x18\x42\x61mbuflow::Ingestion::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n#bambuflow/ingestion/v1/events.proto\x12\x16\x62\x61mbuflow.ingestion.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc5\x03\n\x0f\x44ocumentChanged\x12\x19\n\x08\x65vent_id\x18\x01 \x01(\tR\x07\x65ventId\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\x12\x15\n\x06\x64oc_id\x18\x03 \x01(\tR\x05\x64ocId\x12\x43\n\x0b\x63hange_type\x18\x04 \x01(\x0e\x32\".bambuflow.ingestion.v1.ChangeTypeR\nchangeType\x12!\n\x0c\x63ontent_hash\x18\x05 \x01(\tR\x0b\x63ontentHash\x12\'\n\x0f\x61\x63l_fingerprint\x18\x06 \x01(\tR\x0e\x61\x63lFingerprint\x12;\n\x0boccurred_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAt\x12;\n\x0b\x64\x65tected_at\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\ndetectedAt\x12?\n\tdetection\x18\t \x01(\x0e\x32!.bambuflow.ingestion.v1.DetectionR\tdetection\x12\x17\n\x07raw_ref\x18\n \x01(\tR\x06rawRef\"\xdf\x01\n\x10RefetchRequested\x12\x19\n\x08\x65vent_id\x18\x01 \x01(\tR\x07\x65ventId\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\x12\x17\n\x07\x64oc_ids\x18\x03 \x03(\tR\x06\x64ocIds\x12=\n\x06reason\x18\x04 \x01(\x0e\x32%.bambuflow.ingestion.v1.RefetchReasonR\x06reason\x12;\n\x0boccurred_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAt*s\n\nChangeType\x12\x1b\n\x17\x43HANGE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n\x12\x43HANGE_TYPE_UPSERT\x10\x01\x12\x16\n\x12\x43HANGE_TYPE_DELETE\x10\x02\x12\x18\n\x14\x43HANGE_TYPE_ACL_ONLY\x10\x03*\x95\x01\n\tDetection\x12\x19\n\x15\x44\x45TECTION_UNSPECIFIED\x10\x00\x12\x15\n\x11\x44\x45TECTION_WEBHOOK\x10\x01\x12\x12\n\x0e\x44\x45TECTION_POLL\x10\x02\x12\x15\n\x11\x44\x45TECTION_LISTING\x10\x03\x12\x17\n\x13\x44\x45TECTION_RECONCILE\x10\x04\x12\x12\n\x0e\x44\x45TECTION_PUSH\x10\x05*v\n\rRefetchReason\x12\x1e\n\x1aREFETCH_REASON_UNSPECIFIED\x10\x00\x12$\n REFETCH_REASON_TOMBSTONE_REVOKED\x10\x01\x12\x1f\n\x1bREFETCH_REASON_FULL_REBUILD\x10\x02\x42\xf6\x01\n\x1a\x63om.bambuflow.ingestion.v1B\x0b\x45ventsProtoP\x01ZQgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\xa2\x02\x03\x42IX\xaa\x02\x16\x42\x61mbuflow.Ingestion.V1\xca\x02\x16\x42\x61mbuflow\\Ingestion\\V1\xe2\x02\"Bambuflow\\Ingestion\\V1\\GPBMetadata\xea\x02\x18\x42\x61mbuflow::Ingestion::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,10 +33,14 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.ingestion.v1.even
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\032com.bambuflow.ingestion.v1B\013EventsProtoP\001ZQgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\242\002\003BIX\252\002\026Bambuflow.Ingestion.V1\312\002\026Bambuflow\\Ingestion\\V1\342\002\"Bambuflow\\Ingestion\\V1\\GPBMetadata\352\002\030Bambuflow::Ingestion::V1'
-  _globals['_CHANGETYPE']._serialized_start=552
-  _globals['_CHANGETYPE']._serialized_end=667
-  _globals['_DETECTION']._serialized_start=670
-  _globals['_DETECTION']._serialized_end=819
+  _globals['_CHANGETYPE']._serialized_start=778
+  _globals['_CHANGETYPE']._serialized_end=893
+  _globals['_DETECTION']._serialized_start=896
+  _globals['_DETECTION']._serialized_end=1045
+  _globals['_REFETCHREASON']._serialized_start=1047
+  _globals['_REFETCHREASON']._serialized_end=1165
   _globals['_DOCUMENTCHANGED']._serialized_start=97
   _globals['_DOCUMENTCHANGED']._serialized_end=550
+  _globals['_REFETCHREQUESTED']._serialized_start=553
+  _globals['_REFETCHREQUESTED']._serialized_end=776
 # @@protoc_insertion_point(module_scope)

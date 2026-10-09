@@ -22,6 +22,8 @@ type Plan struct {
 	// DeletesPaused 为 true 时本轮不发删除；Reason 说明原因（empty_listing / over_threshold）
 	DeletesPaused bool
 	Reason        string
+	// Held 是因超过阈值被拦下的待删文档（over_threshold 时才有；清单为空时不推断任何删除，也就没有）
+	Held []string
 }
 
 // Diff 比较上次已发出的状态与本轮清单。两者都是 doc_id → “内容摘要|权限摘要”。
@@ -53,7 +55,7 @@ func Diff(state, current map[string]string, confirmDeletes bool) Plan {
 		// 清单拉取异常或返回空结果：视为本轮失败，不推断任何删除
 		p.DeletesPaused, p.Reason = true, "empty_listing"
 	case !confirmDeletes && (len(deletes) > maxDeletes || len(deletes)*maxDeleteRatio > len(state)):
-		p.DeletesPaused, p.Reason = true, "over_threshold"
+		p.DeletesPaused, p.Reason, p.Held = true, "over_threshold", deletes
 	default:
 		p.Deletes = deletes
 	}

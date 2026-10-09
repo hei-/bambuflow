@@ -1,10 +1,15 @@
 """回答记录保存什么、反馈请求怎么校验，以及迁移文件的排序规则。"""
 
+import asyncio
+import dataclasses
+import os
+
 import pytest
 
 from bambuflow.answer.v1 import answer_pb2
 from bambuflow.common.v1 import types_pb2
 from bambuflow_orchestrator import migrate, records
+from bambuflow_platform import envelope
 
 
 def _resp(classification: types_pb2.Classification) -> answer_pb2.AnswerResponse:
@@ -119,3 +124,50 @@ def test_migration_steps() -> None:
     with pytest.raises(ValueError):
         migrate.steps({"init.sql": ""})
     assert "0001_answer_records.sql" in migrate.bundled()
+
+
+class FakeKeys:
+    """密钥服务的内存实现：包裹后的数据密钥就是它的十六进制。"""
+
+    key_id = "bambuflow-answers"
+
+    def __init__(self) -> None:
+        self.unwrapped = 0
+
+    async def data_key(self) -> envelope.DataKey:
+        dek = os.urandom(32)
+        return envelope.DataKey(dek, dek.hex(), self.key_id)
+
+    async def unwrap(self, wrapped: str) -> bytes:
+        self.unwrapped += 1
+        return bytes.fromhex(wrapped)
+
+
+QUESTION = "身份证 110101199003077777 的客户能贷多少？"
+
+
+def test_seal_keeps_question_and_restricted_snapshot_encrypted() -> None:
+    keys = FakeKeys()
+    full = _resp(types_pb2.CLASSIFICATION_RESTRICTED)
+    rec = asyncio.run(records.seal(_build(full), QUESTION, full, keys))
+    # 原文与正文只以密文存在
+    assert (
+        QUESTION.encode() not in rec.sealed_question
+        and "额度上限为 30 万元".encode() not in rec.sealed_answer
+    )
+    assert rec.body_withheld and rec.question == "" and rec.key_id == "bambuflow-answers"
+    back = asyncio.run(records.restore(rec, keys))
+    assert not back.body_withheld and back.answer.answer == full.answer
+    assert not back.answer.HasField("audit") and back.answer.citations[0].title == "贷款办法"
+    # 回放给出的问题仍是掩码后的
+    assert "110101199003077777" not in back.question and back.question.startswith("身份证 110101")
+    # 密文换到别的回答上解不开
+    moved = dataclasses.replace(rec, answer_id="ans_2")
+    with pytest.raises(ValueError):
+        asyncio.run(records.restore(moved, keys))
+
+
+def test_seal_non_restricted_only_question() -> None:
+    full = _resp(types_pb2.CLASSIFICATION_INTERNAL)
+    rec = asyncio.run(records.seal(_build(full), QUESTION, full, FakeKeys()))
+    assert rec.sealed_question and rec.sealed_answer == b"" and not rec.body_withheld

@@ -190,8 +190,8 @@ func graphPath(f Filter, path []PathStep) []*retrievalv1.GraphEdge {
 	var out []*retrievalv1.GraphEdge
 	for _, p := range path {
 		out = append(out, &retrievalv1.GraphEdge{
-			FromEntity: text(f, p.From.Name), FromType: p.From.Type, RelationType: p.Relation,
-			ToEntity: text(f, p.To.Name), ToType: p.To.Type,
+			FromEntity: maskUnlessShown(f, p.From.Name), FromType: p.From.Type, RelationType: p.Relation,
+			ToEntity: maskUnlessShown(f, p.To.Name), ToType: p.To.Type,
 		})
 	}
 	return out

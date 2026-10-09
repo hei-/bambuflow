@@ -28,10 +28,12 @@ import (
 	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
 	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
+	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
 	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
 	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/snapshot"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/telemetry"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/vault"
 	"github.com/bambu-ai/bambuflow/libs/platform-go/worm"
@@ -44,7 +46,7 @@ import (
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/ratelimit"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenancy"
+	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenantsync"
 )
 
 func main() {
@@ -148,15 +150,6 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	}
 	defer pool.Close()
 
-	tenantsDir, err := env("BF_TENANTS_DIR")
-	if err != nil {
-		return err
-	}
-	tenants, err := tenancy.Load(tenantsDir, strings.Split(envOr("BF_PLATFORM_CLIENTS", "console"), ","))
-	if err != nil {
-		return err
-	}
-
 	// 平台角色 → 群组（管理接口的 RBAC，部署配置）；文件必须存在，内容可以为空（没有人能调管理接口）
 	rolesFile, err := env("BF_ADMIN_ROLES_FILE")
 	if err != nil {
@@ -225,6 +218,20 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = governanceConn.Close() }()
+	// 租户配置由 governance 版本化、审批后经配置快照下发（governance 详设 4、7.1）：验签后加载，随 Watch 原子替换。
+	// 启动时拿不到就不启动（设计 8.1）
+	configClient := configv1.NewConfigServiceClient(governanceConn)
+	host, err := os.Hostname()
+	if err != nil {
+		return err
+	}
+	tenants := &tenantsync.Watcher{Client: configClient, Open: (&snapshot.Verifier{Client: configClient, Now: time.Now}).Open,
+		PlatformClients: strings.Split(envOr("BF_PLATFORM_CLIENTS", "console"), ","), Instance: host, Log: log}
+	if err := tenants.Refresh(ctx); err != nil {
+		return fmt.Errorf("取租户配置快照: %w", err)
+	}
+	go tenants.Watch(ctx)
+	go tenants.Run(ctx, time.Minute)
 	// evaluation（A/B 分析）
 	evaluationConn, err := dial("BF_EVALUATION_ADDR")
 	if err != nil {
@@ -237,6 +244,18 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = indexingConn.Close() }()
+	// processing 的管理服务（入库状态、死信、重放，入库平面）
+	processingConn, err := dial("BF_PROCESSING_ADMIN_ADDR")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = processingConn.Close() }()
+	// connectors 的管理服务（数据源同步状态、暂停与恢复，入库平面）
+	connectorsConn, err := dial("BF_CONNECTORS_ADMIN_ADDR")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = connectorsConn.Close() }()
 
 	redisAddr, err := env("BF_REDIS_ADDR")
 	if err != nil {
@@ -269,18 +288,27 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	srv := &api.Server{
 		Verifier:      authn.NewVerifier(principal.NewJWKS(jwksURL, nil), platformIssuer, envOr("BF_SERVICE_ACCOUNT_PREFIX", "service-account-")),
 		Identities:    identity.NewPGStore(pool),
-		Tenants:       tenants,
+		Tenants:       tenants.Registry,
 		Issuer:        iss,
 		Retrieval:     retrievalv1.NewRetrievalServiceClient(retrievalConn),
 		Orchestrator:  answerv1.NewAnswerServiceClient(orchestratorConn),
 		Batches:       batches,
 		Denials:       adminv1.NewEmergencyDenialAdminServiceClient(governanceConn),
 		IndexVersions: adminv1.NewIndexVersionAdminServiceClient(indexingConn),
+		Tombstones:    adminv1.NewTombstoneAdminServiceClient(indexingConn),
+		Rebuilds:      adminv1.NewRebuildAdminServiceClient(indexingConn),
 		AuditQuery:    adminv1.NewAuditAdminServiceClient(governanceConn),
 		Sources:       adminv1.NewSourceAdminServiceClient(governanceConn),
 		Experiments:   adminv1.NewExperimentAdminServiceClient(governanceConn),
+		Vocabularies:  adminv1.NewVocabularyAdminServiceClient(governanceConn),
+		Plugins:       adminv1.NewPluginAdminServiceClient(governanceConn),
+		Configs:       adminv1.NewConfigAdminServiceClient(governanceConn),
+		Ingest:        adminv1.NewIngestAdminServiceClient(processingConn),
+		Connectors:    adminv1.NewConnectorAdminServiceClient(connectorsConn),
 		Analysis:      adminv1.NewExperimentAnalysisServiceClient(evaluationConn),
 		Trends:        adminv1.NewQualityTrendServiceClient(evaluationConn),
+		Gates:         adminv1.NewEvalGateAdminServiceClient(evaluationConn),
+		Golden:        adminv1.NewGoldenSetAdminServiceClient(evaluationConn),
 		Audit:         auditW,
 		Limits:        &ratelimit.Limiter{Redis: rdb, Instances: instances, Log: log},
 		Slots:         &admission.Slots{Redis: rdb, Instances: instances, Lease: admission.DefaultLease, Log: log},

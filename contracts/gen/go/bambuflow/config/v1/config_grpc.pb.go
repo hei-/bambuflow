@@ -19,7 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ConfigService_GetSnapshot_FullMethodName = "/bambuflow.config.v1.ConfigService/GetSnapshot"
+	ConfigService_GetSnapshot_FullMethodName    = "/bambuflow.config.v1.ConfigService/GetSnapshot"
+	ConfigService_Watch_FullMethodName          = "/bambuflow.config.v1.ConfigService/Watch"
+	ConfigService_Ack_FullMethodName            = "/bambuflow.config.v1.ConfigService/Ack"
+	ConfigService_GetSigningKeys_FullMethodName = "/bambuflow.config.v1.ConfigService/GetSigningKeys"
 )
 
 // ConfigServiceClient is the client API for ConfigService service.
@@ -27,11 +30,17 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-// 现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-// 快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+// retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+// 快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
 type ConfigServiceClient interface {
-	// GetSnapshot 取某个服务当前生效的快照。
+	// GetSnapshot 取某个服务当前生效的快照（signed_payload 是签过名的快照本体）。
 	GetSnapshot(ctx context.Context, in *GetSnapshotRequest, opts ...grpc.CallOption) (*GetSnapshotResponse, error)
+	// Watch 是长连接：只推版本变化的通知，不推内容；连接建立时先推一次当前版本。断线后使用方带上已加载的版本重连。
+	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchResponse], error)
+	// Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。
+	Ack(ctx context.Context, in *AckRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	// GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。
+	GetSigningKeys(ctx context.Context, in *GetSigningKeysRequest, opts ...grpc.CallOption) (*GetSigningKeysResponse, error)
 }
 
 type configServiceClient struct {
@@ -52,16 +61,61 @@ func (c *configServiceClient) GetSnapshot(ctx context.Context, in *GetSnapshotRe
 	return out, nil
 }
 
+func (c *configServiceClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ConfigService_ServiceDesc.Streams[0], ConfigService_Watch_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WatchRequest, WatchResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ConfigService_WatchClient = grpc.ServerStreamingClient[WatchResponse]
+
+func (c *configServiceClient) Ack(ctx context.Context, in *AckRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, ConfigService_Ack_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *configServiceClient) GetSigningKeys(ctx context.Context, in *GetSigningKeysRequest, opts ...grpc.CallOption) (*GetSigningKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSigningKeysResponse)
+	err := c.cc.Invoke(ctx, ConfigService_GetSigningKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConfigServiceServer is the server API for ConfigService service.
 // All implementations must embed UnimplementedConfigServiceServer
 // for forward compatibility.
 //
 // ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
-// 现在只实现 GetSnapshot：retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验；
-// 快照的签名与对象引用、Watch 通知、Ack 随其他配置对象接入时补上。
+// retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
+// 快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
 type ConfigServiceServer interface {
-	// GetSnapshot 取某个服务当前生效的快照。
+	// GetSnapshot 取某个服务当前生效的快照（signed_payload 是签过名的快照本体）。
 	GetSnapshot(context.Context, *GetSnapshotRequest) (*GetSnapshotResponse, error)
+	// Watch 是长连接：只推版本变化的通知，不推内容；连接建立时先推一次当前版本。断线后使用方带上已加载的版本重连。
+	Watch(*WatchRequest, grpc.ServerStreamingServer[WatchResponse]) error
+	// Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。
+	Ack(context.Context, *AckRequest) (*AckResponse, error)
+	// GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。
+	GetSigningKeys(context.Context, *GetSigningKeysRequest) (*GetSigningKeysResponse, error)
 	mustEmbedUnimplementedConfigServiceServer()
 }
 
@@ -74,6 +128,15 @@ type UnimplementedConfigServiceServer struct{}
 
 func (UnimplementedConfigServiceServer) GetSnapshot(context.Context, *GetSnapshotRequest) (*GetSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSnapshot not implemented")
+}
+func (UnimplementedConfigServiceServer) Watch(*WatchRequest, grpc.ServerStreamingServer[WatchResponse]) error {
+	return status.Error(codes.Unimplemented, "method Watch not implemented")
+}
+func (UnimplementedConfigServiceServer) Ack(context.Context, *AckRequest) (*AckResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Ack not implemented")
+}
+func (UnimplementedConfigServiceServer) GetSigningKeys(context.Context, *GetSigningKeysRequest) (*GetSigningKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSigningKeys not implemented")
 }
 func (UnimplementedConfigServiceServer) mustEmbedUnimplementedConfigServiceServer() {}
 func (UnimplementedConfigServiceServer) testEmbeddedByValue()                       {}
@@ -114,6 +177,53 @@ func _ConfigService_GetSnapshot_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConfigService_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WatchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ConfigServiceServer).Watch(m, &grpc.GenericServerStream[WatchRequest, WatchResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ConfigService_WatchServer = grpc.ServerStreamingServer[WatchResponse]
+
+func _ConfigService_Ack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigServiceServer).Ack(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigService_Ack_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigServiceServer).Ack(ctx, req.(*AckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConfigService_GetSigningKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSigningKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigServiceServer).GetSigningKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigService_GetSigningKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigServiceServer).GetSigningKeys(ctx, req.(*GetSigningKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConfigService_ServiceDesc is the grpc.ServiceDesc for ConfigService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -125,7 +235,21 @@ var ConfigService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetSnapshot",
 			Handler:    _ConfigService_GetSnapshot_Handler,
 		},
+		{
+			MethodName: "Ack",
+			Handler:    _ConfigService_Ack_Handler,
+		},
+		{
+			MethodName: "GetSigningKeys",
+			Handler:    _ConfigService_GetSigningKeys_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Watch",
+			Handler:       _ConfigService_Watch_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "bambuflow/config/v1/config.proto",
 }

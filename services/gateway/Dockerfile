@@ -22,5 +22,4 @@ ENTRYPOINT ["gateway"]
 CMD ["serve"]
 
 FROM runtime AS dev
-COPY tools/test-upstream/tenants /etc/bambuflow/tenants
 COPY tools/test-upstream/admin-roles.yaml /etc/bambuflow/admin-roles.yaml

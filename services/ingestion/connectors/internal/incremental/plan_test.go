@@ -37,7 +37,7 @@ func TestDeleteProtection(t *testing.T) {
 		state[fmt.Sprintf("p%02d", i)] = "h"
 	}
 	// 清单为空：不推断删除
-	if p := Diff(state, map[string]string{}, false); !p.DeletesPaused || p.Reason != "empty_listing" || p.Deletes != nil {
+	if p := Diff(state, map[string]string{}, false); !p.DeletesPaused || p.Reason != "empty_listing" || p.Deletes != nil || p.Held != nil {
 		t.Fatalf("空清单 %+v", p)
 	}
 	// 一次删 3 份（超过 5%）：暂停，等确认
@@ -45,7 +45,9 @@ func TestDeleteProtection(t *testing.T) {
 	for i := 3; i < 40; i++ {
 		current[fmt.Sprintf("p%02d", i)] = "h"
 	}
-	if p := Diff(state, current, false); !p.DeletesPaused || p.Reason != "over_threshold" {
+	// 拦下的待删文档留给删除保护的批次（internal/holds）
+	if p := Diff(state, current, false); !p.DeletesPaused || p.Reason != "over_threshold" || p.Deletes != nil ||
+		!slices.Equal(p.Held, []string{"p00", "p01", "p02"}) {
 		t.Fatalf("超阈值 %+v", p)
 	}
 	if p := Diff(state, current, true); p.DeletesPaused || len(p.Deletes) != 3 {

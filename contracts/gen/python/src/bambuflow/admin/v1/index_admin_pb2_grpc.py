@@ -36,6 +36,21 @@ class IndexAdminServiceStub:
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemoveDenyRulesRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemoveDenyRulesResponse.FromString,
                 _registered_method=True)
+        self.ExpireDocuments = channel.unary_unary(
+                '/bambuflow.admin.v1.IndexAdminService/ExpireDocuments',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.ExpireDocumentsRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.ExpireDocumentsResponse.FromString,
+                _registered_method=True)
+        self.PurgeDeleted = channel.unary_unary(
+                '/bambuflow.admin.v1.IndexAdminService/PurgeDeleted',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.PurgeDeletedRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.PurgeDeletedResponse.FromString,
+                _registered_method=True)
+        self.RemapTerms = channel.unary_unary(
+                '/bambuflow.admin.v1.IndexAdminService/RemapTerms',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemapTermsRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemapTermsResponse.FromString,
+                _registered_method=True)
 
 
 class IndexAdminServiceServicer:
@@ -73,6 +88,30 @@ class IndexAdminServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExpireDocuments(self, request, context):
+        """ExpireDocuments 按数据源的保留期给到期文档写删除标记（技术设计文档 9.2）：文档的源端时间（occurred_at）
+        早于“现在 - 保留天数”的，与源端删除一样立即对线上生效，物理删除在之后的全量合并。由每天的 indexing expire 调用。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PurgeDeleted(self, request, context):
+        """PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本（块、关键词与向量索引、章节摘要、图谱边、
+        版本清单、文档标题等元数据），每份文档写一份删除凭证。由每天的 indexing purge-deleted 调用。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RemapTerms(self, request, context):
+        """RemapTerms 把文档元数据里已停用的受控词表编码改成替代编码（governance 详设 6.1：编码只停用不删除，
+        已入库文档按替代编码重新标注）。对线上立即生效；幂等，governance 停用词条后调用，并定期兜底重放。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IndexAdminServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -95,6 +134,21 @@ def add_IndexAdminServiceServicer_to_server(servicer, server):
                     servicer.RemoveDenyRules,
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemoveDenyRulesRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemoveDenyRulesResponse.SerializeToString,
+            ),
+            'ExpireDocuments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExpireDocuments,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.ExpireDocumentsRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.ExpireDocumentsResponse.SerializeToString,
+            ),
+            'PurgeDeleted': grpc.unary_unary_rpc_method_handler(
+                    servicer.PurgeDeleted,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.PurgeDeletedRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.PurgeDeletedResponse.SerializeToString,
+            ),
+            'RemapTerms': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemapTerms,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemapTermsRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemapTermsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -207,6 +261,87 @@ class IndexAdminService:
             '/bambuflow.admin.v1.IndexAdminService/RemoveDenyRules',
             bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemoveDenyRulesRequest.SerializeToString,
             bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemoveDenyRulesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExpireDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.IndexAdminService/ExpireDocuments',
+            bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.ExpireDocumentsRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.ExpireDocumentsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PurgeDeleted(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.IndexAdminService/PurgeDeleted',
+            bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.PurgeDeletedRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.PurgeDeletedResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemapTerms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.IndexAdminService/RemapTerms',
+            bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemapTermsRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_index__admin__pb2.RemapTermsResponse.FromString,
             options,
             channel_credentials,
             insecure,

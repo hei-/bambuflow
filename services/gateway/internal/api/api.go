@@ -28,6 +28,7 @@ import (
 	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
 	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
 	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/audit"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/authn"
@@ -36,7 +37,6 @@ import (
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/ratelimit"
 	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenancy"
 )
 
 const (
@@ -71,9 +71,10 @@ type RateLimiter interface {
 }
 
 type Server struct {
-	Verifier     *authn.Verifier
-	Identities   IdentityStore
-	Tenants      *tenancy.Registry
+	Verifier   *authn.Verifier
+	Identities IdentityStore
+	// Tenants 返回当前生效的租户配置：由 governance 的配置快照下发，更新时原子替换（internal/tenantsync）
+	Tenants      func() *tenancy.Registry
 	Issuer       *issuer.Issuer
 	Retrieval    retrievalv1.RetrievalServiceClient
 	Orchestrator answerv1.AnswerServiceClient
@@ -84,8 +85,17 @@ type Server struct {
 	AuditQuery    adminv1.AuditAdminServiceClient
 	Sources       adminv1.SourceAdminServiceClient
 	Experiments   adminv1.ExperimentAdminServiceClient
+	Vocabularies  adminv1.VocabularyAdminServiceClient
+	Plugins       adminv1.PluginAdminServiceClient
+	Configs       adminv1.ConfigAdminServiceClient
+	Ingest        adminv1.IngestAdminServiceClient
+	Tombstones    adminv1.TombstoneAdminServiceClient
+	Rebuilds      adminv1.RebuildAdminServiceClient
+	Connectors    adminv1.ConnectorAdminServiceClient
 	Analysis      adminv1.ExperimentAnalysisServiceClient
 	Trends        adminv1.QualityTrendServiceClient
+	Gates         adminv1.EvalGateAdminServiceClient
+	Golden        adminv1.GoldenSetAdminServiceClient
 	Audit         AuditWriter
 	Limits        RateLimiter
 	// 限流规则（gateway 详设 5.1，部署配置清单）：每个调用方应用一个桶；用户的问答一个桶
@@ -353,7 +363,7 @@ func (s *Server) authorize(r *http.Request, c *call, a access) (string, *tenancy
 	c.sub, c.actor, c.authTime = caller.Username, caller.ClientID, caller.AuthTime
 	clientRule := s.ClientRule
 	if a.mcp {
-		agent, ok := s.Tenants.Agent(caller.ClientID)
+		agent, ok := s.Tenants().Agent(caller.ClientID)
 		if !ok {
 			// 未登记的 agent 即使拿到了用户令牌也拒绝（gateway 详设 7.2），不再查身份库
 			return "", nil, problemForbidden
@@ -390,9 +400,10 @@ func (s *Server) authorize(r *http.Request, c *call, a access) (string, *tenancy
 		return "", nil, problemForbidden
 	}
 
-	resolve := s.Tenants.Resolve
+	reg := s.Tenants()
+	resolve := reg.Resolve
 	if a.mcp {
-		resolve = s.Tenants.ResolveAgent
+		resolve = reg.ResolveAgent
 	}
 	t, err := resolve(caller.ClientID, r.Header.Get(tenancy.Header), user.Groups)
 	switch {

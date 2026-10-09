@@ -319,10 +319,17 @@ class PGQueryService:
                             sql.Literal(min(TIMEOUT_MS, int(timeout * 1000)))
                         )
                     )
+                    # 先在系统目录里按名字找到视图的 OID 再判断权限：
+                    # 直接把 'schema.view' 交给 has_table_privilege 时要解析名字，
+                    # 需要登录账号对 schema 有 USAGE，而它本身没有任何权限
+                    schema, name = q.view.name.split(".")
                     cur = await conn.execute(
-                        "SELECT r FROM unnest(%s::text[]) AS r "
-                        "WHERE has_table_privilege(r, %s, 'SELECT') ORDER BY r LIMIT 1",
-                        (candidates, q.view.name),
+                        "SELECT r FROM unnest(%s::text[]) AS r, pg_class c "
+                        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                        "WHERE n.nspname = %s AND c.relname = %s "
+                        "AND has_schema_privilege(r, n.oid, 'USAGE') "
+                        "AND has_table_privilege(r, c.oid, 'SELECT') ORDER BY r LIMIT 1",
+                        (candidates, schema, name),
                     )
                     row = await cur.fetchone()
                     if row is None:

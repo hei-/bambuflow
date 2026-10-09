@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ConnectorAdminService 是数据源同步的运维接口（入库管道详设 14.4），由 connectors 的管理服务实现，
+// gateway 的 /v1/admin/sources/{src_id}/sync-status、.../pause、.../resume 调用。
+service ConnectorAdminService {
+  // 最近一次同步与最近一次成功同步、新鲜度、是否暂停。平台运维与数据属主可看
+  rpc GetSyncStatus(GetSyncStatusRequest) returns (GetSyncStatusResponse);
+  // 暂停：之后的每轮同步整轮跳过，包括撤权与删除，直到恢复。平台运维
+  rpc PauseSource(PauseSourceRequest) returns (PauseSourceResponse);
+  rpc ResumeSource(ResumeSourceRequest) returns (ResumeSourceResponse);
+  // 删除保护拦下的待删批次（入库管道详设第 5 节）：数据属主查看、确认或丢弃。
+  // 确认需两位不同的数据属主：第一位确认后待复核，第二位确认后下一轮同步执行（只删其中源端仍不存在的）
+  rpc ListPendingDeletions(ListPendingDeletionsRequest) returns (ListPendingDeletionsResponse);
+  rpc ConfirmDeletion(ConfirmDeletionRequest) returns (ConfirmDeletionResponse);
+  // 丢弃：这批删除不执行；源端清单不变时之后的同步也不再为同一批文档拦截
+  rpc DiscardDeletion(DiscardDeletionRequest) returns (DiscardDeletionResponse);
+}
+
+// SyncRun 是一轮同步的结果。
+message SyncRun {
+  // sync-wiki、sync-fileshare、sync-logs、sync-dbschema
+  string command = 1;
+  google.protobuf.Timestamp started_at = 2;
+  google.protobuf.Timestamp finished_at = 3;
+  // succeeded、failed、skipped_paused
+  string result = 4;
+  // 失败原因摘要，最多 200 字
+  string error = 5;
+  int32 documents = 6;
+  int32 upserts = 7;
+  int32 acl_only = 8;
+  int32 deletes = 9;
+  // 删除保护触发：本轮的删除暂停，等数据属主确认
+  bool deletes_paused = 10;
+  // empty_listing 或 over_threshold
+  string deletes_paused_reason = 11;
+  // 按 RefetchRequested 重新拉取的文档数
+  int32 refetched = 12;
+}
+
+message Pause {
+  string paused_by = 1;
+  google.protobuf.Timestamp paused_at = 2;
+  string reason = 3;
+}
+
+message GetSyncStatusRequest {
+  string source_id = 1;
+}
+
+message GetSyncStatusResponse {
+  string source_id = 1;
+  // 最近一次同步（含失败与因暂停跳过的）
+  SyncRun last_run = 2;
+  // 最近一次成功的同步
+  SyncRun last_success = 3;
+  // 距最近一次成功同步结束的秒数；从没成功过时为 -1
+  int64 freshness_seconds = 4;
+  // 暂停时有值
+  Pause pause = 5;
+}
+
+message PauseSourceRequest {
+  string source_id = 1;
+  // 必填，最多 500 字
+  string reason = 2;
+}
+
+message PauseSourceResponse {
+  Pause pause = 1;
+  // false 表示本来就是暂停的，返回原来的暂停记录
+  bool changed = 2;
+}
+
+message ResumeSourceRequest {
+  string source_id = 1;
+}
+
+message ResumeSourceResponse {
+  // false 表示本来就没有暂停
+  bool changed = 1;
+}
+
+// DeletionHold 是删除保护拦下的一批待删文档。
+message DeletionHold {
+  // hold_ 前缀
+  string hold_id = 1;
+  string source_id = 2;
+  // 待删文档，按 doc_id 排序
+  repeated string doc_ids = 3;
+  // 拦下时已同步的文档数（判断比例用）
+  int32 synced_docs = 4;
+  google.protobuf.Timestamp detected_at = 5;
+  // pending（待确认）、awaiting_second（一位属主已确认，待复核）、confirmed（待下一轮同步执行）、applied、discarded
+  string status = 6;
+  string confirmed_by = 7;
+  string approved_by = 8;
+  string discarded_by = 9;
+  string reason = 10;
+  // 执行时实际删除的数量
+  int32 applied_docs = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message ListPendingDeletionsRequest {
+  string source_id = 1;
+}
+
+message ListPendingDeletionsResponse {
+  // 最近的在前；包括已执行与已丢弃的最近 20 批
+  repeated DeletionHold holds = 1;
+}
+
+message ConfirmDeletionRequest {
+  string source_id = 1;
+  string hold_id = 2;
+  // 必填，最多 500 字
+  string reason = 3;
+}
+
+message ConfirmDeletionResponse {
+  DeletionHold hold = 1;
+}
+
+message DiscardDeletionRequest {
+  string source_id = 1;
+  string hold_id = 2;
+  string reason = 3;
+}
+
+message DiscardDeletionResponse {
+  DeletionHold hold = 1;
+}

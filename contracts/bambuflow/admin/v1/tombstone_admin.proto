@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "bambuflow/admin/v1/index_version_admin.proto";
+import "google/protobuf/timestamp.proto";
+
+// TombstoneAdminService 撤销误写的删除标记（入库管道详设第 5 节、14.4，评估报告 K4），由 indexing 实现，
+// gateway 的 /v1/admin/tombstone-revocations 调用，平台运维双人复核：第一次调用只创建待复核的操作（op_），
+// 另一位平台运维复核后才执行。索引回滚会保留删除标记，误删只能用它恢复。
+//
+// 执行时清掉选中文档的删除时间：文档仍然检索不到，直到重新入库；同一事务发出 RefetchRequested，
+// connectors 下一轮同步时重新从源系统拉取这些文档（源端已不存在的不会恢复）。
+service TombstoneAdminService {
+  rpc RevokeTombstones(RevokeTombstonesRequest) returns (RevokeTombstonesResponse);
+  rpc ApproveRevocation(ApproveRevocationRequest) returns (ApproveRevocationResponse);
+}
+
+message RevokeTombstonesRequest {
+  // 必填，src_ 前缀
+  string source_id = 1;
+  // 删除事件的发生时间落在 [tombstoned_since, tombstoned_until) 内的删除标记；两者必填，跨度最多 31 天
+  google.protobuf.Timestamp tombstoned_since = 2;
+  google.protobuf.Timestamp tombstoned_until = 3;
+  // 可选：只撤销其中这些文档，最多 1000 个
+  repeated string doc_ids = 4;
+  // 必填，最多 500 字
+  string reason = 5;
+}
+
+message TombstoneRevocation {
+  // op_ 前缀
+  string operation_id = 1;
+  string source_id = 2;
+  google.protobuf.Timestamp tombstoned_since = 3;
+  google.protobuf.Timestamp tombstoned_until = 4;
+  repeated string doc_ids = 5;
+  string reason = 6;
+  // 申请时符合条件的删除标记数
+  int32 matched_docs = 7;
+  // 执行时实际撤销的数量（复核时重新按条件选取）
+  int32 revoked_docs = 8;
+  string requested_by = 9;
+  google.protobuf.Timestamp requested_at = 10;
+  OperationStatus status = 11;
+  string approved_by = 12;
+  google.protobuf.Timestamp approved_at = 13;
+  string failure_reason = 14;
+  google.protobuf.Timestamp expires_at = 15;
+  // 执行时发出的 RefetchRequested，前缀 evt_；没有可撤销的文档时为空
+  string refetch_event_id = 16;
+}
+
+message RevokeTombstonesResponse {
+  TombstoneRevocation revocation = 1;
+  // false 表示该数据源已有待复核的撤销，返回的是它
+  bool created = 2;
+}
+
+message ApproveRevocationRequest {
+  string operation_id = 1;
+}
+
+message ApproveRevocationResponse {
+  TombstoneRevocation revocation = 1;
+}

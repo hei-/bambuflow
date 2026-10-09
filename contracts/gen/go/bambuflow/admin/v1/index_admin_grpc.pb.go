@@ -23,6 +23,9 @@ const (
 	IndexAdminService_Rollback_FullMethodName        = "/bambuflow.admin.v1.IndexAdminService/Rollback"
 	IndexAdminService_AddDenyRules_FullMethodName    = "/bambuflow.admin.v1.IndexAdminService/AddDenyRules"
 	IndexAdminService_RemoveDenyRules_FullMethodName = "/bambuflow.admin.v1.IndexAdminService/RemoveDenyRules"
+	IndexAdminService_ExpireDocuments_FullMethodName = "/bambuflow.admin.v1.IndexAdminService/ExpireDocuments"
+	IndexAdminService_PurgeDeleted_FullMethodName    = "/bambuflow.admin.v1.IndexAdminService/PurgeDeleted"
+	IndexAdminService_RemapTerms_FullMethodName      = "/bambuflow.admin.v1.IndexAdminService/RemapTerms"
 )
 
 // IndexAdminServiceClient is the client API for IndexAdminService service.
@@ -43,6 +46,15 @@ type IndexAdminServiceClient interface {
 	AddDenyRules(ctx context.Context, in *AddDenyRulesRequest, opts ...grpc.CallOption) (*AddDenyRulesResponse, error)
 	// RemoveDenyRules 撤销按文档的拒绝规则。
 	RemoveDenyRules(ctx context.Context, in *RemoveDenyRulesRequest, opts ...grpc.CallOption) (*RemoveDenyRulesResponse, error)
+	// ExpireDocuments 按数据源的保留期给到期文档写删除标记（技术设计文档 9.2）：文档的源端时间（occurred_at）
+	// 早于“现在 - 保留天数”的，与源端删除一样立即对线上生效，物理删除在之后的全量合并。由每天的 indexing expire 调用。
+	ExpireDocuments(ctx context.Context, in *ExpireDocumentsRequest, opts ...grpc.CallOption) (*ExpireDocumentsResponse, error)
+	// PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本（块、关键词与向量索引、章节摘要、图谱边、
+	// 版本清单、文档标题等元数据），每份文档写一份删除凭证。由每天的 indexing purge-deleted 调用。
+	PurgeDeleted(ctx context.Context, in *PurgeDeletedRequest, opts ...grpc.CallOption) (*PurgeDeletedResponse, error)
+	// RemapTerms 把文档元数据里已停用的受控词表编码改成替代编码（governance 详设 6.1：编码只停用不删除，
+	// 已入库文档按替代编码重新标注）。对线上立即生效；幂等，governance 停用词条后调用，并定期兜底重放。
+	RemapTerms(ctx context.Context, in *RemapTermsRequest, opts ...grpc.CallOption) (*RemapTermsResponse, error)
 }
 
 type indexAdminServiceClient struct {
@@ -94,6 +106,36 @@ func (c *indexAdminServiceClient) RemoveDenyRules(ctx context.Context, in *Remov
 	return out, nil
 }
 
+func (c *indexAdminServiceClient) ExpireDocuments(ctx context.Context, in *ExpireDocumentsRequest, opts ...grpc.CallOption) (*ExpireDocumentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExpireDocumentsResponse)
+	err := c.cc.Invoke(ctx, IndexAdminService_ExpireDocuments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexAdminServiceClient) PurgeDeleted(ctx context.Context, in *PurgeDeletedRequest, opts ...grpc.CallOption) (*PurgeDeletedResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PurgeDeletedResponse)
+	err := c.cc.Invoke(ctx, IndexAdminService_PurgeDeleted_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexAdminServiceClient) RemapTerms(ctx context.Context, in *RemapTermsRequest, opts ...grpc.CallOption) (*RemapTermsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemapTermsResponse)
+	err := c.cc.Invoke(ctx, IndexAdminService_RemapTerms_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IndexAdminServiceServer is the server API for IndexAdminService service.
 // All implementations must embed UnimplementedIndexAdminServiceServer
 // for forward compatibility.
@@ -112,6 +154,15 @@ type IndexAdminServiceServer interface {
 	AddDenyRules(context.Context, *AddDenyRulesRequest) (*AddDenyRulesResponse, error)
 	// RemoveDenyRules 撤销按文档的拒绝规则。
 	RemoveDenyRules(context.Context, *RemoveDenyRulesRequest) (*RemoveDenyRulesResponse, error)
+	// ExpireDocuments 按数据源的保留期给到期文档写删除标记（技术设计文档 9.2）：文档的源端时间（occurred_at）
+	// 早于“现在 - 保留天数”的，与源端删除一样立即对线上生效，物理删除在之后的全量合并。由每天的 indexing expire 调用。
+	ExpireDocuments(context.Context, *ExpireDocumentsRequest) (*ExpireDocumentsResponse, error)
+	// PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本（块、关键词与向量索引、章节摘要、图谱边、
+	// 版本清单、文档标题等元数据），每份文档写一份删除凭证。由每天的 indexing purge-deleted 调用。
+	PurgeDeleted(context.Context, *PurgeDeletedRequest) (*PurgeDeletedResponse, error)
+	// RemapTerms 把文档元数据里已停用的受控词表编码改成替代编码（governance 详设 6.1：编码只停用不删除，
+	// 已入库文档按替代编码重新标注）。对线上立即生效；幂等，governance 停用词条后调用，并定期兜底重放。
+	RemapTerms(context.Context, *RemapTermsRequest) (*RemapTermsResponse, error)
 	mustEmbedUnimplementedIndexAdminServiceServer()
 }
 
@@ -133,6 +184,15 @@ func (UnimplementedIndexAdminServiceServer) AddDenyRules(context.Context, *AddDe
 }
 func (UnimplementedIndexAdminServiceServer) RemoveDenyRules(context.Context, *RemoveDenyRulesRequest) (*RemoveDenyRulesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveDenyRules not implemented")
+}
+func (UnimplementedIndexAdminServiceServer) ExpireDocuments(context.Context, *ExpireDocumentsRequest) (*ExpireDocumentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExpireDocuments not implemented")
+}
+func (UnimplementedIndexAdminServiceServer) PurgeDeleted(context.Context, *PurgeDeletedRequest) (*PurgeDeletedResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PurgeDeleted not implemented")
+}
+func (UnimplementedIndexAdminServiceServer) RemapTerms(context.Context, *RemapTermsRequest) (*RemapTermsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemapTerms not implemented")
 }
 func (UnimplementedIndexAdminServiceServer) mustEmbedUnimplementedIndexAdminServiceServer() {}
 func (UnimplementedIndexAdminServiceServer) testEmbeddedByValue()                           {}
@@ -227,6 +287,60 @@ func _IndexAdminService_RemoveDenyRules_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IndexAdminService_ExpireDocuments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExpireDocumentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexAdminServiceServer).ExpireDocuments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IndexAdminService_ExpireDocuments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexAdminServiceServer).ExpireDocuments(ctx, req.(*ExpireDocumentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexAdminService_PurgeDeleted_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PurgeDeletedRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexAdminServiceServer).PurgeDeleted(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IndexAdminService_PurgeDeleted_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexAdminServiceServer).PurgeDeleted(ctx, req.(*PurgeDeletedRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexAdminService_RemapTerms_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemapTermsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexAdminServiceServer).RemapTerms(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IndexAdminService_RemapTerms_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexAdminServiceServer).RemapTerms(ctx, req.(*RemapTermsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IndexAdminService_ServiceDesc is the grpc.ServiceDesc for IndexAdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -249,6 +363,18 @@ var IndexAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveDenyRules",
 			Handler:    _IndexAdminService_RemoveDenyRules_Handler,
+		},
+		{
+			MethodName: "ExpireDocuments",
+			Handler:    _IndexAdminService_ExpireDocuments_Handler,
+		},
+		{
+			MethodName: "PurgeDeleted",
+			Handler:    _IndexAdminService_PurgeDeleted_Handler,
+		},
+		{
+			MethodName: "RemapTerms",
+			Handler:    _IndexAdminService_RemapTerms_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

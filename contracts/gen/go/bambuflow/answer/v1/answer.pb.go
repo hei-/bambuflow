@@ -489,6 +489,62 @@ func (FeedbackRating) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{7}
 }
 
+// 置信度分档（技术设计文档 7.8）：低档在界面上提示用户核实原文。
+type ConfidenceLevel int32
+
+const (
+	ConfidenceLevel_CONFIDENCE_LEVEL_UNSPECIFIED ConfidenceLevel = 0
+	// < 0.5
+	ConfidenceLevel_CONFIDENCE_LEVEL_LOW ConfidenceLevel = 1
+	// 0.5–0.8
+	ConfidenceLevel_CONFIDENCE_LEVEL_MEDIUM ConfidenceLevel = 2
+	// ≥ 0.8
+	ConfidenceLevel_CONFIDENCE_LEVEL_HIGH ConfidenceLevel = 3
+)
+
+// Enum value maps for ConfidenceLevel.
+var (
+	ConfidenceLevel_name = map[int32]string{
+		0: "CONFIDENCE_LEVEL_UNSPECIFIED",
+		1: "CONFIDENCE_LEVEL_LOW",
+		2: "CONFIDENCE_LEVEL_MEDIUM",
+		3: "CONFIDENCE_LEVEL_HIGH",
+	}
+	ConfidenceLevel_value = map[string]int32{
+		"CONFIDENCE_LEVEL_UNSPECIFIED": 0,
+		"CONFIDENCE_LEVEL_LOW":         1,
+		"CONFIDENCE_LEVEL_MEDIUM":      2,
+		"CONFIDENCE_LEVEL_HIGH":        3,
+	}
+)
+
+func (x ConfidenceLevel) Enum() *ConfidenceLevel {
+	p := new(ConfidenceLevel)
+	*p = x
+	return p
+}
+
+func (x ConfidenceLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ConfidenceLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_bambuflow_answer_v1_answer_proto_enumTypes[8].Descriptor()
+}
+
+func (ConfidenceLevel) Type() protoreflect.EnumType {
+	return &file_bambuflow_answer_v1_answer_proto_enumTypes[8]
+}
+
+func (x ConfidenceLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ConfidenceLevel.Descriptor instead.
+func (ConfidenceLevel) EnumDescriptor() ([]byte, []int) {
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{8}
+}
+
 type AnswerRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 不超过 2000 字。
@@ -851,9 +907,11 @@ type AnswerFinal struct {
 	Status Status                 `protobuf:"varint,1,opt,name=status,proto3,enum=bambuflow.answer.v1.Status" json:"status,omitempty"`
 	Why    *Why                   `protobuf:"bytes,2,opt,name=why,proto3" json:"why,omitempty"`
 	// 只供 gateway 写入审计，不返回给终端用户。
-	Audit         *AuditBlocks `protobuf:"bytes,3,opt,name=audit,proto3" json:"audit,omitempty"`
-	AnswerKind    AnswerKind   `protobuf:"varint,4,opt,name=answer_kind,json=answerKind,proto3,enum=bambuflow.answer.v1.AnswerKind" json:"answer_kind,omitempty"`
-	Usage         *TokenUsage  `protobuf:"bytes,5,opt,name=usage,proto3" json:"usage,omitempty"`
+	Audit      *AuditBlocks `protobuf:"bytes,3,opt,name=audit,proto3" json:"audit,omitempty"`
+	AnswerKind AnswerKind   `protobuf:"varint,4,opt,name=answer_kind,json=answerKind,proto3,enum=bambuflow.answer.v1.AnswerKind" json:"answer_kind,omitempty"`
+	Usage      *TokenUsage  `protobuf:"bytes,5,opt,name=usage,proto3" json:"usage,omitempty"`
+	// 与 AnswerResponse.confidence 相同。
+	Confidence    *Confidence `protobuf:"bytes,6,opt,name=confidence,proto3" json:"confidence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -919,6 +977,13 @@ func (x *AnswerFinal) GetAnswerKind() AnswerKind {
 func (x *AnswerFinal) GetUsage() *TokenUsage {
 	if x != nil {
 		return x.Usage
+	}
+	return nil
+}
+
+func (x *AnswerFinal) GetConfidence() *Confidence {
+	if x != nil {
+		return x.Confidence
 	}
 	return nil
 }
@@ -1074,8 +1139,10 @@ type AnswerResponse struct {
 	// 本轮所属的会话，下一轮带上它（orchestrator 详设 10.1）。
 	ConversationId string      `protobuf:"bytes,11,opt,name=conversation_id,json=conversationId,proto3" json:"conversation_id,omitempty"`
 	Usage          *TokenUsage `protobuf:"bytes,12,opt,name=usage,proto3" json:"usage,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// 回答整体的置信度（技术设计文档 7.8）；拒答、仅证据与清单类回答不给。
+	Confidence    *Confidence `protobuf:"bytes,13,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AnswerResponse) Reset() {
@@ -1188,6 +1255,13 @@ func (x *AnswerResponse) GetConversationId() string {
 func (x *AnswerResponse) GetUsage() *TokenUsage {
 	if x != nil {
 		return x.Usage
+	}
+	return nil
+}
+
+func (x *AnswerResponse) GetConfidence() *Confidence {
+	if x != nil {
+		return x.Confidence
 	}
 	return nil
 }
@@ -2746,6 +2820,115 @@ func (x *Feedback) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// 置信度：“这个回答正确且有据”的可能性（技术设计文档 7.8）。
+// score = sigmoid(w1·coverage + w2·mean_support + w3·top_rerank + w4·source_diversity − w5·conflict + b)，
+// 权重由 evaluation 在评测集上校准，版本记在 weights_version；未校准时用保守的默认权重。
+type Confidence struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 0–1
+	Score          float64         `protobuf:"fixed64,1,opt,name=score,proto3" json:"score,omitempty"`
+	Level          ConfidenceLevel `protobuf:"varint,2,opt,name=level,proto3,enum=bambuflow.answer.v1.ConfidenceLevel" json:"level,omitempty"`
+	WeightsVersion string          `protobuf:"bytes,3,opt,name=weights_version,json=weightsVersion,proto3" json:"weights_version,omitempty"`
+	// 引用覆盖率：通过校验的句子数 / 陈述总数
+	Coverage float64 `protobuf:"fixed64,4,opt,name=coverage,proto3" json:"coverage,omitempty"`
+	// 各句支持度的平均值（含未通过的句子）
+	MeanSupport float64 `protobuf:"fixed64,5,opt,name=mean_support,json=meanSupport,proto3" json:"mean_support,omitempty"`
+	// 送入上下文的证据里最高的精排分；没有精排时为 0.5（不偏向任何一边）
+	TopRerank float64 `protobuf:"fixed64,6,opt,name=top_rerank,json=topRerank,proto3" json:"top_rerank,omitempty"`
+	// 来源多样性：min(被引用的独立文档数, 3) / 3
+	SourceDiversity float64 `protobuf:"fixed64,7,opt,name=source_diversity,json=sourceDiversity,proto3" json:"source_diversity,omitempty"`
+	// 是否存在未解决的证据冲突
+	Conflict      bool `protobuf:"varint,8,opt,name=conflict,proto3" json:"conflict,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Confidence) Reset() {
+	*x = Confidence{}
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Confidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Confidence) ProtoMessage() {}
+
+func (x *Confidence) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Confidence.ProtoReflect.Descriptor instead.
+func (*Confidence) Descriptor() ([]byte, []int) {
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *Confidence) GetScore() float64 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+func (x *Confidence) GetLevel() ConfidenceLevel {
+	if x != nil {
+		return x.Level
+	}
+	return ConfidenceLevel_CONFIDENCE_LEVEL_UNSPECIFIED
+}
+
+func (x *Confidence) GetWeightsVersion() string {
+	if x != nil {
+		return x.WeightsVersion
+	}
+	return ""
+}
+
+func (x *Confidence) GetCoverage() float64 {
+	if x != nil {
+		return x.Coverage
+	}
+	return 0
+}
+
+func (x *Confidence) GetMeanSupport() float64 {
+	if x != nil {
+		return x.MeanSupport
+	}
+	return 0
+}
+
+func (x *Confidence) GetTopRerank() float64 {
+	if x != nil {
+		return x.TopRerank
+	}
+	return 0
+}
+
+func (x *Confidence) GetSourceDiversity() float64 {
+	if x != nil {
+		return x.SourceDiversity
+	}
+	return 0
+}
+
+func (x *Confidence) GetConflict() bool {
+	if x != nil {
+		return x.Conflict
+	}
+	return false
+}
+
 var File_bambuflow_answer_v1_answer_proto protoreflect.FileDescriptor
 
 const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
@@ -2773,14 +2956,17 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\bsentence\x18\x01 \x01(\v2\x1d.bambuflow.answer.v1.SentenceR\bsentence\x12=\n" +
 	"\n" +
 	"block_type\x18\x02 \x01(\x0e2\x1e.bambuflow.answer.v1.BlockTypeR\tblockType\x120\n" +
-	"\x05scope\x18\x03 \x01(\v2\x1a.bambuflow.answer.v1.ScopeR\x05scope\"\x9f\x02\n" +
+	"\x05scope\x18\x03 \x01(\v2\x1a.bambuflow.answer.v1.ScopeR\x05scope\"\xe0\x02\n" +
 	"\vAnswerFinal\x123\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x1b.bambuflow.answer.v1.StatusR\x06status\x12*\n" +
 	"\x03why\x18\x02 \x01(\v2\x18.bambuflow.answer.v1.WhyR\x03why\x126\n" +
 	"\x05audit\x18\x03 \x01(\v2 .bambuflow.answer.v1.AuditBlocksR\x05audit\x12@\n" +
 	"\vanswer_kind\x18\x04 \x01(\x0e2\x1f.bambuflow.answer.v1.AnswerKindR\n" +
 	"answerKind\x125\n" +
-	"\x05usage\x18\x05 \x01(\v2\x1f.bambuflow.answer.v1.TokenUsageR\x05usage\"\xd8\x01\n" +
+	"\x05usage\x18\x05 \x01(\v2\x1f.bambuflow.answer.v1.TokenUsageR\x05usage\x12?\n" +
+	"\n" +
+	"confidence\x18\x06 \x01(\v2\x1f.bambuflow.answer.v1.ConfidenceR\n" +
+	"confidence\"\xd8\x01\n" +
 	"\vAuditBlocks\x12.\n" +
 	"\x13candidate_chunk_ids\x18\x01 \x03(\tR\x11candidateChunkIds\x12*\n" +
 	"\x11context_chunk_ids\x18\x02 \x03(\tR\x0fcontextChunkIds\x12&\n" +
@@ -2791,7 +2977,7 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\n" +
 	"TokenUsage\x12#\n" +
 	"\rprompt_tokens\x18\x01 \x01(\x03R\fpromptTokens\x12+\n" +
-	"\x11completion_tokens\x18\x02 \x01(\x03R\x10completionTokens\"\xc9\x04\n" +
+	"\x11completion_tokens\x18\x02 \x01(\x03R\x10completionTokens\"\x8a\x05\n" +
 	"\x0eAnswerResponse\x12\x1b\n" +
 	"\tanswer_id\x18\x01 \x01(\tR\banswerId\x12\x19\n" +
 	"\btrace_id\x18\x02 \x01(\tR\atraceId\x123\n" +
@@ -2806,7 +2992,10 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	" \x01(\x0e2\x1f.bambuflow.answer.v1.AnswerKindR\n" +
 	"answerKind\x12'\n" +
 	"\x0fconversation_id\x18\v \x01(\tR\x0econversationId\x125\n" +
-	"\x05usage\x18\f \x01(\v2\x1f.bambuflow.answer.v1.TokenUsageR\x05usage\"\x81\x03\n" +
+	"\x05usage\x18\f \x01(\v2\x1f.bambuflow.answer.v1.TokenUsageR\x05usage\x12?\n" +
+	"\n" +
+	"confidence\x18\r \x01(\v2\x1f.bambuflow.answer.v1.ConfidenceR\n" +
+	"confidence\"\x81\x03\n" +
 	"\bSentence\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x14\n" +
 	"\x05start\x18\x02 \x01(\x05R\x05start\x12\x10\n" +
@@ -2951,7 +3140,18 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\x0esentence_index\x18\x04 \x01(\x05H\x00R\rsentenceIndex\x88\x01\x01\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x11\n" +
-	"\x0f_sentence_index*\x8c\x01\n" +
+	"\x0f_sentence_index\"\xac\x02\n" +
+	"\n" +
+	"Confidence\x12\x14\n" +
+	"\x05score\x18\x01 \x01(\x01R\x05score\x12:\n" +
+	"\x05level\x18\x02 \x01(\x0e2$.bambuflow.answer.v1.ConfidenceLevelR\x05level\x12'\n" +
+	"\x0fweights_version\x18\x03 \x01(\tR\x0eweightsVersion\x12\x1a\n" +
+	"\bcoverage\x18\x04 \x01(\x01R\bcoverage\x12!\n" +
+	"\fmean_support\x18\x05 \x01(\x01R\vmeanSupport\x12\x1d\n" +
+	"\n" +
+	"top_rerank\x18\x06 \x01(\x01R\ttopRerank\x12)\n" +
+	"\x10source_diversity\x18\a \x01(\x01R\x0fsourceDiversity\x12\x1a\n" +
+	"\bconflict\x18\b \x01(\bR\bconflict*\x8c\x01\n" +
 	"\n" +
 	"AnswerKind\x12\x1b\n" +
 	"\x17ANSWER_KIND_UNSPECIFIED\x10\x00\x12\x14\n" +
@@ -3002,7 +3202,12 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\x1bFEEDBACK_RATING_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16FEEDBACK_RATING_USEFUL\x10\x01\x12\x19\n" +
 	"\x15FEEDBACK_RATING_WRONG\x10\x02\x12 \n" +
-	"\x1cFEEDBACK_RATING_BAD_CITATION\x10\x032\x90\x03\n" +
+	"\x1cFEEDBACK_RATING_BAD_CITATION\x10\x03*\x85\x01\n" +
+	"\x0fConfidenceLevel\x12 \n" +
+	"\x1cCONFIDENCE_LEVEL_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14CONFIDENCE_LEVEL_LOW\x10\x01\x12\x1b\n" +
+	"\x17CONFIDENCE_LEVEL_MEDIUM\x10\x02\x12\x19\n" +
+	"\x15CONFIDENCE_LEVEL_HIGH\x10\x032\x90\x03\n" +
 	"\rAnswerService\x12Q\n" +
 	"\x06Answer\x12\".bambuflow.answer.v1.AnswerRequest\x1a#.bambuflow.answer.v1.AnswerResponse\x12e\n" +
 	"\fStreamAnswer\x12(.bambuflow.answer.v1.StreamAnswerRequest\x1a).bambuflow.answer.v1.StreamAnswerResponse0\x01\x12Z\n" +
@@ -3022,8 +3227,8 @@ func file_bambuflow_answer_v1_answer_proto_rawDescGZIP() []byte {
 	return file_bambuflow_answer_v1_answer_proto_rawDescData
 }
 
-var file_bambuflow_answer_v1_answer_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_bambuflow_answer_v1_answer_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_bambuflow_answer_v1_answer_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_bambuflow_answer_v1_answer_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_bambuflow_answer_v1_answer_proto_goTypes = []any{
 	(AnswerKind)(0),                // 0: bambuflow.answer.v1.AnswerKind
 	(Status)(0),                    // 1: bambuflow.answer.v1.Status
@@ -3033,110 +3238,115 @@ var file_bambuflow_answer_v1_answer_proto_goTypes = []any{
 	(Intent)(0),                    // 5: bambuflow.answer.v1.Intent
 	(ReplayAccess)(0),              // 6: bambuflow.answer.v1.ReplayAccess
 	(FeedbackRating)(0),            // 7: bambuflow.answer.v1.FeedbackRating
-	(*AnswerRequest)(nil),          // 8: bambuflow.answer.v1.AnswerRequest
-	(*StreamAnswerRequest)(nil),    // 9: bambuflow.answer.v1.StreamAnswerRequest
-	(*StreamAnswerResponse)(nil),   // 10: bambuflow.answer.v1.StreamAnswerResponse
-	(*AnswerMeta)(nil),             // 11: bambuflow.answer.v1.AnswerMeta
-	(*SentenceEvent)(nil),          // 12: bambuflow.answer.v1.SentenceEvent
-	(*AnswerFinal)(nil),            // 13: bambuflow.answer.v1.AnswerFinal
-	(*AuditBlocks)(nil),            // 14: bambuflow.answer.v1.AuditBlocks
-	(*TokenUsage)(nil),             // 15: bambuflow.answer.v1.TokenUsage
-	(*AnswerResponse)(nil),         // 16: bambuflow.answer.v1.AnswerResponse
-	(*Sentence)(nil),               // 17: bambuflow.answer.v1.Sentence
-	(*ListedDocument)(nil),         // 18: bambuflow.answer.v1.ListedDocument
-	(*Calculation)(nil),            // 19: bambuflow.answer.v1.Calculation
-	(*CalcInput)(nil),              // 20: bambuflow.answer.v1.CalcInput
-	(*CalcResult)(nil),             // 21: bambuflow.answer.v1.CalcResult
-	(*RefQuote)(nil),               // 22: bambuflow.answer.v1.RefQuote
-	(*Block)(nil),                  // 23: bambuflow.answer.v1.Block
-	(*Scope)(nil),                  // 24: bambuflow.answer.v1.Scope
-	(*Citation)(nil),               // 25: bambuflow.answer.v1.Citation
-	(*Why)(nil),                    // 26: bambuflow.answer.v1.Why
-	(*GraphPath)(nil),              // 27: bambuflow.answer.v1.GraphPath
-	(*GraphEdge)(nil),              // 28: bambuflow.answer.v1.GraphEdge
-	(*AgentRound)(nil),             // 29: bambuflow.answer.v1.AgentRound
-	(*AgentCall)(nil),              // 30: bambuflow.answer.v1.AgentCall
-	(*GetAnswerRequest)(nil),       // 31: bambuflow.answer.v1.GetAnswerRequest
-	(*GetAnswerResponse)(nil),      // 32: bambuflow.answer.v1.GetAnswerResponse
-	(*CreateFeedbackRequest)(nil),  // 33: bambuflow.answer.v1.CreateFeedbackRequest
-	(*CreateFeedbackResponse)(nil), // 34: bambuflow.answer.v1.CreateFeedbackResponse
-	(*Feedback)(nil),               // 35: bambuflow.answer.v1.Feedback
-	(*v1.Filters)(nil),             // 36: bambuflow.common.v1.Filters
-	(*v1.DocMetadata)(nil),         // 37: bambuflow.common.v1.DocMetadata
-	(*v1.Span)(nil),                // 38: bambuflow.common.v1.Span
-	(v1.Classification)(0),         // 39: bambuflow.common.v1.Classification
-	(v1.SourceType)(0),             // 40: bambuflow.common.v1.SourceType
-	(*v1.Degradation)(nil),         // 41: bambuflow.common.v1.Degradation
-	(v1.EntityType)(0),             // 42: bambuflow.common.v1.EntityType
-	(v1.RelationType)(0),           // 43: bambuflow.common.v1.RelationType
-	(*timestamppb.Timestamp)(nil),  // 44: google.protobuf.Timestamp
+	(ConfidenceLevel)(0),           // 8: bambuflow.answer.v1.ConfidenceLevel
+	(*AnswerRequest)(nil),          // 9: bambuflow.answer.v1.AnswerRequest
+	(*StreamAnswerRequest)(nil),    // 10: bambuflow.answer.v1.StreamAnswerRequest
+	(*StreamAnswerResponse)(nil),   // 11: bambuflow.answer.v1.StreamAnswerResponse
+	(*AnswerMeta)(nil),             // 12: bambuflow.answer.v1.AnswerMeta
+	(*SentenceEvent)(nil),          // 13: bambuflow.answer.v1.SentenceEvent
+	(*AnswerFinal)(nil),            // 14: bambuflow.answer.v1.AnswerFinal
+	(*AuditBlocks)(nil),            // 15: bambuflow.answer.v1.AuditBlocks
+	(*TokenUsage)(nil),             // 16: bambuflow.answer.v1.TokenUsage
+	(*AnswerResponse)(nil),         // 17: bambuflow.answer.v1.AnswerResponse
+	(*Sentence)(nil),               // 18: bambuflow.answer.v1.Sentence
+	(*ListedDocument)(nil),         // 19: bambuflow.answer.v1.ListedDocument
+	(*Calculation)(nil),            // 20: bambuflow.answer.v1.Calculation
+	(*CalcInput)(nil),              // 21: bambuflow.answer.v1.CalcInput
+	(*CalcResult)(nil),             // 22: bambuflow.answer.v1.CalcResult
+	(*RefQuote)(nil),               // 23: bambuflow.answer.v1.RefQuote
+	(*Block)(nil),                  // 24: bambuflow.answer.v1.Block
+	(*Scope)(nil),                  // 25: bambuflow.answer.v1.Scope
+	(*Citation)(nil),               // 26: bambuflow.answer.v1.Citation
+	(*Why)(nil),                    // 27: bambuflow.answer.v1.Why
+	(*GraphPath)(nil),              // 28: bambuflow.answer.v1.GraphPath
+	(*GraphEdge)(nil),              // 29: bambuflow.answer.v1.GraphEdge
+	(*AgentRound)(nil),             // 30: bambuflow.answer.v1.AgentRound
+	(*AgentCall)(nil),              // 31: bambuflow.answer.v1.AgentCall
+	(*GetAnswerRequest)(nil),       // 32: bambuflow.answer.v1.GetAnswerRequest
+	(*GetAnswerResponse)(nil),      // 33: bambuflow.answer.v1.GetAnswerResponse
+	(*CreateFeedbackRequest)(nil),  // 34: bambuflow.answer.v1.CreateFeedbackRequest
+	(*CreateFeedbackResponse)(nil), // 35: bambuflow.answer.v1.CreateFeedbackResponse
+	(*Feedback)(nil),               // 36: bambuflow.answer.v1.Feedback
+	(*Confidence)(nil),             // 37: bambuflow.answer.v1.Confidence
+	(*v1.Filters)(nil),             // 38: bambuflow.common.v1.Filters
+	(*v1.DocMetadata)(nil),         // 39: bambuflow.common.v1.DocMetadata
+	(*v1.Span)(nil),                // 40: bambuflow.common.v1.Span
+	(v1.Classification)(0),         // 41: bambuflow.common.v1.Classification
+	(v1.SourceType)(0),             // 42: bambuflow.common.v1.SourceType
+	(*v1.Degradation)(nil),         // 43: bambuflow.common.v1.Degradation
+	(v1.EntityType)(0),             // 44: bambuflow.common.v1.EntityType
+	(v1.RelationType)(0),           // 45: bambuflow.common.v1.RelationType
+	(*timestamppb.Timestamp)(nil),  // 46: google.protobuf.Timestamp
 }
 var file_bambuflow_answer_v1_answer_proto_depIdxs = []int32{
-	36, // 0: bambuflow.answer.v1.AnswerRequest.filters:type_name -> bambuflow.common.v1.Filters
-	8,  // 1: bambuflow.answer.v1.StreamAnswerRequest.request:type_name -> bambuflow.answer.v1.AnswerRequest
-	11, // 2: bambuflow.answer.v1.StreamAnswerResponse.meta:type_name -> bambuflow.answer.v1.AnswerMeta
-	25, // 3: bambuflow.answer.v1.StreamAnswerResponse.citation:type_name -> bambuflow.answer.v1.Citation
-	12, // 4: bambuflow.answer.v1.StreamAnswerResponse.sentence:type_name -> bambuflow.answer.v1.SentenceEvent
-	13, // 5: bambuflow.answer.v1.StreamAnswerResponse.final:type_name -> bambuflow.answer.v1.AnswerFinal
-	17, // 6: bambuflow.answer.v1.SentenceEvent.sentence:type_name -> bambuflow.answer.v1.Sentence
+	38, // 0: bambuflow.answer.v1.AnswerRequest.filters:type_name -> bambuflow.common.v1.Filters
+	9,  // 1: bambuflow.answer.v1.StreamAnswerRequest.request:type_name -> bambuflow.answer.v1.AnswerRequest
+	12, // 2: bambuflow.answer.v1.StreamAnswerResponse.meta:type_name -> bambuflow.answer.v1.AnswerMeta
+	26, // 3: bambuflow.answer.v1.StreamAnswerResponse.citation:type_name -> bambuflow.answer.v1.Citation
+	13, // 4: bambuflow.answer.v1.StreamAnswerResponse.sentence:type_name -> bambuflow.answer.v1.SentenceEvent
+	14, // 5: bambuflow.answer.v1.StreamAnswerResponse.final:type_name -> bambuflow.answer.v1.AnswerFinal
+	18, // 6: bambuflow.answer.v1.SentenceEvent.sentence:type_name -> bambuflow.answer.v1.Sentence
 	3,  // 7: bambuflow.answer.v1.SentenceEvent.block_type:type_name -> bambuflow.answer.v1.BlockType
-	24, // 8: bambuflow.answer.v1.SentenceEvent.scope:type_name -> bambuflow.answer.v1.Scope
+	25, // 8: bambuflow.answer.v1.SentenceEvent.scope:type_name -> bambuflow.answer.v1.Scope
 	1,  // 9: bambuflow.answer.v1.AnswerFinal.status:type_name -> bambuflow.answer.v1.Status
-	26, // 10: bambuflow.answer.v1.AnswerFinal.why:type_name -> bambuflow.answer.v1.Why
-	14, // 11: bambuflow.answer.v1.AnswerFinal.audit:type_name -> bambuflow.answer.v1.AuditBlocks
+	27, // 10: bambuflow.answer.v1.AnswerFinal.why:type_name -> bambuflow.answer.v1.Why
+	15, // 11: bambuflow.answer.v1.AnswerFinal.audit:type_name -> bambuflow.answer.v1.AuditBlocks
 	0,  // 12: bambuflow.answer.v1.AnswerFinal.answer_kind:type_name -> bambuflow.answer.v1.AnswerKind
-	15, // 13: bambuflow.answer.v1.AnswerFinal.usage:type_name -> bambuflow.answer.v1.TokenUsage
-	1,  // 14: bambuflow.answer.v1.AnswerResponse.status:type_name -> bambuflow.answer.v1.Status
-	17, // 15: bambuflow.answer.v1.AnswerResponse.sentences:type_name -> bambuflow.answer.v1.Sentence
-	23, // 16: bambuflow.answer.v1.AnswerResponse.blocks:type_name -> bambuflow.answer.v1.Block
-	25, // 17: bambuflow.answer.v1.AnswerResponse.citations:type_name -> bambuflow.answer.v1.Citation
-	26, // 18: bambuflow.answer.v1.AnswerResponse.why:type_name -> bambuflow.answer.v1.Why
-	14, // 19: bambuflow.answer.v1.AnswerResponse.audit:type_name -> bambuflow.answer.v1.AuditBlocks
-	0,  // 20: bambuflow.answer.v1.AnswerResponse.answer_kind:type_name -> bambuflow.answer.v1.AnswerKind
-	15, // 21: bambuflow.answer.v1.AnswerResponse.usage:type_name -> bambuflow.answer.v1.TokenUsage
-	2,  // 22: bambuflow.answer.v1.Sentence.claim_type:type_name -> bambuflow.answer.v1.ClaimType
-	22, // 23: bambuflow.answer.v1.Sentence.quotes:type_name -> bambuflow.answer.v1.RefQuote
-	19, // 24: bambuflow.answer.v1.Sentence.calc:type_name -> bambuflow.answer.v1.Calculation
-	18, // 25: bambuflow.answer.v1.Sentence.document:type_name -> bambuflow.answer.v1.ListedDocument
-	37, // 26: bambuflow.answer.v1.ListedDocument.metadata:type_name -> bambuflow.common.v1.DocMetadata
-	20, // 27: bambuflow.answer.v1.Calculation.inputs:type_name -> bambuflow.answer.v1.CalcInput
-	21, // 28: bambuflow.answer.v1.Calculation.results:type_name -> bambuflow.answer.v1.CalcResult
-	3,  // 29: bambuflow.answer.v1.Block.block_type:type_name -> bambuflow.answer.v1.BlockType
-	24, // 30: bambuflow.answer.v1.Block.scope:type_name -> bambuflow.answer.v1.Scope
-	38, // 31: bambuflow.answer.v1.Citation.span:type_name -> bambuflow.common.v1.Span
-	39, // 32: bambuflow.answer.v1.Citation.classification:type_name -> bambuflow.common.v1.Classification
-	40, // 33: bambuflow.answer.v1.Citation.source_type:type_name -> bambuflow.common.v1.SourceType
-	41, // 34: bambuflow.answer.v1.Why.degraded:type_name -> bambuflow.common.v1.Degradation
-	36, // 35: bambuflow.answer.v1.Why.inferred_filters:type_name -> bambuflow.common.v1.Filters
-	5,  // 36: bambuflow.answer.v1.Why.intent:type_name -> bambuflow.answer.v1.Intent
-	29, // 37: bambuflow.answer.v1.Why.agent_rounds:type_name -> bambuflow.answer.v1.AgentRound
-	27, // 38: bambuflow.answer.v1.Why.graph_path:type_name -> bambuflow.answer.v1.GraphPath
-	4,  // 39: bambuflow.answer.v1.Why.experiment_arm:type_name -> bambuflow.answer.v1.ExperimentArm
-	28, // 40: bambuflow.answer.v1.GraphPath.edges:type_name -> bambuflow.answer.v1.GraphEdge
-	42, // 41: bambuflow.answer.v1.GraphEdge.from_type:type_name -> bambuflow.common.v1.EntityType
-	43, // 42: bambuflow.answer.v1.GraphEdge.relation_type:type_name -> bambuflow.common.v1.RelationType
-	42, // 43: bambuflow.answer.v1.GraphEdge.to_type:type_name -> bambuflow.common.v1.EntityType
-	30, // 44: bambuflow.answer.v1.AgentRound.calls:type_name -> bambuflow.answer.v1.AgentCall
-	16, // 45: bambuflow.answer.v1.GetAnswerResponse.answer:type_name -> bambuflow.answer.v1.AnswerResponse
-	44, // 46: bambuflow.answer.v1.GetAnswerResponse.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 47: bambuflow.answer.v1.GetAnswerResponse.access:type_name -> bambuflow.answer.v1.ReplayAccess
-	7,  // 48: bambuflow.answer.v1.CreateFeedbackRequest.rating:type_name -> bambuflow.answer.v1.FeedbackRating
-	35, // 49: bambuflow.answer.v1.CreateFeedbackResponse.feedback:type_name -> bambuflow.answer.v1.Feedback
-	7,  // 50: bambuflow.answer.v1.Feedback.rating:type_name -> bambuflow.answer.v1.FeedbackRating
-	44, // 51: bambuflow.answer.v1.Feedback.created_at:type_name -> google.protobuf.Timestamp
-	8,  // 52: bambuflow.answer.v1.AnswerService.Answer:input_type -> bambuflow.answer.v1.AnswerRequest
-	9,  // 53: bambuflow.answer.v1.AnswerService.StreamAnswer:input_type -> bambuflow.answer.v1.StreamAnswerRequest
-	31, // 54: bambuflow.answer.v1.AnswerService.GetAnswer:input_type -> bambuflow.answer.v1.GetAnswerRequest
-	33, // 55: bambuflow.answer.v1.AnswerService.CreateFeedback:input_type -> bambuflow.answer.v1.CreateFeedbackRequest
-	16, // 56: bambuflow.answer.v1.AnswerService.Answer:output_type -> bambuflow.answer.v1.AnswerResponse
-	10, // 57: bambuflow.answer.v1.AnswerService.StreamAnswer:output_type -> bambuflow.answer.v1.StreamAnswerResponse
-	32, // 58: bambuflow.answer.v1.AnswerService.GetAnswer:output_type -> bambuflow.answer.v1.GetAnswerResponse
-	34, // 59: bambuflow.answer.v1.AnswerService.CreateFeedback:output_type -> bambuflow.answer.v1.CreateFeedbackResponse
-	56, // [56:60] is the sub-list for method output_type
-	52, // [52:56] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	16, // 13: bambuflow.answer.v1.AnswerFinal.usage:type_name -> bambuflow.answer.v1.TokenUsage
+	37, // 14: bambuflow.answer.v1.AnswerFinal.confidence:type_name -> bambuflow.answer.v1.Confidence
+	1,  // 15: bambuflow.answer.v1.AnswerResponse.status:type_name -> bambuflow.answer.v1.Status
+	18, // 16: bambuflow.answer.v1.AnswerResponse.sentences:type_name -> bambuflow.answer.v1.Sentence
+	24, // 17: bambuflow.answer.v1.AnswerResponse.blocks:type_name -> bambuflow.answer.v1.Block
+	26, // 18: bambuflow.answer.v1.AnswerResponse.citations:type_name -> bambuflow.answer.v1.Citation
+	27, // 19: bambuflow.answer.v1.AnswerResponse.why:type_name -> bambuflow.answer.v1.Why
+	15, // 20: bambuflow.answer.v1.AnswerResponse.audit:type_name -> bambuflow.answer.v1.AuditBlocks
+	0,  // 21: bambuflow.answer.v1.AnswerResponse.answer_kind:type_name -> bambuflow.answer.v1.AnswerKind
+	16, // 22: bambuflow.answer.v1.AnswerResponse.usage:type_name -> bambuflow.answer.v1.TokenUsage
+	37, // 23: bambuflow.answer.v1.AnswerResponse.confidence:type_name -> bambuflow.answer.v1.Confidence
+	2,  // 24: bambuflow.answer.v1.Sentence.claim_type:type_name -> bambuflow.answer.v1.ClaimType
+	23, // 25: bambuflow.answer.v1.Sentence.quotes:type_name -> bambuflow.answer.v1.RefQuote
+	20, // 26: bambuflow.answer.v1.Sentence.calc:type_name -> bambuflow.answer.v1.Calculation
+	19, // 27: bambuflow.answer.v1.Sentence.document:type_name -> bambuflow.answer.v1.ListedDocument
+	39, // 28: bambuflow.answer.v1.ListedDocument.metadata:type_name -> bambuflow.common.v1.DocMetadata
+	21, // 29: bambuflow.answer.v1.Calculation.inputs:type_name -> bambuflow.answer.v1.CalcInput
+	22, // 30: bambuflow.answer.v1.Calculation.results:type_name -> bambuflow.answer.v1.CalcResult
+	3,  // 31: bambuflow.answer.v1.Block.block_type:type_name -> bambuflow.answer.v1.BlockType
+	25, // 32: bambuflow.answer.v1.Block.scope:type_name -> bambuflow.answer.v1.Scope
+	40, // 33: bambuflow.answer.v1.Citation.span:type_name -> bambuflow.common.v1.Span
+	41, // 34: bambuflow.answer.v1.Citation.classification:type_name -> bambuflow.common.v1.Classification
+	42, // 35: bambuflow.answer.v1.Citation.source_type:type_name -> bambuflow.common.v1.SourceType
+	43, // 36: bambuflow.answer.v1.Why.degraded:type_name -> bambuflow.common.v1.Degradation
+	38, // 37: bambuflow.answer.v1.Why.inferred_filters:type_name -> bambuflow.common.v1.Filters
+	5,  // 38: bambuflow.answer.v1.Why.intent:type_name -> bambuflow.answer.v1.Intent
+	30, // 39: bambuflow.answer.v1.Why.agent_rounds:type_name -> bambuflow.answer.v1.AgentRound
+	28, // 40: bambuflow.answer.v1.Why.graph_path:type_name -> bambuflow.answer.v1.GraphPath
+	4,  // 41: bambuflow.answer.v1.Why.experiment_arm:type_name -> bambuflow.answer.v1.ExperimentArm
+	29, // 42: bambuflow.answer.v1.GraphPath.edges:type_name -> bambuflow.answer.v1.GraphEdge
+	44, // 43: bambuflow.answer.v1.GraphEdge.from_type:type_name -> bambuflow.common.v1.EntityType
+	45, // 44: bambuflow.answer.v1.GraphEdge.relation_type:type_name -> bambuflow.common.v1.RelationType
+	44, // 45: bambuflow.answer.v1.GraphEdge.to_type:type_name -> bambuflow.common.v1.EntityType
+	31, // 46: bambuflow.answer.v1.AgentRound.calls:type_name -> bambuflow.answer.v1.AgentCall
+	17, // 47: bambuflow.answer.v1.GetAnswerResponse.answer:type_name -> bambuflow.answer.v1.AnswerResponse
+	46, // 48: bambuflow.answer.v1.GetAnswerResponse.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 49: bambuflow.answer.v1.GetAnswerResponse.access:type_name -> bambuflow.answer.v1.ReplayAccess
+	7,  // 50: bambuflow.answer.v1.CreateFeedbackRequest.rating:type_name -> bambuflow.answer.v1.FeedbackRating
+	36, // 51: bambuflow.answer.v1.CreateFeedbackResponse.feedback:type_name -> bambuflow.answer.v1.Feedback
+	7,  // 52: bambuflow.answer.v1.Feedback.rating:type_name -> bambuflow.answer.v1.FeedbackRating
+	46, // 53: bambuflow.answer.v1.Feedback.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 54: bambuflow.answer.v1.Confidence.level:type_name -> bambuflow.answer.v1.ConfidenceLevel
+	9,  // 55: bambuflow.answer.v1.AnswerService.Answer:input_type -> bambuflow.answer.v1.AnswerRequest
+	10, // 56: bambuflow.answer.v1.AnswerService.StreamAnswer:input_type -> bambuflow.answer.v1.StreamAnswerRequest
+	32, // 57: bambuflow.answer.v1.AnswerService.GetAnswer:input_type -> bambuflow.answer.v1.GetAnswerRequest
+	34, // 58: bambuflow.answer.v1.AnswerService.CreateFeedback:input_type -> bambuflow.answer.v1.CreateFeedbackRequest
+	17, // 59: bambuflow.answer.v1.AnswerService.Answer:output_type -> bambuflow.answer.v1.AnswerResponse
+	11, // 60: bambuflow.answer.v1.AnswerService.StreamAnswer:output_type -> bambuflow.answer.v1.StreamAnswerResponse
+	33, // 61: bambuflow.answer.v1.AnswerService.GetAnswer:output_type -> bambuflow.answer.v1.GetAnswerResponse
+	35, // 62: bambuflow.answer.v1.AnswerService.CreateFeedback:output_type -> bambuflow.answer.v1.CreateFeedbackResponse
+	59, // [59:63] is the sub-list for method output_type
+	55, // [55:59] is the sub-list for method input_type
+	55, // [55:55] is the sub-list for extension type_name
+	55, // [55:55] is the sub-list for extension extendee
+	0,  // [0:55] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_answer_v1_answer_proto_init() }
@@ -3157,8 +3367,8 @@ func file_bambuflow_answer_v1_answer_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_answer_v1_answer_proto_rawDesc), len(file_bambuflow_answer_v1_answer_proto_rawDesc)),
-			NumEnums:      8,
-			NumMessages:   28,
+			NumEnums:      9,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

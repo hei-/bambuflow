@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
+// gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
+//
+// 现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
+// 每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+// 变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
+// 已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
+service ConfigAdminService {
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  rpc ListConfigVersions(ListConfigVersionsRequest) returns (ListConfigVersionsResponse);
+  rpc CreateChangeRequest(CreateChangeRequestRequest) returns (CreateChangeRequestResponse);
+  rpc ApproveChangeRequest(ApproveChangeRequestRequest) returns (ApproveChangeRequestResponse);
+  rpc RejectChangeRequest(RejectChangeRequestRequest) returns (RejectChangeRequestResponse);
+  rpc CreateRelease(CreateReleaseRequest) returns (CreateReleaseResponse);
+  rpc ApproveRelease(ApproveReleaseRequest) returns (ApproveReleaseResponse);
+  rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
+  rpc RollbackRelease(RollbackReleaseRequest) returns (RollbackReleaseResponse);
+}
+
+message ConfigVersion {
+  // cfv_ 前缀
+  string version_id = 1;
+  // tenant
+  string object = 2;
+  string scope = 3;
+  // 同一对象内递增的序号
+  int32 number = 4;
+  string content = 5;
+  // 内容的 SHA-256
+  string content_hash = 6;
+  string created_by = 7;
+  google.protobuf.Timestamp created_at = 8;
+  // bootstrap:<文件>、git:<提交>、chg_…、rel_…（回退）
+  string source_ref = 9;
+  // 是否当前生效
+  bool active = 10;
+}
+
+message TenantSummary {
+  string tenant = 1;
+  // pilot 或 general
+  string rollout = 2;
+  ConfigVersion active = 3;
+}
+
+message ListTenantsRequest {}
+
+message ListTenantsResponse {
+  repeated TenantSummary tenants = 1;
+}
+
+message ListConfigVersionsRequest {
+  string object = 1;
+  string scope = 2;
+}
+
+message ListConfigVersionsResponse {
+  // 新的在前
+  repeated ConfigVersion versions = 1;
+}
+
+message ChangeRequest {
+  // chg_ 前缀
+  string chg_id = 1;
+  string object = 2;
+  string scope = 3;
+  // 基于的生效版本；新建对象时为空
+  string base_version_id = 4;
+  // 提议的新版本（提交时已校验）
+  ConfigVersion version = 5;
+  string reason = 6;
+  // 租户从试点切到全量时附的评测门禁，gate_ 前缀
+  string gate_id = 7;
+  string author = 8;
+  google.protobuf.Timestamp created_at = 9;
+  // open、approved、rejected、stale（审批时生效版本已不是 base，须重新提交）
+  string status = 10;
+  string decided_by = 11;
+  google.protobuf.Timestamp decided_at = 12;
+  string reject_reason = 13;
+  // 审批后生成的发布，rel_ 前缀
+  string release_id = 14;
+}
+
+message CreateChangeRequestRequest {
+  string object = 1;
+  string scope = 2;
+  string base_version_id = 3;
+  string content = 4;
+  // 必填，最多 500 字
+  string reason = 5;
+  string gate_id = 6;
+}
+
+message CreateChangeRequestResponse {
+  ChangeRequest change_request = 1;
+}
+
+message ApproveChangeRequestRequest {
+  string chg_id = 1;
+}
+
+message ApproveChangeRequestResponse {
+  ChangeRequest change_request = 1;
+}
+
+message RejectChangeRequestRequest {
+  string chg_id = 1;
+  string reason = 2;
+}
+
+message RejectChangeRequestResponse {
+  ChangeRequest change_request = 1;
+}
+
+message Release {
+  // rel_ 前缀
+  string release_id = 1;
+  string object = 2;
+  string scope = 3;
+  ConfigVersion version = 4;
+  // 发布时的生效版本，回退切回它；新建对象时为空
+  string from_version_id = 5;
+  // ci、change_request、rollback、bootstrap
+  string source = 6;
+  string source_ref = 7;
+  string gate_id = 8;
+  // pending_approval、active、superseded、rolled_back、rejected、stale
+  string status = 9;
+  string requested_by = 10;
+  google.protobuf.Timestamp requested_at = 11;
+  string approved_by = 12;
+  google.protobuf.Timestamp approved_at = 13;
+  string rolled_back_by = 14;
+  google.protobuf.Timestamp rolled_back_at = 15;
+  string reason = 16;
+}
+
+message CreateReleaseRequest {
+  string object = 1;
+  string scope = 2;
+  string content = 3;
+  // Git 提交，如 git:3f2a…
+  string source_ref = 4;
+  string gate_id = 5;
+  string reason = 6;
+}
+
+message CreateReleaseResponse {
+  Release release = 1;
+}
+
+message ApproveReleaseRequest {
+  string release_id = 1;
+}
+
+message ApproveReleaseResponse {
+  Release release = 1;
+}
+
+message GetReleaseRequest {
+  string release_id = 1;
+}
+
+message GetReleaseResponse {
+  Release release = 1;
+}
+
+message RollbackReleaseRequest {
+  string release_id = 1;
+  // 必填，最多 500 字
+  string reason = 2;
+}
+
+message RollbackReleaseResponse {
+  // 回退本身也是一次发布（source = rollback）
+  Release release = 1;
+}
