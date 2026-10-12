@@ -4,7 +4,7 @@ import (
 	"context"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 评测门禁（evaluation 详设 5.2、8.2）：GET /v1/admin/eval-gates、GET .../{gate_id}，由 evaluation 实现。
@@ -24,7 +24,19 @@ type gateJSON struct {
 	Config        map[string][]string `json:"config"`
 	Repeats       int32               `json:"repeats"`
 	CreatedAt     string              `json:"created_at"`
+	Readiness     []readinessJSON     `json:"readiness"`
 	Report        string              `json:"report_markdown,omitempty"`
+}
+
+type readinessJSON struct {
+	Tenant         string   `json:"tenant"`
+	Stage          string   `json:"stage"`
+	Counted        int32    `json:"counted"`
+	Unreviewed     int32    `json:"unreviewed"`
+	RefuseShare    float64  `json:"refuse_share"`
+	SyntheticShare float64  `json:"synthetic_share"`
+	DoubleReviewed int32    `json:"double_reviewed"`
+	Gaps           []string `json:"gaps"`
 }
 
 func gateOf(g *adminv1.Gate) gateJSON {
@@ -37,6 +49,12 @@ func gateOf(g *adminv1.Gate) gateJSON {
 	}
 	for _, c := range g.GetConfig() {
 		out.Config[c.GetName()] = nonNil(c.GetValues())
+	}
+	out.Readiness = []readinessJSON{}
+	for _, r := range g.GetReadiness() {
+		out.Readiness = append(out.Readiness, readinessJSON{Tenant: r.GetTenant(), Stage: r.GetStage(), Counted: r.GetCounted(),
+			Unreviewed: r.GetUnreviewed(), RefuseShare: r.GetRefuseShare(), SyntheticShare: r.GetSyntheticShare(),
+			DoubleReviewed: r.GetDoubleReviewed(), Gaps: nonNil(r.GetGaps())})
 	}
 	return out
 }

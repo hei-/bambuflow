@@ -1,6 +1,7 @@
 // Package experiment 是 A/B 实验的登记与流量分配（governance 详设 3.1、7.2，技术设计文档 10.5）。
 // 实验以 governance 的数据库为唯一事实来源；运行中的实验经配置快照下发给 orchestrator，由它分组（orchestrator 详设 12.3），
-// 分析在 evaluation。实验流量属运营数据，按 governance 详设 4.2 一人操作、1 分钟内生效，不走门禁与灰度发布流程。
+// 分析在 evaluation。实验流量属运营数据，按 governance 详设 4.2 一人操作、1 分钟内生效，不走门禁与灰度发布流程；
+// 实验组替换的配置版本（pipeline、routing、回答模板）须已单独过门禁（详设 3.1），立项时由 internal/config 核对。
 package experiment
 
 import (
@@ -21,10 +22,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/services/governance/internal/paging"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/services/governance/internal/paging"
 )
 
 // RolePlatformAdmin 管理实验（governance 详设 9.1）。
@@ -47,6 +48,9 @@ var (
 	trafficSteps = []int32{5, 20, 50}
 )
 
+// maxVariants：pipeline、routing 与两种回答模板各至多一个
+const maxVariants = 4
+
 // Experiment 是一条实验记录。PrimaryMetric 为 useful_rate 或 insufficient_evidence_rate，Status 为 running 或 stopped。
 type Experiment struct {
 	ID, Tenant, Hypothesis, PrimaryMetric, Status, CreatedBy string
@@ -54,9 +58,11 @@ type Experiment struct {
 	SampleSizePerArm                                         int64
 	TrafficPercent                                           int32
 	SupportThreshold, MinCoverage                            *float64
-	CreatedAt                                                time.Time
-	StoppedBy, StopReason                                    string
-	StoppedAt                                                *time.Time
+	// 实验组替换的配置版本（cfv_），见 Variants
+	ConfigVersions        []string
+	CreatedAt             time.Time
+	StoppedBy, StopReason string
+	StoppedAt             *time.Time
 }
 
 // Store 是实验的读写（生产为 PG）。
@@ -73,13 +79,18 @@ type Auditor interface {
 	Write(ctx context.Context, action, objectID string, detail any) error
 }
 
+// Variants 取实验组替换的配置版本的内容（internal/config Server.Variants）：check 为 true 时核对是该租户可用的
+// pipeline、routing 或回答模板，且门禁已通过；返回的 Canary 只用来装内容。
+type Variants func(ctx context.Context, tenant string, versionIDs []string, check bool) ([]*configv1.Canary, error)
+
 // Server 实现 ExperimentAdminService。
 type Server struct {
 	adminv1.UnimplementedExperimentAdminServiceServer
-	Store Store
-	Audit Auditor
-	Log   *slog.Logger
-	Now   func() time.Time
+	Store    Store
+	Audit    Auditor
+	Variants Variants
+	Log      *slog.Logger
+	Now      func() time.Time
 }
 
 // SampleSize 是双样本比例检验每组需要的用户数：双侧 α = 0.05、检验力 0.8，检测从 baseline 变化 mde（绝对值）。
@@ -101,7 +112,8 @@ func validText(s string, max int) bool {
 }
 
 func validOverrides(o *adminv1.ExperimentOverrides) bool {
-	if o == nil || (o.SupportThreshold == nil && o.MinCoverage == nil) {
+	if o == nil || (o.SupportThreshold == nil && o.MinCoverage == nil && len(o.GetConfigVersions()) == 0) ||
+		len(o.GetConfigVersions()) > maxVariants {
 		// 没有替换任何对象的实验两组完全相同，没有意义
 		return false
 	}
@@ -145,14 +157,22 @@ func (s *Server) CreateExperiment(ctx context.Context, r *adminv1.CreateExperime
 	}
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
+	versions := r.GetOverrides().GetConfigVersions()
+	if len(versions) > 0 {
+		// 变体须已单独过门禁（governance 详设 3.1）；错误已是带业务码的 gRPC 状态
+		if _, err := s.Variants(ctx, r.GetTenant(), versions, true); err != nil {
+			return nil, err
+		}
+	}
 	e := Experiment{ID: "exp_" + hex.EncodeToString(b), Tenant: r.GetTenant(), Hypothesis: strings.TrimSpace(r.GetHypothesis()),
 		PrimaryMetric: metric, BaselineRate: base, MinDetectableEffect: mde, SampleSizePerArm: SampleSize(base, mde),
 		TrafficPercent: trafficSteps[0], SupportThreshold: r.GetOverrides().SupportThreshold, MinCoverage: r.GetOverrides().MinCoverage,
-		CreatedBy: grpcmw.PrincipalFrom(ctx).GetSub()}
+		ConfigVersions: versions, CreatedBy: grpcmw.PrincipalFrom(ctx).GetSub()}
 	e, err := s.Store.Create(ctx, e, func() error {
 		return s.Audit.Write(ctx, "experiment.create", e.ID, map[string]any{"tenant": e.Tenant, "primary_metric": metric,
 			"baseline_rate": base, "min_detectable_effect": mde, "sample_size_per_arm": e.SampleSizePerArm,
-			"traffic_percent": e.TrafficPercent, "support_threshold": e.SupportThreshold, "min_coverage": e.MinCoverage})
+			"traffic_percent": e.TrafficPercent, "support_threshold": e.SupportThreshold, "min_coverage": e.MinCoverage,
+			"config_versions": e.ConfigVersions})
 	})
 	if err != nil {
 		return nil, s.storeErr(ctx, err)
@@ -252,8 +272,10 @@ func (s *Server) ListExperiments(ctx context.Context, r *adminv1.ListExperiments
 	return out, nil
 }
 
-// Snapshot 是 orchestrator 快照里的运行中实验与它们的摘要（并入 snapshot_version，回放时据此还原分组配置）。
-func (s *Server) Snapshot(ctx context.Context) ([]*configv1.RunningExperiment, string, error) {
+// Snapshot 是某个服务快照里的运行中实验与它们的摘要（并入 snapshot_version，回放时据此还原分组配置）。
+// orchestrator 拿到完整的实验（分组、阈值与变体内容）；retrieval 只拿带 pipeline 变体的实验的检索计划：
+// 分组由 orchestrator 决定，经 SearchRequest.plan_version 告诉 retrieval（retrieval 详设 10.4）。
+func (s *Server) Snapshot(ctx context.Context, service string) ([]*configv1.RunningExperiment, string, error) {
 	list, err := s.Store.Running(ctx)
 	if err != nil {
 		return nil, "", err
@@ -261,9 +283,33 @@ func (s *Server) Snapshot(ctx context.Context) ([]*configv1.RunningExperiment, s
 	h := sha256.New()
 	out := make([]*configv1.RunningExperiment, 0, len(list))
 	for _, e := range list {
-		out = append(out, &configv1.RunningExperiment{ExpId: e.ID, Tenant: e.Tenant, TrafficPercent: e.TrafficPercent,
-			SupportThreshold: e.SupportThreshold, MinCoverage: e.MinCoverage})
-		_, _ = fmt.Fprintf(h, "%s|%s|%d|%v|%v\n", e.ID, e.Tenant, e.TrafficPercent, deref(e.SupportThreshold), deref(e.MinCoverage))
+		x := &configv1.RunningExperiment{ExpId: e.ID, Tenant: e.Tenant, TrafficPercent: e.TrafficPercent,
+			SupportThreshold: e.SupportThreshold, MinCoverage: e.MinCoverage}
+		if len(e.ConfigVersions) > 0 {
+			variants, err := s.Variants(ctx, e.Tenant, e.ConfigVersions, false)
+			if err != nil {
+				return nil, "", err
+			}
+			for _, v := range variants {
+				switch c := v.GetCandidate().(type) {
+				case *configv1.Canary_Pipeline:
+					x.Pipeline = c.Pipeline
+				case *configv1.Canary_Routing:
+					x.Routing = c.Routing
+				case *configv1.Canary_Prompt:
+					x.Prompts = append(x.Prompts, c.Prompt)
+				}
+			}
+		}
+		if service == "retrieval" {
+			if x.Pipeline == nil {
+				continue
+			}
+			x = &configv1.RunningExperiment{ExpId: e.ID, Tenant: e.Tenant, Pipeline: x.Pipeline}
+		}
+		out = append(out, x)
+		_, _ = fmt.Fprintf(h, "%s|%s|%d|%v|%v|%s\n", e.ID, e.Tenant, e.TrafficPercent, deref(e.SupportThreshold), deref(e.MinCoverage),
+			strings.Join(e.ConfigVersions, ","))
 	}
 	return out, hex.EncodeToString(h.Sum(nil))[:16], nil
 }
@@ -278,7 +324,8 @@ func deref(v *float64) any {
 func (e Experiment) proto() *adminv1.Experiment {
 	out := &adminv1.Experiment{ExpId: e.ID, Tenant: e.Tenant, Hypothesis: e.Hypothesis, BaselineRate: e.BaselineRate,
 		MinDetectableEffect: e.MinDetectableEffect, SampleSizePerArm: e.SampleSizePerArm, TrafficPercent: e.TrafficPercent,
-		Overrides:  &adminv1.ExperimentOverrides{SupportThreshold: e.SupportThreshold, MinCoverage: e.MinCoverage},
+		Overrides: &adminv1.ExperimentOverrides{SupportThreshold: e.SupportThreshold, MinCoverage: e.MinCoverage,
+			ConfigVersions: e.ConfigVersions},
 		Status:     adminv1.ExperimentStatus_EXPERIMENT_STATUS_RUNNING,
 		CreatedBy:  e.CreatedBy,
 		CreatedAt:  timestamppb.New(e.CreatedAt),

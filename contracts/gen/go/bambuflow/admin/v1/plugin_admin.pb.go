@@ -767,8 +767,8 @@ const file_bambuflow_admin_v1_plugin_admin_proto_rawDesc = "" +
 	"\x0eRegisterPlugin\x12).bambuflow.admin.v1.RegisterPluginRequest\x1a*.bambuflow.admin.v1.RegisterPluginResponse\x12a\n" +
 	"\fReviewPlugin\x12'.bambuflow.admin.v1.ReviewPluginRequest\x1a(.bambuflow.admin.v1.ReviewPluginResponse2\x88\x01\n" +
 	"\x17PluginEvaluationService\x12m\n" +
-	"\x10RecordEvaluation\x12+.bambuflow.admin.v1.RecordEvaluationRequest\x1a,.bambuflow.admin.v1.RecordEvaluationResponseB\xdf\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x10PluginAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x10RecordEvaluation\x12+.bambuflow.admin.v1.RecordEvaluationRequest\x1a,.bambuflow.admin.v1.RecordEvaluationResponseB\xdb\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x10PluginAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_plugin_admin_proto_rawDescOnce sync.Once

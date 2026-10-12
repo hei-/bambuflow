@@ -25,44 +25,50 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n(bambuflow/admin/v1/connector_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaf\x03\n\x07SyncRun\x12\x18\n\x07\x63ommand\x18\x01 \x01(\tR\x07\x63ommand\x12\x39\n\nstarted_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n\x0b\x66inished_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nfinishedAt\x12\x16\n\x06result\x18\x04 \x01(\tR\x06result\x12\x14\n\x05\x65rror\x18\x05 \x01(\tR\x05\x65rror\x12\x1c\n\tdocuments\x18\x06 \x01(\x05R\tdocuments\x12\x18\n\x07upserts\x18\x07 \x01(\x05R\x07upserts\x12\x19\n\x08\x61\x63l_only\x18\x08 \x01(\x05R\x07\x61\x63lOnly\x12\x18\n\x07\x64\x65letes\x18\t \x01(\x05R\x07\x64\x65letes\x12%\n\x0e\x64\x65letes_paused\x18\n \x01(\x08R\rdeletesPaused\x12\x32\n\x15\x64\x65letes_paused_reason\x18\x0b \x01(\tR\x13\x64\x65letesPausedReason\x12\x1c\n\trefetched\x18\x0c \x01(\x05R\trefetched\"u\n\x05Pause\x12\x1b\n\tpaused_by\x18\x01 \x01(\tR\x08pausedBy\x12\x37\n\tpaused_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08pausedAt\x12\x16\n\x06reason\x18\x03 \x01(\tR\x06reason\"3\n\x14GetSyncStatusRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\"\x8a\x02\n\x15GetSyncStatusResponse\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x36\n\x08last_run\x18\x02 \x01(\x0b\x32\x1b.bambuflow.admin.v1.SyncRunR\x07lastRun\x12>\n\x0clast_success\x18\x03 \x01(\x0b\x32\x1b.bambuflow.admin.v1.SyncRunR\x0blastSuccess\x12+\n\x11\x66reshness_seconds\x18\x04 \x01(\x03R\x10\x66reshnessSeconds\x12/\n\x05pause\x18\x05 \x01(\x0b\x32\x19.bambuflow.admin.v1.PauseR\x05pause\"I\n\x12PauseSourceRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x16\n\x06reason\x18\x02 \x01(\tR\x06reason\"`\n\x13PauseSourceResponse\x12/\n\x05pause\x18\x01 \x01(\x0b\x32\x19.bambuflow.admin.v1.PauseR\x05pause\x12\x18\n\x07\x63hanged\x18\x02 \x01(\x08R\x07\x63hanged\"2\n\x13ResumeSourceRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\"0\n\x14ResumeSourceResponse\x12\x18\n\x07\x63hanged\x18\x01 \x01(\x08R\x07\x63hanged\"\xb0\x03\n\x0c\x44\x65letionHold\x12\x17\n\x07hold_id\x18\x01 \x01(\tR\x06holdId\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\x12\x17\n\x07\x64oc_ids\x18\x03 \x03(\tR\x06\x64ocIds\x12\x1f\n\x0bsynced_docs\x18\x04 \x01(\x05R\nsyncedDocs\x12;\n\x0b\x64\x65tected_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\ndetectedAt\x12\x16\n\x06status\x18\x06 \x01(\tR\x06status\x12!\n\x0c\x63onfirmed_by\x18\x07 \x01(\tR\x0b\x63onfirmedBy\x12\x1f\n\x0b\x61pproved_by\x18\x08 \x01(\tR\napprovedBy\x12!\n\x0c\x64iscarded_by\x18\t \x01(\tR\x0b\x64iscardedBy\x12\x16\n\x06reason\x18\n \x01(\tR\x06reason\x12!\n\x0c\x61pplied_docs\x18\x0b \x01(\x05R\x0b\x61ppliedDocs\x12\x39\n\nupdated_at\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tupdatedAt\":\n\x1bListPendingDeletionsRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\"V\n\x1cListPendingDeletionsResponse\x12\x36\n\x05holds\x18\x01 \x03(\x0b\x32 .bambuflow.admin.v1.DeletionHoldR\x05holds\"f\n\x16\x43onfirmDeletionRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x17\n\x07hold_id\x18\x02 \x01(\tR\x06holdId\x12\x16\n\x06reason\x18\x03 \x01(\tR\x06reason\"O\n\x17\x43onfirmDeletionResponse\x12\x34\n\x04hold\x18\x01 \x01(\x0b\x32 .bambuflow.admin.v1.DeletionHoldR\x04hold\"f\n\x16\x44iscardDeletionRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x17\n\x07hold_id\x18\x02 \x01(\tR\x06holdId\x12\x16\n\x06reason\x18\x03 \x01(\tR\x06reason\"O\n\x17\x44iscardDeletionResponse\x12\x34\n\x04hold\x18\x01 \x01(\x0b\x32 .bambuflow.admin.v1.DeletionHoldR\x04hold2\x93\x05\n\x15\x43onnectorAdminService\x12\x64\n\rGetSyncStatus\x12(.bambuflow.admin.v1.GetSyncStatusRequest\x1a).bambuflow.admin.v1.GetSyncStatusResponse\x12^\n\x0bPauseSource\x12&.bambuflow.admin.v1.PauseSourceRequest\x1a\'.bambuflow.admin.v1.PauseSourceResponse\x12\x61\n\x0cResumeSource\x12\'.bambuflow.admin.v1.ResumeSourceRequest\x1a(.bambuflow.admin.v1.ResumeSourceResponse\x12y\n\x14ListPendingDeletions\x12/.bambuflow.admin.v1.ListPendingDeletionsRequest\x1a\x30.bambuflow.admin.v1.ListPendingDeletionsResponse\x12j\n\x0f\x43onfirmDeletion\x12*.bambuflow.admin.v1.ConfirmDeletionRequest\x1a+.bambuflow.admin.v1.ConfirmDeletionResponse\x12j\n\x0f\x44iscardDeletion\x12*.bambuflow.admin.v1.DiscardDeletionRequest\x1a+.bambuflow.admin.v1.DiscardDeletionResponseB\xe2\x01\n\x16\x63om.bambuflow.admin.v1B\x13\x43onnectorAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n(bambuflow/admin/v1/connector_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xba\x04\n\x07SyncRun\x12\x18\n\x07\x63ommand\x18\x01 \x01(\tR\x07\x63ommand\x12\x39\n\nstarted_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n\x0b\x66inished_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nfinishedAt\x12\x16\n\x06result\x18\x04 \x01(\tR\x06result\x12\x14\n\x05\x65rror\x18\x05 \x01(\tR\x05\x65rror\x12\x1c\n\tdocuments\x18\x06 \x01(\x05R\tdocuments\x12\x18\n\x07upserts\x18\x07 \x01(\x05R\x07upserts\x12\x19\n\x08\x61\x63l_only\x18\x08 \x01(\x05R\x07\x61\x63lOnly\x12\x18\n\x07\x64\x65letes\x18\t \x01(\x05R\x07\x64\x65letes\x12%\n\x0e\x64\x65letes_paused\x18\n \x01(\x08R\rdeletesPaused\x12\x32\n\x15\x64\x65letes_paused_reason\x18\x0b \x01(\tR\x13\x64\x65letesPausedReason\x12\x1c\n\trefetched\x18\x0c \x01(\x05R\trefetched\x12J\n\x0ereconciliation\x18\r \x01(\x0b\x32\".bambuflow.admin.v1.ReconciliationR\x0ereconciliation\x12\x18\n\x07skipped\x18\x0e \x01(\x05R\x07skipped\x12#\n\rskipped_items\x18\x0f \x03(\tR\x0cskippedItems\"\xe0\x01\n\x0eReconciliation\x12\x18\n\x07missing\x18\x01 \x01(\x05R\x07missing\x12)\n\x10\x63ontent_mismatch\x18\x02 \x01(\x05R\x0f\x63ontentMismatch\x12!\n\x0c\x61\x63l_mismatch\x18\x03 \x01(\x05R\x0b\x61\x63lMismatch\x12\x1a\n\x08orphaned\x18\x04 \x01(\x05R\x08orphaned\x12\x30\n\x14tombstoned_in_source\x18\x05 \x01(\x05R\x12tombstonedInSource\x12\x18\n\x07indexed\x18\x06 \x01(\x05R\x07indexed\"u\n\x05Pause\x12\x1b\n\tpaused_by\x18\x01 \x01(\tR\x08pausedBy\x12\x37\n\tpaused_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08pausedAt\x12\x16\n\x06reason\x18\x03 \x01(\tR\x06reason\"3\n\x14GetSyncStatusRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\"\x83\x04\n\x15GetSyncStatusResponse\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x36\n\x08last_run\x18\x02 \x01(\x0b\x32\x1b.bambuflow.admin.v1.SyncRunR\x07lastRun\x12>\n\x0clast_success\x18\x03 \x01(\x0b\x32\x1b.bambuflow.admin.v1.SyncRunR\x0blastSuccess\x12+\n\x11\x66reshness_seconds\x18\x04 \x01(\x03R\x10\x66reshnessSeconds\x12/\n\x05pause\x18\x05 \x01(\x0b\x32\x19.bambuflow.admin.v1.PauseR\x05pause\x12\x42\n\x0elast_reconcile\x18\x06 \x01(\x0b\x32\x1b.bambuflow.admin.v1.SyncRunR\rlastReconcile\x12\x39\n\nrevoked_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\trevokedAt\x12\x38\n\x18listing_interval_seconds\x18\x08 \x01(\x03R\x16listingIntervalSeconds\x12>\n\rnext_round_at\x18\t \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0bnextRoundAt\"I\n\x12PauseSourceRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x16\n\x06reason\x18\x02 \x01(\tR\x06reason\"`\n\x13PauseSourceResponse\x12/\n\x05pause\x18\x01 \x01(\x0b\x32\x19.bambuflow.admin.v1.PauseR\x05pause\x12\x18\n\x07\x63hanged\x18\x02 \x01(\x08R\x07\x63hanged\"E\n\x0eSyncNowRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x16\n\x06reason\x18\x02 \x01(\tR\x06reason\"b\n\x0fSyncNowResponse\x12\x10\n\x03job\x18\x01 \x01(\tR\x03job\x12=\n\x0crequested_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0brequestedAt\"2\n\x13ResumeSourceRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\"0\n\x14ResumeSourceResponse\x12\x18\n\x07\x63hanged\x18\x01 \x01(\x08R\x07\x63hanged\"\xb0\x03\n\x0c\x44\x65letionHold\x12\x17\n\x07hold_id\x18\x01 \x01(\tR\x06holdId\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\x12\x17\n\x07\x64oc_ids\x18\x03 \x03(\tR\x06\x64ocIds\x12\x1f\n\x0bsynced_docs\x18\x04 \x01(\x05R\nsyncedDocs\x12;\n\x0b\x64\x65tected_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\ndetectedAt\x12\x16\n\x06status\x18\x06 \x01(\tR\x06status\x12!\n\x0c\x63onfirmed_by\x18\x07 \x01(\tR\x0b\x63onfirmedBy\x12\x1f\n\x0b\x61pproved_by\x18\x08 \x01(\tR\napprovedBy\x12!\n\x0c\x64iscarded_by\x18\t \x01(\tR\x0b\x64iscardedBy\x12\x16\n\x06reason\x18\n \x01(\tR\x06reason\x12!\n\x0c\x61pplied_docs\x18\x0b \x01(\x05R\x0b\x61ppliedDocs\x12\x39\n\nupdated_at\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tupdatedAt\":\n\x1bListPendingDeletionsRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\"V\n\x1cListPendingDeletionsResponse\x12\x36\n\x05holds\x18\x01 \x03(\x0b\x32 .bambuflow.admin.v1.DeletionHoldR\x05holds\"f\n\x16\x43onfirmDeletionRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x17\n\x07hold_id\x18\x02 \x01(\tR\x06holdId\x12\x16\n\x06reason\x18\x03 \x01(\tR\x06reason\"O\n\x17\x43onfirmDeletionResponse\x12\x34\n\x04hold\x18\x01 \x01(\x0b\x32 .bambuflow.admin.v1.DeletionHoldR\x04hold\"f\n\x16\x44iscardDeletionRequest\x12\x1b\n\tsource_id\x18\x01 \x01(\tR\x08sourceId\x12\x17\n\x07hold_id\x18\x02 \x01(\tR\x06holdId\x12\x16\n\x06reason\x18\x03 \x01(\tR\x06reason\"O\n\x17\x44iscardDeletionResponse\x12\x34\n\x04hold\x18\x01 \x01(\x0b\x32 .bambuflow.admin.v1.DeletionHoldR\x04hold2\xe7\x05\n\x15\x43onnectorAdminService\x12\x64\n\rGetSyncStatus\x12(.bambuflow.admin.v1.GetSyncStatusRequest\x1a).bambuflow.admin.v1.GetSyncStatusResponse\x12^\n\x0bPauseSource\x12&.bambuflow.admin.v1.PauseSourceRequest\x1a\'.bambuflow.admin.v1.PauseSourceResponse\x12\x61\n\x0cResumeSource\x12\'.bambuflow.admin.v1.ResumeSourceRequest\x1a(.bambuflow.admin.v1.ResumeSourceResponse\x12R\n\x07SyncNow\x12\".bambuflow.admin.v1.SyncNowRequest\x1a#.bambuflow.admin.v1.SyncNowResponse\x12y\n\x14ListPendingDeletions\x12/.bambuflow.admin.v1.ListPendingDeletionsRequest\x1a\x30.bambuflow.admin.v1.ListPendingDeletionsResponse\x12j\n\x0f\x43onfirmDeletion\x12*.bambuflow.admin.v1.ConfirmDeletionRequest\x1a+.bambuflow.admin.v1.ConfirmDeletionResponse\x12j\n\x0f\x44iscardDeletion\x12*.bambuflow.admin.v1.DiscardDeletionRequest\x1a+.bambuflow.admin.v1.DiscardDeletionResponseB\xde\x01\n\x16\x63om.bambuflow.admin.v1B\x13\x43onnectorAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.admin.v1.connector_admin_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\026com.bambuflow.admin.v1B\023ConnectorAdminProtoP\001ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\242\002\003BAX\252\002\022Bambuflow.Admin.V1\312\002\022Bambuflow\\Admin\\V1\342\002\036Bambuflow\\Admin\\V1\\GPBMetadata\352\002\024Bambuflow::Admin::V1'
+  _globals['DESCRIPTOR']._serialized_options = b'\n\026com.bambuflow.admin.v1B\023ConnectorAdminProtoP\001ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\242\002\003BAX\252\002\022Bambuflow.Admin.V1\312\002\022Bambuflow\\Admin\\V1\342\002\036Bambuflow\\Admin\\V1\\GPBMetadata\352\002\024Bambuflow::Admin::V1'
   _globals['_SYNCRUN']._serialized_start=98
-  _globals['_SYNCRUN']._serialized_end=529
-  _globals['_PAUSE']._serialized_start=531
-  _globals['_PAUSE']._serialized_end=648
-  _globals['_GETSYNCSTATUSREQUEST']._serialized_start=650
-  _globals['_GETSYNCSTATUSREQUEST']._serialized_end=701
-  _globals['_GETSYNCSTATUSRESPONSE']._serialized_start=704
-  _globals['_GETSYNCSTATUSRESPONSE']._serialized_end=970
-  _globals['_PAUSESOURCEREQUEST']._serialized_start=972
-  _globals['_PAUSESOURCEREQUEST']._serialized_end=1045
-  _globals['_PAUSESOURCERESPONSE']._serialized_start=1047
-  _globals['_PAUSESOURCERESPONSE']._serialized_end=1143
-  _globals['_RESUMESOURCEREQUEST']._serialized_start=1145
-  _globals['_RESUMESOURCEREQUEST']._serialized_end=1195
-  _globals['_RESUMESOURCERESPONSE']._serialized_start=1197
-  _globals['_RESUMESOURCERESPONSE']._serialized_end=1245
-  _globals['_DELETIONHOLD']._serialized_start=1248
-  _globals['_DELETIONHOLD']._serialized_end=1680
-  _globals['_LISTPENDINGDELETIONSREQUEST']._serialized_start=1682
-  _globals['_LISTPENDINGDELETIONSREQUEST']._serialized_end=1740
-  _globals['_LISTPENDINGDELETIONSRESPONSE']._serialized_start=1742
-  _globals['_LISTPENDINGDELETIONSRESPONSE']._serialized_end=1828
-  _globals['_CONFIRMDELETIONREQUEST']._serialized_start=1830
-  _globals['_CONFIRMDELETIONREQUEST']._serialized_end=1932
-  _globals['_CONFIRMDELETIONRESPONSE']._serialized_start=1934
-  _globals['_CONFIRMDELETIONRESPONSE']._serialized_end=2013
-  _globals['_DISCARDDELETIONREQUEST']._serialized_start=2015
-  _globals['_DISCARDDELETIONREQUEST']._serialized_end=2117
-  _globals['_DISCARDDELETIONRESPONSE']._serialized_start=2119
-  _globals['_DISCARDDELETIONRESPONSE']._serialized_end=2198
-  _globals['_CONNECTORADMINSERVICE']._serialized_start=2201
-  _globals['_CONNECTORADMINSERVICE']._serialized_end=2860
+  _globals['_SYNCRUN']._serialized_end=668
+  _globals['_RECONCILIATION']._serialized_start=671
+  _globals['_RECONCILIATION']._serialized_end=895
+  _globals['_PAUSE']._serialized_start=897
+  _globals['_PAUSE']._serialized_end=1014
+  _globals['_GETSYNCSTATUSREQUEST']._serialized_start=1016
+  _globals['_GETSYNCSTATUSREQUEST']._serialized_end=1067
+  _globals['_GETSYNCSTATUSRESPONSE']._serialized_start=1070
+  _globals['_GETSYNCSTATUSRESPONSE']._serialized_end=1585
+  _globals['_PAUSESOURCEREQUEST']._serialized_start=1587
+  _globals['_PAUSESOURCEREQUEST']._serialized_end=1660
+  _globals['_PAUSESOURCERESPONSE']._serialized_start=1662
+  _globals['_PAUSESOURCERESPONSE']._serialized_end=1758
+  _globals['_SYNCNOWREQUEST']._serialized_start=1760
+  _globals['_SYNCNOWREQUEST']._serialized_end=1829
+  _globals['_SYNCNOWRESPONSE']._serialized_start=1831
+  _globals['_SYNCNOWRESPONSE']._serialized_end=1929
+  _globals['_RESUMESOURCEREQUEST']._serialized_start=1931
+  _globals['_RESUMESOURCEREQUEST']._serialized_end=1981
+  _globals['_RESUMESOURCERESPONSE']._serialized_start=1983
+  _globals['_RESUMESOURCERESPONSE']._serialized_end=2031
+  _globals['_DELETIONHOLD']._serialized_start=2034
+  _globals['_DELETIONHOLD']._serialized_end=2466
+  _globals['_LISTPENDINGDELETIONSREQUEST']._serialized_start=2468
+  _globals['_LISTPENDINGDELETIONSREQUEST']._serialized_end=2526
+  _globals['_LISTPENDINGDELETIONSRESPONSE']._serialized_start=2528
+  _globals['_LISTPENDINGDELETIONSRESPONSE']._serialized_end=2614
+  _globals['_CONFIRMDELETIONREQUEST']._serialized_start=2616
+  _globals['_CONFIRMDELETIONREQUEST']._serialized_end=2718
+  _globals['_CONFIRMDELETIONRESPONSE']._serialized_start=2720
+  _globals['_CONFIRMDELETIONRESPONSE']._serialized_end=2799
+  _globals['_DISCARDDELETIONREQUEST']._serialized_start=2801
+  _globals['_DISCARDDELETIONREQUEST']._serialized_end=2903
+  _globals['_DISCARDDELETIONRESPONSE']._serialized_start=2905
+  _globals['_DISCARDDELETIONRESPONSE']._serialized_end=2984
+  _globals['_CONNECTORADMINSERVICE']._serialized_start=2987
+  _globals['_CONNECTORADMINSERVICE']._serialized_end=3730
 # @@protoc_insertion_point(module_scope)

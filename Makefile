@@ -26,8 +26,9 @@ export COMPOSE_PARALLEL_LIMIT
 BF_TOOLBOX_TAG ?= dev
 export BF_TOOLBOX_TAG
 TOOLBOX := docker compose -f deploy/compose/toolbox.yaml
+export BF_NPM_REGISTRY
 
-DELEGATED := check lint lint-go lint-py lint-ci test test-go test-py deps-check terms-check helm-check \
+DELEGATED := check lint lint-go lint-py lint-ci lint-ts test test-go test-py test-ts deps-check terms-check helm-check \
 	contracts-lint contracts-breaking contracts-openapi contracts-fresh
 .PHONY: $(DELEGATED) contracts contracts-gen run fix
 
@@ -40,7 +41,8 @@ contracts: contracts-gen
 	$(TOOLBOX) run --rm --build toolbox make contracts-lint contracts-breaking contracts-openapi BREAKING_REF=$(BREAKING_REF)
 
 contracts-gen:
-	@$(MAKE) --no-print-directory run CMD='make contracts-gen' OUT='contracts/gen/go/bambuflow contracts/gen/python/src/bambuflow'
+	@$(MAKE) --no-print-directory run CMD='make contracts-gen' OUT='contracts/gen/go/bambuflow contracts/gen/python/src/bambuflow contracts/gen/ts'
+
 
 # 在工具容器里更新锁文件并自动修复格式（uv lock、ruff、go mod tidy、gofmt），再把容器里有变动的文件全部拷回。
 # 修复与检查分开：先 make fix 带回结果，再 make check 判断是否通过，不会因检查失败而丢掉修复。
@@ -96,7 +98,7 @@ GO_DIRS    = $(patsubst %/go.mod,%,$(GO_MODULES))
 PY_DIRS    = $(if $(M),$(wildcard $(M)/pyproject.toml),$(wildcard contracts/gen/python/pyproject.toml services/*/pyproject.toml services/*/*/pyproject.toml libs/*/pyproject.toml plugins/*/*/pyproject.toml))
 PY_PATHS   = $(patsubst %/pyproject.toml,%,$(PY_DIRS))
 
-.PHONY: bootstrap check lint lint-go lint-py lint-ci test test-go test-py deps-check terms-check helm-check \
+.PHONY: bootstrap check lint lint-go lint-py lint-ci lint-ts test test-go test-py test-ts console-deps deps-check terms-check helm-check \
 	contracts contracts-gen contracts-lint contracts-breaking contracts-openapi contracts-fresh \
 	fix-local e2e-tests eval-perm-seed eval-perm-tests bench-seed-local
 
@@ -107,7 +109,7 @@ bootstrap:
 # 提交前至少跑这一项
 check: lint test deps-check terms-check helm-check
 
-lint: lint-go lint-py lint-ci
+lint: lint-go lint-py lint-ci lint-ts
 
 lint-go: $(GOLANGCI_LINT)
 	@set -e; for d in $(GO_DIRS); do echo "golangci-lint $$d"; (cd $$d && $(GOLANGCI_LINT) run ./...); done
@@ -121,13 +123,25 @@ lint-py:
 lint-ci: $(ACTIONLINT)
 	$(ACTIONLINT)
 
-test: test-go test-py
+test: test-go test-py test-ts
 
 test-go:
 	@set -e; for d in $(GO_DIRS); do (cd $$d && go test -race ./...); done
 
 test-py:
 	$(if $(PY_PATHS),$(UV_RUN) pytest $(PY_PATHS),@echo "pytest: 暂无 Python 模块")
+
+# console（TypeScript）：依赖按 package-lock.json 装进工具容器的命名卷；M 指定了别的模块时跳过
+TS_DIRS = $(if $(M),$(filter services/console,$(M)),services/console)
+
+console-deps:
+	@for d in $(TS_DIRS); do (cd $$d && npm ci --no-audit --no-fund --loglevel=error); done
+
+lint-ts: console-deps
+	@for d in $(TS_DIRS); do (cd $$d && npm run --silent lint && npm run --silent typecheck && npx prettier --check .); done
+
+test-ts: console-deps
+	@for d in $(TS_DIRS); do (cd $$d && npm test --silent); done
 
 # make fix 在容器里调用：修复后把有变动的文件（相对仓库根目录）列到 /tmp/changed.txt。
 # ruff check --fix 修不掉的问题留给 make check 报告，这里不让它中断，否则修好的部分也带不回去。
@@ -137,6 +151,7 @@ fix-local:
 	-$(UV_RUN) ruff check --fix --quiet .
 	@set -e; for d in $(GO_DIRS); do (cd $$d && go mod tidy); done
 	gofmt -l -w $(GO_DIRS)
+	cd services/console && npm install --no-audit --no-fund --loglevel=error && npx prettier --write --log-level warn . && npx eslint --fix . || true
 	git status --porcelain --untracked-files=all | awk '$$1 != "D" {print $$NF}' > /tmp/changed.txt
 
 # 端到端测试，在 compose 网络里的 e2e 容器中执行（make e2e 调用）
@@ -168,11 +183,19 @@ deps-check:
 
 # Helm chart：生产 values 必须通过 lint 与 schema 校验并能渲染；含测试 realm 与开发口令的反例必须被拒绝。
 HELM_CHART := deploy/helm/bambuflow
+# 离线入库平面的 chart，与在线平面分开部署
+HELM_INGEST_CHART := deploy/helm/bambuflow-ingest
 # 渲染结果再按 Kubernetes 的 schema 校验字段（Vault Secrets Operator 的自定义资源没有公开 schema，跳过）。
+# kubeconform 的 schema 缓存在工具缓存卷里：每次从 GitHub 现拉在远端主机上常因网络失败
+KUBECONFORM_ARGS := -strict -summary -kubernetes-version 1.33.0 -skip VaultConnection,VaultAuth,VaultStaticSecret -cache $(TOOLS_DIR)/kubeconform-cache
 helm-check: $(HELM) $(KUBECONFORM)
+	mkdir -p $(TOOLS_DIR)/kubeconform-cache
 	$(HELM) lint --strict $(HELM_CHART) -f $(HELM_CHART)/values-prod.yaml
 	$(HELM) template ci $(HELM_CHART) -f $(HELM_CHART)/values-prod.yaml | \
-		$(KUBECONFORM) -strict -summary -kubernetes-version 1.33.0 -skip VaultConnection,VaultAuth,VaultStaticSecret
+		$(KUBECONFORM) $(KUBECONFORM_ARGS)
+	$(HELM) lint --strict $(HELM_INGEST_CHART) -f $(HELM_INGEST_CHART)/values-prod.yaml
+	$(HELM) template ci $(HELM_INGEST_CHART) -f $(HELM_INGEST_CHART)/values-prod.yaml | \
+		$(KUBECONFORM) $(KUBECONFORM_ARGS)
 	@out=$$($(HELM) lint --strict $(HELM_CHART) -f deploy/helm/testdata/values-test-realm.yaml 2>&1) && \
 		{ echo "$$out"; echo "含测试 realm 的 values 应当校验失败"; exit 1; } || \
 		for f in /gateway/platformIssuer /vault/role /orchestrator/llmUrl /orchestrator/llmModel /events/redisAddr; do \
@@ -186,9 +209,12 @@ terms-check:
 contracts: contracts-gen contracts-lint contracts-breaking contracts-openapi
 
 # 不用 buf 的 --clean：它会删掉整个输出目录，连同 gen/go/go.mod、gen/python/pyproject.toml。
-contracts-gen: $(BUF)
-	rm -rf contracts/gen/go/bambuflow contracts/gen/python/src/bambuflow
+contracts-gen: $(BUF) console-deps
+	rm -rf contracts/gen/go/bambuflow contracts/gen/python/src/bambuflow contracts/gen/ts
 	cd contracts && $(BUF) generate
+	@# console 用的对外接口类型（OpenAPI → TypeScript）
+	mkdir -p contracts/gen/ts
+	cd services/console && npx openapi-typescript ../../contracts/openapi/v1/openapi.yaml -o ../../contracts/gen/ts/v1.d.ts
 
 contracts-lint: $(BUF)
 	cd contracts && $(BUF) lint && $(BUF) format --diff --exit-code
@@ -220,7 +246,9 @@ BF_LLM_API_KEY ?=
 export BF_LLM_URL BF_LLM_MODEL BF_LLM_API_KEY BF_LLM_EXTRA_BODY BF_NLI_DEFAULT BF_K3S_DOCKER_MIRROR
 # 软件源镜像（构建镜像时用）：默认官方源，网络访问不了官方源时在 .env.local 里改
 BF_GOPROXY := $(or $(BF_GOPROXY),https://proxy.golang.org,direct)
-export BF_GOPROXY BF_PIP_INDEX_URL BF_DEBIAN_MIRROR
+export BF_GOPROXY BF_PIP_INDEX_URL BF_DEBIAN_MIRROR BF_NPM_REGISTRY
+# 本机端口（.env.local 里可改）：本机 Docker 演示时 BF_KC_PORT=8080，浏览器才能按令牌签发方 http://keycloak:8080 登录
+export BF_KC_PORT BF_CONSOLE_PORT
 # 逗号分隔，如 PROFILE=core,ingest
 PROFILE ?= core
 UP_WAIT ?= 300
@@ -239,7 +267,7 @@ endif
 COMPOSE_PROFILES_ARGS = $(foreach p,$(subst $(comma), ,$(PROFILE)),--profile $(p))
 comma := ,
 
-.PHONY: up down e2e eval-perm eval bench-seed eval-retrieval tunnel ingest helm-smoke helm-smoke-down
+.PHONY: up down e2e eval-perm eval bench-seed eval-retrieval tunnel ingest reconcile demo helm-smoke helm-smoke-down
 
 up:
 	$(if $(filter models,$(subst $(comma), ,$(PROFILE))),@$(STACK_DOCKER) volume create bambuflow-model-cache >/dev/null)
@@ -263,6 +291,19 @@ ingest:
 	$(COMPOSE) --profile core --profile ingest --profile ingest-job run --rm connectors-dbschema
 	$(COMPOSE) --profile core --profile ingest --profile ingest-job run --rm --build processing
 	$(COMPOSE) --profile core --profile ingest --profile ingest-job run --rm indexing-publish
+
+# 每日对账（connectors reconcile-*，部署时每天一次）：与已入库的文档比对后同步一轮，结果在 console 的数据源同步页
+reconcile:
+	$(COMPOSE) --profile core --profile ingest --profile ingest-job run --rm connectors reconcile-wiki
+	$(COMPOSE) --profile core --profile ingest --profile ingest-job run --rm connectors-fileshare reconcile-fileshare
+
+# 演示环境：起全部服务、入库样例数据、跑一次对账，然后按 docs/demo.md 在浏览器里演示
+demo:
+	$(MAKE) --no-print-directory up PROFILE=core,ingest
+	$(MAKE) --no-print-directory ingest
+	$(MAKE) --no-print-directory reconcile
+	@echo "演示环境已就绪：console http://localhost:$(or $(BF_CONSOLE_PORT),27300)（远端 Docker 先 make tunnel）。"
+	@echo "浏览器所在机器的 hosts 里要有 \"127.0.0.1 keycloak\"，账号与演示路线见 docs/demo.md。"
 
 e2e:
 	@$(STACK_DOCKER) volume create bambuflow-toolbox_uv-cache >/dev/null
@@ -340,5 +381,5 @@ tunnel:
 	@host=$$(docker context inspect $(or $(BF_STACK_CONTEXT),default) --format '{{.Endpoints.docker.Host}}'); \
 	case "$$host" in ssh://*) ;; *) echo "当前 Docker 上下文不是 ssh 远端，不需要隧道"; exit 0;; esac; \
 	hp=$${host#ssh://}; port=$${hp##*:}; [ "$$port" = "$$hp" ] && port=22; hp=$${hp%:*}; \
-	echo "Keycloak http://keycloak:8080（本机 8080） · Jaeger http://localhost:27686 · Vault http://localhost:27200 · PG localhost:27432 · Redis localhost:27379 · S3 http://localhost:27900 · gateway http://localhost:27088"; \
-	ssh -N -p $$port -L 8080:127.0.0.1:27080 -L 27686:127.0.0.1:27686 -L 27200:127.0.0.1:27200 -L 27432:127.0.0.1:27432 -L 27379:127.0.0.1:27379 -L 27900:127.0.0.1:27900 -L 27088:127.0.0.1:27088 $$hp
+	echo "Keycloak http://keycloak:8080（本机 8080） · Jaeger http://localhost:27686 · Vault http://localhost:27200 · PG localhost:27432 · Redis localhost:27379 · S3 http://localhost:27900 · gateway http://localhost:27088 · console http://localhost:27300"; \
+	ssh -N -p $$port -L 8080:127.0.0.1:27080 -L 27686:127.0.0.1:27686 -L 27200:127.0.0.1:27200 -L 27432:127.0.0.1:27432 -L 27379:127.0.0.1:27379 -L 27900:127.0.0.1:27900 -L 27088:127.0.0.1:27088 -L 27300:127.0.0.1:27300 $$hp

@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
 )
 
 // 图召回的参数（详设 6.2 graph 插件）
@@ -143,6 +143,7 @@ func (s *Server) walk(ctx context.Context, version string, f Filter, linked []En
 	})
 	out := make([]Candidate, 0, min(len(hits), graphK))
 	for _, h := range hits[:min(len(hits), graphK)] {
+		h.RouteScore = h.score
 		out = append(out, h.Candidate)
 	}
 	return out, nil

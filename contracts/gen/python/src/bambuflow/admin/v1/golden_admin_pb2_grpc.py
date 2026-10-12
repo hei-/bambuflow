@@ -35,6 +35,16 @@ class GoldenSetAdminServiceStub:
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ReviewCandidateRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ReviewCandidateResponse.FromString,
                 _registered_method=True)
+        self.ListFeedbackCases = channel.unary_unary(
+                '/bambuflow.admin.v1.GoldenSetAdminService/ListFeedbackCases',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ListFeedbackCasesRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ListFeedbackCasesResponse.FromString,
+                _registered_method=True)
+        self.ResolveFeedbackCase = channel.unary_unary(
+                '/bambuflow.admin.v1.GoldenSetAdminService/ResolveFeedbackCase',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ResolveFeedbackCaseRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ResolveFeedbackCaseResponse.FromString,
+                _registered_method=True)
 
 
 class GoldenSetAdminServiceServicer:
@@ -64,6 +74,20 @@ class GoldenSetAdminServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListFeedbackCases(self, request, context):
+        """负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：用户标为“有误”或“引用不对”的回答，每天由在线抽样任务登记，
+        只有掩码后的问题、反馈与当时引用的文档，不含用户身份。业务专家据此出候选题（origin=feedback）后标为已转题，或驳回
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResolveFeedbackCase(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_GoldenSetAdminServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -81,6 +105,16 @@ def add_GoldenSetAdminServiceServicer_to_server(servicer, server):
                     servicer.ReviewCandidate,
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ReviewCandidateRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ReviewCandidateResponse.SerializeToString,
+            ),
+            'ListFeedbackCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListFeedbackCases,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ListFeedbackCasesRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ListFeedbackCasesResponse.SerializeToString,
+            ),
+            'ResolveFeedbackCase': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveFeedbackCase,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ResolveFeedbackCaseRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ResolveFeedbackCaseResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -170,6 +204,60 @@ class GoldenSetAdminService:
             '/bambuflow.admin.v1.GoldenSetAdminService/ReviewCandidate',
             bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ReviewCandidateRequest.SerializeToString,
             bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ReviewCandidateResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListFeedbackCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.GoldenSetAdminService/ListFeedbackCases',
+            bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ListFeedbackCasesRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ListFeedbackCasesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolveFeedbackCase(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.GoldenSetAdminService/ResolveFeedbackCase',
+            bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ResolveFeedbackCaseRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_golden__admin__pb2.ResolveFeedbackCaseResponse.FromString,
             options,
             channel_credentials,
             insecure,

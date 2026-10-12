@@ -19,12 +19,17 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SourceAdminService_RegisterSource_FullMethodName = "/bambuflow.admin.v1.SourceAdminService/RegisterSource"
-	SourceAdminService_ApproveSource_FullMethodName  = "/bambuflow.admin.v1.SourceAdminService/ApproveSource"
-	SourceAdminService_RevokeSource_FullMethodName   = "/bambuflow.admin.v1.SourceAdminService/RevokeSource"
-	SourceAdminService_ListGrants_FullMethodName     = "/bambuflow.admin.v1.SourceAdminService/ListGrants"
-	SourceAdminService_CreateGrant_FullMethodName    = "/bambuflow.admin.v1.SourceAdminService/CreateGrant"
-	SourceAdminService_DeleteGrant_FullMethodName    = "/bambuflow.admin.v1.SourceAdminService/DeleteGrant"
+	SourceAdminService_RegisterSource_FullMethodName          = "/bambuflow.admin.v1.SourceAdminService/RegisterSource"
+	SourceAdminService_ListSources_FullMethodName             = "/bambuflow.admin.v1.SourceAdminService/ListSources"
+	SourceAdminService_ApproveSource_FullMethodName           = "/bambuflow.admin.v1.SourceAdminService/ApproveSource"
+	SourceAdminService_RevokeSource_FullMethodName            = "/bambuflow.admin.v1.SourceAdminService/RevokeSource"
+	SourceAdminService_ListGrants_FullMethodName              = "/bambuflow.admin.v1.SourceAdminService/ListGrants"
+	SourceAdminService_CreateGrant_FullMethodName             = "/bambuflow.admin.v1.SourceAdminService/CreateGrant"
+	SourceAdminService_DeleteGrant_FullMethodName             = "/bambuflow.admin.v1.SourceAdminService/DeleteGrant"
+	SourceAdminService_ApplyGrant_FullMethodName              = "/bambuflow.admin.v1.SourceAdminService/ApplyGrant"
+	SourceAdminService_ListGrantApplications_FullMethodName   = "/bambuflow.admin.v1.SourceAdminService/ListGrantApplications"
+	SourceAdminService_ApproveGrantApplication_FullMethodName = "/bambuflow.admin.v1.SourceAdminService/ApproveGrantApplication"
+	SourceAdminService_RejectGrantApplication_FullMethodName  = "/bambuflow.admin.v1.SourceAdminService/RejectGrantApplication"
 )
 
 // SourceAdminServiceClient is the client API for SourceAdminService service.
@@ -37,7 +42,10 @@ const (
 type SourceAdminServiceClient interface {
 	// 注册数据源（平台管理员），状态为待审批；数据源 ID（src_）由 governance 生成。
 	RegisterSource(ctx context.Context, in *RegisterSourceRequest, opts ...grpc.CallOption) (*RegisterSourceResponse, error)
-	// 数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。
+	// 列出数据源：平台管理员、平台运维、信息安全看全部，数据属主只看本部门，租户负责人只看已生效的（申请授权时选）。
+	ListSources(ctx context.Context, in *ListSourcesRequest, opts ...grpc.CallOption) (*ListSourcesResponse, error)
+	// 审批：本部门的数据属主审批；受限级数据源另需信息安全审批（governance 详设 6.2），两项都批过才生效。
+	// 注册人不能自批，同一人不能既做属主审批又做信息安全审批；记录审批人、时间与依据。
 	ApproveSource(ctx context.Context, in *ApproveSourceRequest, opts ...grpc.CallOption) (*ApproveSourceResponse, error)
 	// 撤销（只有本部门的数据属主）：先写按数据源的紧急拒绝规则，在线立即不可见，再发出 source.revoked 事件。
 	RevokeSource(ctx context.Context, in *RevokeSourceRequest, opts ...grpc.CallOption) (*RevokeSourceResponse, error)
@@ -46,6 +54,14 @@ type SourceAdminServiceClient interface {
 	CreateGrant(ctx context.Context, in *CreateGrantRequest, opts ...grpc.CallOption) (*CreateGrantResponse, error)
 	// 取消授权（本部门的数据属主），1 分钟内在检索生效。
 	DeleteGrant(ctx context.Context, in *DeleteGrantRequest, opts ...grpc.CallOption) (*DeleteGrantResponse, error)
+	// 授权申请（governance 详设 6.2、9.1）：租户负责人为自己负责的租户申请某个数据源，数据源所属部门的数据属主审批，
+	// 审批通过即写入授权；申请人不能审批自己的申请。同一数据源与租户同时只有一个待审批的申请，7 天未审批自动过期。
+	ApplyGrant(ctx context.Context, in *ApplyGrantRequest, opts ...grpc.CallOption) (*ApplyGrantResponse, error)
+	// 租户负责人看自己负责的租户的申请，数据属主看本部门数据源收到的申请。
+	ListGrantApplications(ctx context.Context, in *ListGrantApplicationsRequest, opts ...grpc.CallOption) (*ListGrantApplicationsResponse, error)
+	ApproveGrantApplication(ctx context.Context, in *ApproveGrantApplicationRequest, opts ...grpc.CallOption) (*ApproveGrantApplicationResponse, error)
+	// 驳回（本部门的数据属主）或撤回（申请人本人）。
+	RejectGrantApplication(ctx context.Context, in *RejectGrantApplicationRequest, opts ...grpc.CallOption) (*RejectGrantApplicationResponse, error)
 }
 
 type sourceAdminServiceClient struct {
@@ -60,6 +76,16 @@ func (c *sourceAdminServiceClient) RegisterSource(ctx context.Context, in *Regis
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RegisterSourceResponse)
 	err := c.cc.Invoke(ctx, SourceAdminService_RegisterSource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sourceAdminServiceClient) ListSources(ctx context.Context, in *ListSourcesRequest, opts ...grpc.CallOption) (*ListSourcesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSourcesResponse)
+	err := c.cc.Invoke(ctx, SourceAdminService_ListSources_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +142,46 @@ func (c *sourceAdminServiceClient) DeleteGrant(ctx context.Context, in *DeleteGr
 	return out, nil
 }
 
+func (c *sourceAdminServiceClient) ApplyGrant(ctx context.Context, in *ApplyGrantRequest, opts ...grpc.CallOption) (*ApplyGrantResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApplyGrantResponse)
+	err := c.cc.Invoke(ctx, SourceAdminService_ApplyGrant_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sourceAdminServiceClient) ListGrantApplications(ctx context.Context, in *ListGrantApplicationsRequest, opts ...grpc.CallOption) (*ListGrantApplicationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListGrantApplicationsResponse)
+	err := c.cc.Invoke(ctx, SourceAdminService_ListGrantApplications_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sourceAdminServiceClient) ApproveGrantApplication(ctx context.Context, in *ApproveGrantApplicationRequest, opts ...grpc.CallOption) (*ApproveGrantApplicationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApproveGrantApplicationResponse)
+	err := c.cc.Invoke(ctx, SourceAdminService_ApproveGrantApplication_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sourceAdminServiceClient) RejectGrantApplication(ctx context.Context, in *RejectGrantApplicationRequest, opts ...grpc.CallOption) (*RejectGrantApplicationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RejectGrantApplicationResponse)
+	err := c.cc.Invoke(ctx, SourceAdminService_RejectGrantApplication_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SourceAdminServiceServer is the server API for SourceAdminService service.
 // All implementations must embed UnimplementedSourceAdminServiceServer
 // for forward compatibility.
@@ -126,7 +192,10 @@ func (c *sourceAdminServiceClient) DeleteGrant(ctx context.Context, in *DeleteGr
 type SourceAdminServiceServer interface {
 	// 注册数据源（平台管理员），状态为待审批；数据源 ID（src_）由 governance 生成。
 	RegisterSource(context.Context, *RegisterSourceRequest) (*RegisterSourceResponse, error)
-	// 数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。
+	// 列出数据源：平台管理员、平台运维、信息安全看全部，数据属主只看本部门，租户负责人只看已生效的（申请授权时选）。
+	ListSources(context.Context, *ListSourcesRequest) (*ListSourcesResponse, error)
+	// 审批：本部门的数据属主审批；受限级数据源另需信息安全审批（governance 详设 6.2），两项都批过才生效。
+	// 注册人不能自批，同一人不能既做属主审批又做信息安全审批；记录审批人、时间与依据。
 	ApproveSource(context.Context, *ApproveSourceRequest) (*ApproveSourceResponse, error)
 	// 撤销（只有本部门的数据属主）：先写按数据源的紧急拒绝规则，在线立即不可见，再发出 source.revoked 事件。
 	RevokeSource(context.Context, *RevokeSourceRequest) (*RevokeSourceResponse, error)
@@ -135,6 +204,14 @@ type SourceAdminServiceServer interface {
 	CreateGrant(context.Context, *CreateGrantRequest) (*CreateGrantResponse, error)
 	// 取消授权（本部门的数据属主），1 分钟内在检索生效。
 	DeleteGrant(context.Context, *DeleteGrantRequest) (*DeleteGrantResponse, error)
+	// 授权申请（governance 详设 6.2、9.1）：租户负责人为自己负责的租户申请某个数据源，数据源所属部门的数据属主审批，
+	// 审批通过即写入授权；申请人不能审批自己的申请。同一数据源与租户同时只有一个待审批的申请，7 天未审批自动过期。
+	ApplyGrant(context.Context, *ApplyGrantRequest) (*ApplyGrantResponse, error)
+	// 租户负责人看自己负责的租户的申请，数据属主看本部门数据源收到的申请。
+	ListGrantApplications(context.Context, *ListGrantApplicationsRequest) (*ListGrantApplicationsResponse, error)
+	ApproveGrantApplication(context.Context, *ApproveGrantApplicationRequest) (*ApproveGrantApplicationResponse, error)
+	// 驳回（本部门的数据属主）或撤回（申请人本人）。
+	RejectGrantApplication(context.Context, *RejectGrantApplicationRequest) (*RejectGrantApplicationResponse, error)
 	mustEmbedUnimplementedSourceAdminServiceServer()
 }
 
@@ -147,6 +224,9 @@ type UnimplementedSourceAdminServiceServer struct{}
 
 func (UnimplementedSourceAdminServiceServer) RegisterSource(context.Context, *RegisterSourceRequest) (*RegisterSourceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterSource not implemented")
+}
+func (UnimplementedSourceAdminServiceServer) ListSources(context.Context, *ListSourcesRequest) (*ListSourcesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSources not implemented")
 }
 func (UnimplementedSourceAdminServiceServer) ApproveSource(context.Context, *ApproveSourceRequest) (*ApproveSourceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ApproveSource not implemented")
@@ -162,6 +242,18 @@ func (UnimplementedSourceAdminServiceServer) CreateGrant(context.Context, *Creat
 }
 func (UnimplementedSourceAdminServiceServer) DeleteGrant(context.Context, *DeleteGrantRequest) (*DeleteGrantResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteGrant not implemented")
+}
+func (UnimplementedSourceAdminServiceServer) ApplyGrant(context.Context, *ApplyGrantRequest) (*ApplyGrantResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyGrant not implemented")
+}
+func (UnimplementedSourceAdminServiceServer) ListGrantApplications(context.Context, *ListGrantApplicationsRequest) (*ListGrantApplicationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListGrantApplications not implemented")
+}
+func (UnimplementedSourceAdminServiceServer) ApproveGrantApplication(context.Context, *ApproveGrantApplicationRequest) (*ApproveGrantApplicationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApproveGrantApplication not implemented")
+}
+func (UnimplementedSourceAdminServiceServer) RejectGrantApplication(context.Context, *RejectGrantApplicationRequest) (*RejectGrantApplicationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RejectGrantApplication not implemented")
 }
 func (UnimplementedSourceAdminServiceServer) mustEmbedUnimplementedSourceAdminServiceServer() {}
 func (UnimplementedSourceAdminServiceServer) testEmbeddedByValue()                            {}
@@ -198,6 +290,24 @@ func _SourceAdminService_RegisterSource_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SourceAdminServiceServer).RegisterSource(ctx, req.(*RegisterSourceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SourceAdminService_ListSources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSourcesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceAdminServiceServer).ListSources(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceAdminService_ListSources_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceAdminServiceServer).ListSources(ctx, req.(*ListSourcesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -292,6 +402,78 @@ func _SourceAdminService_DeleteGrant_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SourceAdminService_ApplyGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyGrantRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceAdminServiceServer).ApplyGrant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceAdminService_ApplyGrant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceAdminServiceServer).ApplyGrant(ctx, req.(*ApplyGrantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SourceAdminService_ListGrantApplications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListGrantApplicationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceAdminServiceServer).ListGrantApplications(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceAdminService_ListGrantApplications_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceAdminServiceServer).ListGrantApplications(ctx, req.(*ListGrantApplicationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SourceAdminService_ApproveGrantApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApproveGrantApplicationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceAdminServiceServer).ApproveGrantApplication(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceAdminService_ApproveGrantApplication_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceAdminServiceServer).ApproveGrantApplication(ctx, req.(*ApproveGrantApplicationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SourceAdminService_RejectGrantApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RejectGrantApplicationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceAdminServiceServer).RejectGrantApplication(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceAdminService_RejectGrantApplication_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceAdminServiceServer).RejectGrantApplication(ctx, req.(*RejectGrantApplicationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SourceAdminService_ServiceDesc is the grpc.ServiceDesc for SourceAdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -302,6 +484,10 @@ var SourceAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterSource",
 			Handler:    _SourceAdminService_RegisterSource_Handler,
+		},
+		{
+			MethodName: "ListSources",
+			Handler:    _SourceAdminService_ListSources_Handler,
 		},
 		{
 			MethodName: "ApproveSource",
@@ -322,6 +508,22 @@ var SourceAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteGrant",
 			Handler:    _SourceAdminService_DeleteGrant_Handler,
+		},
+		{
+			MethodName: "ApplyGrant",
+			Handler:    _SourceAdminService_ApplyGrant_Handler,
+		},
+		{
+			MethodName: "ListGrantApplications",
+			Handler:    _SourceAdminService_ListGrantApplications_Handler,
+		},
+		{
+			MethodName: "ApproveGrantApplication",
+			Handler:    _SourceAdminService_ApproveGrantApplication_Handler,
+		},
+		{
+			MethodName: "RejectGrantApplication",
+			Handler:    _SourceAdminService_RejectGrantApplication_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -5,19 +5,25 @@ olga、oscar 平台运维；ivan 信息安全；dana 信贷部数据属主；
 rick 风险管理部数据属主；paul、pete 平台管理员；audra 审计岗。
 """
 
+import time
 import uuid
-from functools import cache
 from typing import Any
 
 import httpx
 
 from .test_gateway import GATEWAY, token
 
+# 审批类操作要求 10 分钟内登录过（gateway 的加强认证，BF_STEP_UP_MAX_AGE），令牌用 5 分钟就重新登录
+TOKEN_REUSE_SECONDS = 300
+_tokens: dict[str, tuple[float, str]] = {}
 
-@cache
+
 def admin_token(user: str) -> str:
-    # 平台令牌 15 分钟有效，单个用例文件内足够；跨文件各自登录
-    return token(user)
+    cached = _tokens.get(user)
+    if cached is None or time.monotonic() - cached[0] > TOKEN_REUSE_SECONDS:
+        cached = (time.monotonic(), token(user))
+        _tokens[user] = cached
+    return cached[1]
 
 
 def call(

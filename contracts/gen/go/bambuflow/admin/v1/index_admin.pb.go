@@ -802,8 +802,8 @@ const file_bambuflow_admin_v1_index_admin_proto_rawDesc = "" +
 	"\x0fExpireDocuments\x12*.bambuflow.admin.v1.ExpireDocumentsRequest\x1a+.bambuflow.admin.v1.ExpireDocumentsResponse\x12a\n" +
 	"\fPurgeDeleted\x12'.bambuflow.admin.v1.PurgeDeletedRequest\x1a(.bambuflow.admin.v1.PurgeDeletedResponse\x12[\n" +
 	"\n" +
-	"RemapTerms\x12%.bambuflow.admin.v1.RemapTermsRequest\x1a&.bambuflow.admin.v1.RemapTermsResponseB\xde\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x0fIndexAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"RemapTerms\x12%.bambuflow.admin.v1.RemapTermsRequest\x1a&.bambuflow.admin.v1.RemapTermsResponseB\xda\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x0fIndexAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_index_admin_proto_rawDescOnce sync.Once

@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
 )
 
 // fakeVersions 模拟 indexing：同一版本第二次申请返回已有的操作；复核总是成功（自批由 indexing 判断）。

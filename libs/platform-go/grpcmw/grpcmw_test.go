@@ -17,10 +17,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
 )
 
 // 编译期确认真实的 principal.Verifier 满足接口。

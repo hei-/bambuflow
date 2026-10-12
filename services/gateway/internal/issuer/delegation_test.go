@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
 )
 
 func newIssuer(t *testing.T) *Issuer {
@@ -78,7 +78,9 @@ func TestDelegationLifetimeCapped(t *testing.T) {
 
 type staticKey struct{ i *Issuer }
 
-func (k staticKey) Key(context.Context, string) (any, error) { return &k.i.key.PublicKey, nil }
+func (k staticKey) Key(context.Context, string) (any, error) {
+	return &k.i.keys.Load().signing.priv.PublicKey, nil
+}
 
 // 委托和 Principal 用同一把密钥签名，但受众不同：下游不能把委托当成 Principal 接受。
 func TestDelegationIsNotAPrincipal(t *testing.T) {

@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from collections.abc import AsyncGenerator, Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 from opentelemetry import trace
 
+from bambuflow.common.v1 import types_pb2
 from bambuflow_orchestrator.circuit import Breaker
 
 # 采样参数（orchestrator 详设 8.3）
@@ -52,6 +53,57 @@ class Usage:
     estimated: bool = False
 
 
+class ModelNotAllowedError(LLMUnavailableError):
+    """这次调用的输入里有某个密级的内容，部署里没有允许处理它的模型（总体设计 8.6）：
+    不调用，按模型不可用处理。"""
+
+
+@dataclass
+class Router:
+    """按输入里的最高密级选模型（总体设计 8.6，orchestrator 详设 8.1）。
+
+    - 受限级只交给受限级专用实例（restricted），没配就不调用；
+    - 内部、机密级只交给私有模型：默认模型是外部模型（external）时不调用；
+    - 公开级交给默认模型（外部模型也可以；设计里“外部模型需租户单独开启”还没有租户级开关，
+      由部署方声明默认模型是外部模型即表示接受）。
+    不调用时由调用方按模型不可用降级（回答只返回证据），并记告警日志。"""
+
+    default: ChatClient
+    external: bool = False
+    restricted: ChatClient | None = None
+    # 与默认模型同一网关、可由 routing 选用的其他模型（BF_LLM_ALT_MODELS，按模型名）。
+    # 与默认模型同属私有或外部（external）
+    alternatives: Mapping[str, ChatClient] = field(default_factory=dict)
+
+    @property
+    def model(self) -> str:
+        return self.default.model
+
+    def choose(self, level: int, model: str = "") -> ChatClient | None:
+        """model 是 routing 指定的生成模型（详设 12.3、12.4），空为默认模型；受限级不受它影响。
+        不在部署允许的模型里时不调用：评测门禁据此判不通过，不会把没配的模型发布出去。"""
+        if level >= types_pb2.CLASSIFICATION_RESTRICTED:
+            return self.restricted
+        client = self.default if model in ("", self.default.model) else self.alternatives.get(model)
+        if client is None or level == types_pb2.CLASSIFICATION_PUBLIC:
+            return client
+        # 内部、机密；未标密级的按内部处理
+        return None if self.external else client
+
+
+class RefusedGeneration:
+    """不允许调用模型时的“生成”：读取即抛 ModelNotAllowedError，调用方沿用模型不可用的降级路径。"""
+
+    def __init__(self, level: int) -> None:
+        self.model = ""
+        self.usage = Usage()
+        self._level = level
+
+    async def __aiter__(self) -> AsyncGenerator[str, None]:
+        raise ModelNotAllowedError(f"没有允许处理密级 {self._level} 内容的模型")
+        yield ""  # 让这个函数成为异步生成器
+
+
 class ChatClient:
     def __init__(
         self,
@@ -63,6 +115,9 @@ class ChatClient:
     ) -> None:
         self._url = base_url.rstrip("/") + "/v1/chat/completions"
         self._model = model
+        # 请求里的模型名（查询改写的缓存键用）；实际使用的模型以网关返回为准，
+        # 见 ChatGeneration.model
+        self.model = model
         self._client = client
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         # 厂商专有的请求参数（如关闭推理模型的思考过程），由部署配置给出，不写进代码（ADR-13）

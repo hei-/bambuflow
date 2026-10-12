@@ -17,10 +17,12 @@ type Store interface {
 // Shipper 定期把当前段封存并送往 Store。送达后才删本地段，失败的段留在本地下一轮重试，
 // 所以本地卷就是持久队列：gateway 重启或存储不可用都不丢记录。
 type Shipper struct {
-	W      *Writer
-	Store  Store
-	Prefix string // 对象键前缀，区分 gateway 实例
-	Log    *slog.Logger
+	W     *Writer
+	Store Store
+	// Instance 区分 gateway 实例。段的对象键是 gateway/<送达日期>/<实例>/<段名>（UTC 日期）：
+	// governance 的审计索引任务只列最近两天的日期目录（governance internal/auditquery）
+	Instance string
+	Log      *slog.Logger
 }
 
 // Ship 执行一轮：封存当前段，按时间顺序上传所有封存段；返回送出的段数。遇到第一个失败就停，保持顺序。
@@ -37,7 +39,8 @@ func (s *Shipper) Ship(ctx context.Context, now time.Time) (int, error) {
 		if err != nil {
 			return i, err
 		}
-		if err := s.Store.Put(ctx, s.Prefix+filepath.Base(seg), body); err != nil {
+		key := fmt.Sprintf("gateway/%s/%s/%s", now.UTC().Format("2006/01/02"), s.Instance, filepath.Base(seg))
+		if err := s.Store.Put(ctx, key, body); err != nil {
 			return i, fmt.Errorf("上传审计段 %s: %w", filepath.Base(seg), err)
 		}
 		if err := os.Remove(seg); err != nil {

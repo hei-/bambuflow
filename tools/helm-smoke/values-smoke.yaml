@@ -9,6 +9,7 @@ vault:
   addr: http://vault:8200
   role: bambuflow-online
   webhookRole: bambuflow-webhook
+  gatewayRole: bambuflow-gateway
 
 networkPolicy:
   ingressNamespace: smoke
@@ -24,10 +25,13 @@ tenants:
   credit: {rollout: general, member_groups: [credit-l2], pilot_groups: [], bound_clients: []}
   ops: {rollout: general, member_groups: [all-staff], pilot_groups: [], bound_clients: []}
 
-policyData:
-  tenants:
-    credit: {}
-    ops: {denied_sources: [src_evalcredit]}
+policyLayers:
+  tenant.credit: |
+    deny_sources := set()
+    test_no_extra_restriction if count(deny_sources) == 0
+  tenant.ops: |
+    deny_sources := {"src_evalcredit"}
+    test_eval_source_denied if "src_evalcredit" in deny_sources
 
 # compose 栈里的 indexing（紧急拒绝规则经它写拒绝名单）
 indexing:
@@ -47,6 +51,9 @@ gateway:
   # MCP 受保护资源元数据里的对外地址；冒烟测试在集群内访问
   publicUrl: http://smoke-gateway.bambuflow:8080
   redisAddr: redis:6379
+  # 开发用的平台授权服务没有多因素：密码登录即认证强度 1
+  stepUp:
+    acrValues: "1"
   audit:
     s3Endpoint: http://rustfs:9000
     retentionDays: 1
@@ -85,3 +92,24 @@ webhook:
   resources:
     requests: {cpu: 50m, memory: 64Mi}
     limits: {memory: 256Mi}
+
+# 身份同步与 compose 栈的 identity-sync 读同一个测试目录（OpenLDAP）、写同一个同步源，两份并行无妨
+identitySync:
+  config:
+    source: corp-ldap
+    ldap:
+      url: ldap://openldap:389
+      bind_dn: cn=admin,dc=corp,dc=example
+      bind_password_env: LDAP_BIND_PASSWORD
+      users: {base_dn: "ou=people,dc=corp,dc=example", filter: "(objectClass=inetOrgPerson)"}
+      groups: {base_dn: "ou=groups,dc=corp,dc=example", filter: "(objectClass=groupOfNames)", name_attr: cn, member_attr: member}
+    mapping:
+      username: uid
+      display_name: cn
+      dept: departmentNumber
+      title: title
+      region: l
+      grade: employeeType
+      clearance_by_grade: {C1: public, C2: internal, C3: confidential}
+    interval: 1m
+    full_every: 24h

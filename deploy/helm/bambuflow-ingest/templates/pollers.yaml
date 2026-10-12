@@ -1,0 +1,150 @@
+{{- /*
+常驻清单轮询（入库管道详设第 5 节）：connectors.sources 里 poll: true 的数据源不建定时同步任务，改为一个常驻 Deployment
+（connectors poll <command>）：按 5–15 分钟自适应的间隔反复同步，当前间隔写进同步状态、在 console 的数据源页展示；
+立即同步由 connectors-admin 经 Redis 唤醒它。只跑一个副本（Recreate）：同一数据源的两轮同步会重复发出变更。
+webhook: true 时再建 Service 与入站策略，接收源系统的变更通知（/webhook，签名密钥 BF_WEBHOOK_SECRET 放在
+Vault 的 bambuflow/connectors-<id>）；只放行 networkPolicy.webhookFrom 列出的命名空间（入口网关所在）。
+每日对账仍按 reconcileSchedule 定时跑（jobs.yaml）。
+*/ -}}
+{{- $v := .Values -}}
+{{- $s3 := dict "BF_S3_ENDPOINT" $v.objectStore.endpoint "BF_S3_BUCKET" $v.objectStore.bucket -}}
+{{- range $v.connectors.sources }}
+{{- if .poll }}
+{{- $src := . }}
+{{- $ctx := dict "root" $ "component" (printf "connectors-poll-%s" ($src.id | replace "_" "-")) }}
+{{- $env := merge (dict
+    "BF_SOURCE_ID" $src.id
+    "BF_REDIS_ADDR" $v.redisAddr
+    "BF_INDEXING_ADDR" (printf "%s-indexing:9090" $.Release.Name)
+    "BF_POLL_MIN" $v.connectors.poll.min
+    "BF_POLL_MAX" $v.connectors.poll.max) ($src.env | default dict) $s3 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+    bambuflow.io/source-id: {{ $src.id | quote }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bambuflow.labels" $ctx | nindent 8 }}
+        bambuflow.io/source-id: {{ $src.id | quote }}
+    spec:
+      serviceAccountName: {{ include "bambuflow.name" $ctx }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: connectors
+          image: "{{ $v.image.registry }}/connectors:{{ $v.image.tag }}"
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          args: ["poll", {{ $src.command | quote }}]
+          ports:
+            - name: http
+              containerPort: 9090
+          env:
+            {{- range $k, $val := $env }}
+            - name: {{ $k }}
+              value: {{ $val | quote }}
+            {{- end }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $v.otel.endpoint | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ include "bambuflow.name" (dict "root" $ "component" "connectors") }}
+            - secretRef:
+                name: {{ include "bambuflow.name" (dict "root" $ "component" (printf "connectors-%s" ($src.id | replace "_" "-"))) }}
+                optional: true
+          livenessProbe:
+            exec:
+              command: [connectors, healthcheck]
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $src.configFiles }}
+            - name: files
+              mountPath: /etc/bambuflow/source
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml $v.connectors.resources | nindent 12 }}
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $src.configFiles }}
+        - name: files
+          configMap:
+            name: {{ printf "%s-source-%s" $.Release.Name ($src.id | replace "_" "-") }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+  policyTypes: [Ingress]
+  {{- if $src.webhook }}
+  ingress:
+    - ports:
+        - port: 9090
+      from:
+        {{- range $v.networkPolicy.webhookFrom }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+  {{- else }}
+  # 没有接收 Webhook：不放行任何入站
+  ingress: []
+  {{- end }}
+{{- if $src.webhook }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "bambuflow.selector" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+{{- end }}
+{{- end }}
+{{- end }}

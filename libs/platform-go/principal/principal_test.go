@@ -17,7 +17,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 )
 
 var now = time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC)
@@ -132,6 +132,25 @@ func TestVerifyAcceptsValidPrincipal(t *testing.T) {
 	if p.GetSub() != "alice" || p.GetTenant() != "credit" || p.GetDept() != "信贷部" ||
 		p.GetClearance() != commonv1.Classification_CLASSIFICATION_INTERNAL || len(p.GetGroups()) != 1 {
 		t.Fatalf("声明解析不对: %v", p)
+	}
+}
+
+func TestEvalIssuerIsSeparate(t *testing.T) {
+	g := newFakeGateway(t, "k1")
+	online, _ := newVerifier(g)
+	replica, _ := newVerifier(g)
+	replica.WithIssuer(EvalIssuer)
+	evalClaims := validClaims()
+	evalClaims["iss"] = EvalIssuer
+	// 评测身份只在评测副本上有效；gateway 签发的 Principal 在评测副本上无效
+	if _, err := online.Verify(context.Background(), g.sign(t, "k1", evalClaims)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("线上实例应拒绝评测身份: %v", err)
+	}
+	if _, err := replica.Verify(context.Background(), g.sign(t, "k1", evalClaims)); err != nil {
+		t.Fatalf("评测副本应接受评测身份: %v", err)
+	}
+	if _, err := replica.Verify(context.Background(), g.sign(t, "k1", validClaims())); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("评测副本应拒绝 gateway 签发的 Principal: %v", err)
 	}
 }
 

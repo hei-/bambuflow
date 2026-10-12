@@ -7,6 +7,7 @@
 package configv1
 
 import (
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -70,6 +71,105 @@ func (TermStatus) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{0}
 }
 
+type GetCandidateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// retrieval 或 orchestrator：retrieval 拿 pipeline 与 policy 的候选，orchestrator 拿 pipeline、routing 与 prompt 的候选
+	Service string `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	// 候选版本，cfv_ 前缀
+	VersionId     string `protobuf:"bytes,2,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCandidateRequest) Reset() {
+	*x = GetCandidateRequest{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCandidateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCandidateRequest) ProtoMessage() {}
+
+func (x *GetCandidateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCandidateRequest.ProtoReflect.Descriptor instead.
+func (*GetCandidateRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *GetCandidateRequest) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *GetCandidateRequest) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
+}
+
+type GetCandidateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 只有 canaries 一项（percent 为 100、没有 release_id）的快照，与 GetSnapshot 同样签名，使用方用同一套验签
+	Snapshot      *GetSnapshotResponse `protobuf:"bytes,1,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCandidateResponse) Reset() {
+	*x = GetCandidateResponse{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCandidateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCandidateResponse) ProtoMessage() {}
+
+func (x *GetCandidateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCandidateResponse.ProtoReflect.Descriptor instead.
+func (*GetCandidateResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GetCandidateResponse) GetSnapshot() *GetSnapshotResponse {
+	if x != nil {
+		return x.Snapshot
+	}
+	return nil
+}
+
 type WatchRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Service    string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
@@ -82,7 +182,7 @@ type WatchRequest struct {
 
 func (x *WatchRequest) Reset() {
 	*x = WatchRequest{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -94,7 +194,7 @@ func (x *WatchRequest) String() string {
 func (*WatchRequest) ProtoMessage() {}
 
 func (x *WatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[0]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -107,7 +207,7 @@ func (x *WatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchRequest.ProtoReflect.Descriptor instead.
 func (*WatchRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{0}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *WatchRequest) GetService() string {
@@ -142,7 +242,7 @@ type WatchResponse struct {
 
 func (x *WatchResponse) Reset() {
 	*x = WatchResponse{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -154,7 +254,7 @@ func (x *WatchResponse) String() string {
 func (*WatchResponse) ProtoMessage() {}
 
 func (x *WatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[1]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -167,7 +267,7 @@ func (x *WatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchResponse.ProtoReflect.Descriptor instead.
 func (*WatchResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *WatchResponse) GetService() string {
@@ -198,7 +298,7 @@ type AckRequest struct {
 
 func (x *AckRequest) Reset() {
 	*x = AckRequest{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -210,7 +310,7 @@ func (x *AckRequest) String() string {
 func (*AckRequest) ProtoMessage() {}
 
 func (x *AckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[2]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -223,7 +323,7 @@ func (x *AckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckRequest.ProtoReflect.Descriptor instead.
 func (*AckRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *AckRequest) GetService() string {
@@ -269,7 +369,7 @@ type AckResponse struct {
 
 func (x *AckResponse) Reset() {
 	*x = AckResponse{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -281,7 +381,7 @@ func (x *AckResponse) String() string {
 func (*AckResponse) ProtoMessage() {}
 
 func (x *AckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[3]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -294,7 +394,7 @@ func (x *AckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckResponse.ProtoReflect.Descriptor instead.
 func (*AckResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{5}
 }
 
 type GetSigningKeysRequest struct {
@@ -305,7 +405,7 @@ type GetSigningKeysRequest struct {
 
 func (x *GetSigningKeysRequest) Reset() {
 	*x = GetSigningKeysRequest{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -317,7 +417,7 @@ func (x *GetSigningKeysRequest) String() string {
 func (*GetSigningKeysRequest) ProtoMessage() {}
 
 func (x *GetSigningKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[4]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -330,7 +430,7 @@ func (x *GetSigningKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSigningKeysRequest.ProtoReflect.Descriptor instead.
 func (*GetSigningKeysRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{6}
 }
 
 type GetSigningKeysResponse struct {
@@ -342,7 +442,7 @@ type GetSigningKeysResponse struct {
 
 func (x *GetSigningKeysResponse) Reset() {
 	*x = GetSigningKeysResponse{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -354,7 +454,7 @@ func (x *GetSigningKeysResponse) String() string {
 func (*GetSigningKeysResponse) ProtoMessage() {}
 
 func (x *GetSigningKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[5]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -367,7 +467,7 @@ func (x *GetSigningKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSigningKeysResponse.ProtoReflect.Descriptor instead.
 func (*GetSigningKeysResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetSigningKeysResponse) GetKeys() []*SigningKey {
@@ -388,7 +488,7 @@ type SigningKey struct {
 
 func (x *SigningKey) Reset() {
 	*x = SigningKey{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[6]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -400,7 +500,7 @@ func (x *SigningKey) String() string {
 func (*SigningKey) ProtoMessage() {}
 
 func (x *SigningKey) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[6]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -413,7 +513,7 @@ func (x *SigningKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SigningKey.ProtoReflect.Descriptor instead.
 func (*SigningKey) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SigningKey) GetKeyId() string {
@@ -440,7 +540,7 @@ type GetSnapshotRequest struct {
 
 func (x *GetSnapshotRequest) Reset() {
 	*x = GetSnapshotRequest{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[7]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -452,7 +552,7 @@ func (x *GetSnapshotRequest) String() string {
 func (*GetSnapshotRequest) ProtoMessage() {}
 
 func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[7]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -465,7 +565,7 @@ func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*GetSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetSnapshotRequest) GetService() string {
@@ -484,7 +584,8 @@ type GetSnapshotResponse struct {
 	// 租户可访问的数据源（source_grants 中已审批、未撤销的数据源），只在 retrieval 的快照里。
 	// 这是租户授权的唯一来源：没有授权的数据源不能检索（技术设计文档 9.1）。
 	SourceGrants []*SourceGrant `protobuf:"bytes,3,rep,name=source_grants,json=sourceGrants,proto3" json:"source_grants,omitempty"`
-	// 运行中的 A/B 实验，只在 orchestrator 的快照里；每个租户至多一个（governance 详设 3.1）。
+	// 运行中的 A/B 实验，每个租户至多一个（governance 详设 3.1）。orchestrator 的快照里是完整的；
+	// retrieval 的快照里只有带检索计划变体（pipeline）的实验，且只有 exp_id、tenant 与 pipeline。
 	Experiments []*RunningExperiment `protobuf:"bytes,4,rep,name=experiments,proto3" json:"experiments,omitempty"`
 	// 签过名的快照本体：GetSnapshotResponse 序列化后的字节（其中 signed_payload、signature、signing_key_id 为空）。
 	// 使用方先验签，再从它解析出快照使用，不读外层的同名字段，避免两种语言的序列化差异影响验签。
@@ -492,14 +593,31 @@ type GetSnapshotResponse struct {
 	Signature     []byte `protobuf:"bytes,6,opt,name=signature,proto3" json:"signature,omitempty"`
 	SigningKeyId  string `protobuf:"bytes,7,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
 	// 生效的租户配置（tenant.yaml，governance 详设 3.1、4），只在 gateway 的快照里；按租户名排序。
-	Tenants       []*TenantConfig `protobuf:"bytes,8,rep,name=tenants,proto3" json:"tenants,omitempty"`
+	Tenants []*TenantConfig `protobuf:"bytes,8,rep,name=tenants,proto3" json:"tenants,omitempty"`
+	// 各租户生效的 pipeline（检索计划与回答阈值，governance 详设 3.1），在 retrieval 与 orchestrator 的快照里；
+	// 按租户名排序。没有 pipeline 的租户按各服务的默认值。
+	Pipelines []*PipelineConfig `protobuf:"bytes,9,rep,name=pipelines,proto3" json:"pipelines,omitempty"`
+	// 全局生效的 routing（置信度权重等，governance 详设 3.1），只在 orchestrator 的快照里；没有生效版本时不设。
+	Routing *RoutingConfig `protobuf:"bytes,10,opt,name=routing,proto3" json:"routing,omitempty"`
+	// 合成好的检索权限策略包（governance 详设第 5 节），只在 retrieval 的快照里；随快照签名下发，retrieval 验签后编译加载，
+	// 编译失败时继续用当前的包。没有生效的全局基线时不设：retrieval 拒绝全部检索（fail-closed）。
+	Policy *PolicyBundle `protobuf:"bytes,11,opt,name=policy,proto3" json:"policy,omitempty"`
+	// 经 governance 发布的回答模板（answer、agent-answer），只在 orchestrator 的快照里；没有发布的用内置模板。
+	Prompts []*PromptTemplate `protobuf:"bytes,12,rep,name=prompts,proto3" json:"prompts,omitempty"`
+	// 灰度中的候选版本（governance 详设 3.2、4.1）：retrieval 的快照里有 pipeline 与 policy，orchestrator 的快照里有
+	// pipeline、routing、prompt。使用方按 tenant 与用户分流：同一用户在同一次灰度里始终用同一个版本。
+	// orchestrator 的快照另有 policy 灰度、但不带候选包（candidate 为空）：只用来把提问人所在的灰度写进 why.canary_releases。
+	Canaries []*Canary `protobuf:"bytes,13,rep,name=canaries,proto3" json:"canaries,omitempty"`
+	// 可以经推送入库 API 写入的数据源（入库管道详设 14.5）：已审批、未撤销且登记了推送客户端的，只在 gateway 的快照里；
+	// 按 source_id 排序。gateway 据此判断调用方能否向这个数据源推送。
+	PushSources   []*PushSource `protobuf:"bytes,14,rep,name=push_sources,json=pushSources,proto3" json:"push_sources,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetSnapshotResponse) Reset() {
 	*x = GetSnapshotResponse{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[8]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -511,7 +629,7 @@ func (x *GetSnapshotResponse) String() string {
 func (*GetSnapshotResponse) ProtoMessage() {}
 
 func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[8]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -524,7 +642,7 @@ func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*GetSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{8}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetSnapshotResponse) GetSnapshotVersion() string {
@@ -583,6 +701,845 @@ func (x *GetSnapshotResponse) GetTenants() []*TenantConfig {
 	return nil
 }
 
+func (x *GetSnapshotResponse) GetPipelines() []*PipelineConfig {
+	if x != nil {
+		return x.Pipelines
+	}
+	return nil
+}
+
+func (x *GetSnapshotResponse) GetRouting() *RoutingConfig {
+	if x != nil {
+		return x.Routing
+	}
+	return nil
+}
+
+func (x *GetSnapshotResponse) GetPolicy() *PolicyBundle {
+	if x != nil {
+		return x.Policy
+	}
+	return nil
+}
+
+func (x *GetSnapshotResponse) GetPrompts() []*PromptTemplate {
+	if x != nil {
+		return x.Prompts
+	}
+	return nil
+}
+
+func (x *GetSnapshotResponse) GetCanaries() []*Canary {
+	if x != nil {
+		return x.Canaries
+	}
+	return nil
+}
+
+func (x *GetSnapshotResponse) GetPushSources() []*PushSource {
+	if x != nil {
+		return x.PushSources
+	}
+	return nil
+}
+
+// PushSource 是一个接受推送的数据源。
+type PushSource struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	SourceId string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	// 登记的推送客户端（平台授权服务里的服务账号所属客户端 ID）；只有它能推送
+	PushClient string `protobuf:"bytes,2,opt,name=push_client,json=pushClient,proto3" json:"push_client,omitempty"`
+	// 推送的文档密级不能低于它
+	DefaultClassification v1.Classification `protobuf:"varint,3,opt,name=default_classification,json=defaultClassification,proto3,enum=bambuflow.common.v1.Classification" json:"default_classification,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *PushSource) Reset() {
+	*x = PushSource{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PushSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PushSource) ProtoMessage() {}
+
+func (x *PushSource) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PushSource.ProtoReflect.Descriptor instead.
+func (*PushSource) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PushSource) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *PushSource) GetPushClient() string {
+	if x != nil {
+		return x.PushClient
+	}
+	return ""
+}
+
+func (x *PushSource) GetDefaultClassification() v1.Classification {
+	if x != nil {
+		return x.DefaultClassification
+	}
+	return v1.Classification(0)
+}
+
+// Canary 是一个灰度中的候选版本。
+type Canary struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Object    string                 `protobuf:"bytes,1,opt,name=object,proto3" json:"object,omitempty"`
+	Scope     string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	ReleaseId string                 `protobuf:"bytes,3,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
+	// 候选版本，cfv_ 前缀
+	VersionId string `protobuf:"bytes,4,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	// 只对这个租户的请求生效（GetCandidate 返回的候选：pipeline 为它的租户，其他对象为空，表示不限租户）
+	Tenant string `protobuf:"bytes,5,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// 该租户里按 sha256(release_id + 用户) 分桶，桶号小于 percent 的用户用候选版本（1–100）
+	Percent int32 `protobuf:"varint,6,opt,name=percent,proto3" json:"percent,omitempty"`
+	// Types that are valid to be assigned to Candidate:
+	//
+	//	*Canary_Pipeline
+	//	*Canary_Routing
+	//	*Canary_Prompt
+	//	*Canary_Policy
+	Candidate     isCanary_Candidate `protobuf_oneof:"candidate"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Canary) Reset() {
+	*x = Canary{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Canary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Canary) ProtoMessage() {}
+
+func (x *Canary) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Canary.ProtoReflect.Descriptor instead.
+func (*Canary) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *Canary) GetObject() string {
+	if x != nil {
+		return x.Object
+	}
+	return ""
+}
+
+func (x *Canary) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *Canary) GetReleaseId() string {
+	if x != nil {
+		return x.ReleaseId
+	}
+	return ""
+}
+
+func (x *Canary) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
+}
+
+func (x *Canary) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *Canary) GetPercent() int32 {
+	if x != nil {
+		return x.Percent
+	}
+	return 0
+}
+
+func (x *Canary) GetCandidate() isCanary_Candidate {
+	if x != nil {
+		return x.Candidate
+	}
+	return nil
+}
+
+func (x *Canary) GetPipeline() *PipelineConfig {
+	if x != nil {
+		if x, ok := x.Candidate.(*Canary_Pipeline); ok {
+			return x.Pipeline
+		}
+	}
+	return nil
+}
+
+func (x *Canary) GetRouting() *RoutingConfig {
+	if x != nil {
+		if x, ok := x.Candidate.(*Canary_Routing); ok {
+			return x.Routing
+		}
+	}
+	return nil
+}
+
+func (x *Canary) GetPrompt() *PromptTemplate {
+	if x != nil {
+		if x, ok := x.Candidate.(*Canary_Prompt); ok {
+			return x.Prompt
+		}
+	}
+	return nil
+}
+
+func (x *Canary) GetPolicy() *PolicyBundle {
+	if x != nil {
+		if x, ok := x.Candidate.(*Canary_Policy); ok {
+			return x.Policy
+		}
+	}
+	return nil
+}
+
+type isCanary_Candidate interface {
+	isCanary_Candidate()
+}
+
+type Canary_Pipeline struct {
+	Pipeline *PipelineConfig `protobuf:"bytes,7,opt,name=pipeline,proto3,oneof"`
+}
+
+type Canary_Routing struct {
+	Routing *RoutingConfig `protobuf:"bytes,8,opt,name=routing,proto3,oneof"`
+}
+
+type Canary_Prompt struct {
+	Prompt *PromptTemplate `protobuf:"bytes,9,opt,name=prompt,proto3,oneof"`
+}
+
+type Canary_Policy struct {
+	// 用候选策略层替换后合成的整个策略包
+	Policy *PolicyBundle `protobuf:"bytes,10,opt,name=policy,proto3,oneof"`
+}
+
+func (*Canary_Pipeline) isCanary_Candidate() {}
+
+func (*Canary_Routing) isCanary_Candidate() {}
+
+func (*Canary_Prompt) isCanary_Candidate() {}
+
+func (*Canary_Policy) isCanary_Candidate() {}
+
+// PromptTemplate 是一个回答模板（技术设计文档 7.7 的五个区）。发布前 governance 已做五分区检查：system 里只有
+// {{tenant_rules}}，user 里按顺序各有一次 {{summary}}、{{evidence}}（agent-answer 另有 {{subquestions}}、{{unresolved}}）、
+// {{question}}；不可信的区只能在 user 里。
+type PromptTemplate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// answer 或 agent-answer
+	Scope string `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// 配置版本，cfv_ 前缀；回答的 why.prompt_version 写成 <scope>@<version_id>
+	VersionId     string `protobuf:"bytes,2,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	System        string `protobuf:"bytes,3,opt,name=system,proto3" json:"system,omitempty"`
+	User          string `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PromptTemplate) Reset() {
+	*x = PromptTemplate{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PromptTemplate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PromptTemplate) ProtoMessage() {}
+
+func (x *PromptTemplate) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PromptTemplate.ProtoReflect.Descriptor instead.
+func (*PromptTemplate) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *PromptTemplate) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *PromptTemplate) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
+}
+
+func (x *PromptTemplate) GetSystem() string {
+	if x != nil {
+		return x.System
+	}
+	return ""
+}
+
+func (x *PromptTemplate) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
+}
+
+// PolicyBundle 是三层（全局基线、数据源、租户）策略合成后的模块（libs/platform-go/policy.Build 的结果）。
+type PolicyBundle struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 全部模块的摘要（sha256: 前缀），写进检索响应的 policy_version、回答的 why 与审计
+	Version       string          `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	Modules       []*PolicyModule `protobuf:"bytes,2,rep,name=modules,proto3" json:"modules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PolicyBundle) Reset() {
+	*x = PolicyBundle{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PolicyBundle) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PolicyBundle) ProtoMessage() {}
+
+func (x *PolicyBundle) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PolicyBundle.ProtoReflect.Descriptor instead.
+func (*PolicyBundle) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PolicyBundle) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *PolicyBundle) GetModules() []*PolicyModule {
+	if x != nil {
+		return x.Modules
+	}
+	return nil
+}
+
+type PolicyModule struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// global.rego、source/<数据源>.rego、tenant/<租户>.rego
+	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// 带 package 声明的完整 rego 模块
+	Source        string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PolicyModule) Reset() {
+	*x = PolicyModule{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PolicyModule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PolicyModule) ProtoMessage() {}
+
+func (x *PolicyModule) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PolicyModule.ProtoReflect.Descriptor instead.
+func (*PolicyModule) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PolicyModule) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *PolicyModule) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+// PipelineConfig 是一个租户生效的 pipeline，由 governance 从 pipeline.yaml 解析并校验后下发，使用方不再解析 YAML。
+type PipelineConfig struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Tenant string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// 配置版本，cfv_ 前缀；写进回答的 why
+	VersionId     string         `protobuf:"bytes,2,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	Retrieval     *RetrievalPlan `protobuf:"bytes,3,opt,name=retrieval,proto3" json:"retrieval,omitempty"`
+	Answer        *AnswerPlan    `protobuf:"bytes,4,opt,name=answer,proto3" json:"answer,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PipelineConfig) Reset() {
+	*x = PipelineConfig{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PipelineConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PipelineConfig) ProtoMessage() {}
+
+func (x *PipelineConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PipelineConfig.ProtoReflect.Descriptor instead.
+func (*PipelineConfig) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PipelineConfig) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *PipelineConfig) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
+}
+
+func (x *PipelineConfig) GetRetrieval() *RetrievalPlan {
+	if x != nil {
+		return x.Retrieval
+	}
+	return nil
+}
+
+func (x *PipelineConfig) GetAnswer() *AnswerPlan {
+	if x != nil {
+		return x.Answer
+	}
+	return nil
+}
+
+// RetrievalPlan 是 retrieval 执行的检索计划（retrieval 详设 10.1）。只能在平台能力范围内关闭召回路、调整权重与精排。
+type RetrievalPlan struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 关闭的召回路（keyword、dense、graph、identifier）：不执行，也不算降级。
+	DisabledRoutes []string `protobuf:"bytes,1,rep,name=disabled_routes,json=disabledRoutes,proto3" json:"disabled_routes,omitempty"`
+	// 召回路在融合中的权重（0.1–5）；没列出的为 1.0。关系类问题对图召回的加权在此基础上再乘。
+	RouteWeights map[string]float64 `protobuf:"bytes,2,rep,name=route_weights,json=routeWeights,proto3" json:"route_weights,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	// 设为 false 时不精排，即使请求要求精排；不设时按请求与调用目的。
+	Rerank        *bool `protobuf:"varint,3,opt,name=rerank,proto3,oneof" json:"rerank,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetrievalPlan) Reset() {
+	*x = RetrievalPlan{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetrievalPlan) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetrievalPlan) ProtoMessage() {}
+
+func (x *RetrievalPlan) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetrievalPlan.ProtoReflect.Descriptor instead.
+func (*RetrievalPlan) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *RetrievalPlan) GetDisabledRoutes() []string {
+	if x != nil {
+		return x.DisabledRoutes
+	}
+	return nil
+}
+
+func (x *RetrievalPlan) GetRouteWeights() map[string]float64 {
+	if x != nil {
+		return x.RouteWeights
+	}
+	return nil
+}
+
+func (x *RetrievalPlan) GetRerank() bool {
+	if x != nil && x.Rerank != nil {
+		return *x.Rerank
+	}
+	return false
+}
+
+// AnswerPlan 是 orchestrator 用的回答阈值与开关（orchestrator 详设 12.2）。不设的项用默认值；A/B 实验组在此基础上替换。
+type AnswerPlan struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 逐句校验的支持度阈值，0.3–0.9。
+	SupportThreshold *float64 `protobuf:"fixed64,1,opt,name=support_threshold,json=supportThreshold,proto3,oneof" json:"support_threshold,omitempty"`
+	// 回答为 answered 所需的引用覆盖率，0.3–1。
+	MinCoverage *float64 `protobuf:"fixed64,2,opt,name=min_coverage,json=minCoverage,proto3,oneof" json:"min_coverage,omitempty"`
+	// 单跳也用 LLM 从精排后的候选里挑选证据（技术设计文档 6.7）：会把首句时间推到约 2.3 秒，
+	// 只对书面同意放宽 SLO 的租户开放（pipeline.yaml 里须写明同意记录，governance 校验）。
+	SingleHopLlmRerank bool `protobuf:"varint,3,opt,name=single_hop_llm_rerank,json=singleHopLlmRerank,proto3" json:"single_hop_llm_rerank,omitempty"`
+	// 租户规则（技术设计文档 7.7 提示词第 2 区）：业务口径、术语、禁止话题、回答风格，放在系统消息末尾，
+	// 与系统规则冲突时以系统规则为准。不超过 2000 字。
+	TenantRules string `protobuf:"bytes,4,opt,name=tenant_rules,json=tenantRules,proto3" json:"tenant_rules,omitempty"`
+	// agent 预算（orchestrator 详设第 6 节）：多跳的最多轮数（1–3）与每轮最多子问题数（1–4），只能在平台上限内调小。
+	AgentMaxRounds       *int32 `protobuf:"varint,5,opt,name=agent_max_rounds,json=agentMaxRounds,proto3,oneof" json:"agent_max_rounds,omitempty"`
+	AgentMaxSubQuestions *int32 `protobuf:"varint,6,opt,name=agent_max_sub_questions,json=agentMaxSubQuestions,proto3,oneof" json:"agent_max_sub_questions,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *AnswerPlan) Reset() {
+	*x = AnswerPlan{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnswerPlan) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnswerPlan) ProtoMessage() {}
+
+func (x *AnswerPlan) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnswerPlan.ProtoReflect.Descriptor instead.
+func (*AnswerPlan) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *AnswerPlan) GetSupportThreshold() float64 {
+	if x != nil && x.SupportThreshold != nil {
+		return *x.SupportThreshold
+	}
+	return 0
+}
+
+func (x *AnswerPlan) GetMinCoverage() float64 {
+	if x != nil && x.MinCoverage != nil {
+		return *x.MinCoverage
+	}
+	return 0
+}
+
+func (x *AnswerPlan) GetSingleHopLlmRerank() bool {
+	if x != nil {
+		return x.SingleHopLlmRerank
+	}
+	return false
+}
+
+func (x *AnswerPlan) GetTenantRules() string {
+	if x != nil {
+		return x.TenantRules
+	}
+	return ""
+}
+
+func (x *AnswerPlan) GetAgentMaxRounds() int32 {
+	if x != nil && x.AgentMaxRounds != nil {
+		return *x.AgentMaxRounds
+	}
+	return 0
+}
+
+func (x *AnswerPlan) GetAgentMaxSubQuestions() int32 {
+	if x != nil && x.AgentMaxSubQuestions != nil {
+		return *x.AgentMaxSubQuestions
+	}
+	return 0
+}
+
+// RoutingConfig 是全局生效的 routing（governance 详设 3.1 “模型路由与阈值”）。
+type RoutingConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 配置版本，cfv_ 前缀；写进回答的 why
+	VersionId string `protobuf:"bytes,1,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	// 置信度权重（技术设计文档 7.8），来自 evaluation 的校准报告；不设时 orchestrator 用默认权重。
+	Confidence *ConfidenceWeights `protobuf:"bytes,2,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	// 回答生成用的模型（orchestrator 详设 8.1、12.3）：须是部署里允许的模型之一（BF_LLM_ALT_MODELS），
+	// 不在其中时不调用模型、回答只返回证据。为空用默认模型。只影响公开、内部、机密级的回答生成，受限级仍用专用实例。
+	// 与置信度权重放在同一个对象里：换模型时一起换配套的权重（详设 12.4）。
+	GenerationModel string `protobuf:"bytes,3,opt,name=generation_model,json=generationModel,proto3" json:"generation_model,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *RoutingConfig) Reset() {
+	*x = RoutingConfig{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RoutingConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RoutingConfig) ProtoMessage() {}
+
+func (x *RoutingConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RoutingConfig.ProtoReflect.Descriptor instead.
+func (*RoutingConfig) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *RoutingConfig) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
+}
+
+func (x *RoutingConfig) GetConfidence() *ConfidenceWeights {
+	if x != nil {
+		return x.Confidence
+	}
+	return nil
+}
+
+func (x *RoutingConfig) GetGenerationModel() string {
+	if x != nil {
+		return x.GenerationModel
+	}
+	return ""
+}
+
+// ConfidenceWeights：confidence = σ(coverage·c + support·s̄ + rerank·r + diversity·d − conflict·k + bias)。
+type ConfidenceWeights struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 权重版本，如 confidence-3f2a…（evaluation 校准报告给出），写进回答的置信度
+	Version       string  `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	Coverage      float64 `protobuf:"fixed64,2,opt,name=coverage,proto3" json:"coverage,omitempty"`
+	Support       float64 `protobuf:"fixed64,3,opt,name=support,proto3" json:"support,omitempty"`
+	Rerank        float64 `protobuf:"fixed64,4,opt,name=rerank,proto3" json:"rerank,omitempty"`
+	Diversity     float64 `protobuf:"fixed64,5,opt,name=diversity,proto3" json:"diversity,omitempty"`
+	Conflict      float64 `protobuf:"fixed64,6,opt,name=conflict,proto3" json:"conflict,omitempty"`
+	Bias          float64 `protobuf:"fixed64,7,opt,name=bias,proto3" json:"bias,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfidenceWeights) Reset() {
+	*x = ConfidenceWeights{}
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfidenceWeights) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfidenceWeights) ProtoMessage() {}
+
+func (x *ConfidenceWeights) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfidenceWeights.ProtoReflect.Descriptor instead.
+func (*ConfidenceWeights) Descriptor() ([]byte, []int) {
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ConfidenceWeights) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *ConfidenceWeights) GetCoverage() float64 {
+	if x != nil {
+		return x.Coverage
+	}
+	return 0
+}
+
+func (x *ConfidenceWeights) GetSupport() float64 {
+	if x != nil {
+		return x.Support
+	}
+	return 0
+}
+
+func (x *ConfidenceWeights) GetRerank() float64 {
+	if x != nil {
+		return x.Rerank
+	}
+	return 0
+}
+
+func (x *ConfidenceWeights) GetDiversity() float64 {
+	if x != nil {
+		return x.Diversity
+	}
+	return 0
+}
+
+func (x *ConfidenceWeights) GetConflict() float64 {
+	if x != nil {
+		return x.Conflict
+	}
+	return 0
+}
+
+func (x *ConfidenceWeights) GetBias() float64 {
+	if x != nil {
+		return x.Bias
+	}
+	return 0
+}
+
 // TenantConfig 是一个租户当前生效的配置版本。
 type TenantConfig struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
@@ -597,7 +1554,7 @@ type TenantConfig struct {
 
 func (x *TenantConfig) Reset() {
 	*x = TenantConfig{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[9]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -609,7 +1566,7 @@ func (x *TenantConfig) String() string {
 func (*TenantConfig) ProtoMessage() {}
 
 func (x *TenantConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[9]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -622,7 +1579,7 @@ func (x *TenantConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantConfig.ProtoReflect.Descriptor instead.
 func (*TenantConfig) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{9}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *TenantConfig) GetTenant() string {
@@ -656,13 +1613,19 @@ type RunningExperiment struct {
 	// 实验组的句支持度门槛与引用覆盖率门槛；不填沿用基线
 	SupportThreshold *float64 `protobuf:"fixed64,4,opt,name=support_threshold,json=supportThreshold,proto3,oneof" json:"support_threshold,omitempty"`
 	MinCoverage      *float64 `protobuf:"fixed64,5,opt,name=min_coverage,json=minCoverage,proto3,oneof" json:"min_coverage,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// 实验组替换的配置版本（都已单独过评测门禁，governance 详设 3.1）：租户的 pipeline（检索计划、agent 预算、阈值）、
+	// routing（生成模型与置信度权重）、回答模板（每个 scope 至多一个）。不设的沿用基线（含灰度中的候选）。
+	// 阈值字段在 pipeline 变体之上再替换。
+	Pipeline      *PipelineConfig   `protobuf:"bytes,6,opt,name=pipeline,proto3" json:"pipeline,omitempty"`
+	Routing       *RoutingConfig    `protobuf:"bytes,7,opt,name=routing,proto3" json:"routing,omitempty"`
+	Prompts       []*PromptTemplate `protobuf:"bytes,8,rep,name=prompts,proto3" json:"prompts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunningExperiment) Reset() {
 	*x = RunningExperiment{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[10]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -674,7 +1637,7 @@ func (x *RunningExperiment) String() string {
 func (*RunningExperiment) ProtoMessage() {}
 
 func (x *RunningExperiment) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[10]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -687,7 +1650,7 @@ func (x *RunningExperiment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunningExperiment.ProtoReflect.Descriptor instead.
 func (*RunningExperiment) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RunningExperiment) GetExpId() string {
@@ -725,6 +1688,27 @@ func (x *RunningExperiment) GetMinCoverage() float64 {
 	return 0
 }
 
+func (x *RunningExperiment) GetPipeline() *PipelineConfig {
+	if x != nil {
+		return x.Pipeline
+	}
+	return nil
+}
+
+func (x *RunningExperiment) GetRouting() *RoutingConfig {
+	if x != nil {
+		return x.Routing
+	}
+	return nil
+}
+
+func (x *RunningExperiment) GetPrompts() []*PromptTemplate {
+	if x != nil {
+		return x.Prompts
+	}
+	return nil
+}
+
 type SourceGrant struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tenant        string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
@@ -735,7 +1719,7 @@ type SourceGrant struct {
 
 func (x *SourceGrant) Reset() {
 	*x = SourceGrant{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[11]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +1731,7 @@ func (x *SourceGrant) String() string {
 func (*SourceGrant) ProtoMessage() {}
 
 func (x *SourceGrant) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[11]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +1744,7 @@ func (x *SourceGrant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceGrant.ProtoReflect.Descriptor instead.
 func (*SourceGrant) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{11}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SourceGrant) GetTenant() string {
@@ -788,7 +1772,7 @@ type Vocabulary struct {
 
 func (x *Vocabulary) Reset() {
 	*x = Vocabulary{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[12]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -800,7 +1784,7 @@ func (x *Vocabulary) String() string {
 func (*Vocabulary) ProtoMessage() {}
 
 func (x *Vocabulary) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[12]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -813,7 +1797,7 @@ func (x *Vocabulary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Vocabulary.ProtoReflect.Descriptor instead.
 func (*Vocabulary) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{12}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Vocabulary) GetName() string {
@@ -848,7 +1832,7 @@ type VocabularyTerm struct {
 
 func (x *VocabularyTerm) Reset() {
 	*x = VocabularyTerm{}
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[13]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -860,7 +1844,7 @@ func (x *VocabularyTerm) String() string {
 func (*VocabularyTerm) ProtoMessage() {}
 
 func (x *VocabularyTerm) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_config_v1_config_proto_msgTypes[13]
+	mi := &file_bambuflow_config_v1_config_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -873,7 +1857,7 @@ func (x *VocabularyTerm) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VocabularyTerm.ProtoReflect.Descriptor instead.
 func (*VocabularyTerm) Descriptor() ([]byte, []int) {
-	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{13}
+	return file_bambuflow_config_v1_config_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *VocabularyTerm) GetCode() string {
@@ -922,7 +1906,13 @@ var File_bambuflow_config_v1_config_proto protoreflect.FileDescriptor
 
 const file_bambuflow_config_v1_config_proto_rawDesc = "" +
 	"\n" +
-	" bambuflow/config/v1/config.proto\x12\x13bambuflow.config.v1\"a\n" +
+	" bambuflow/config/v1/config.proto\x12\x13bambuflow.config.v1\x1a\x1fbambuflow/common/v1/types.proto\"N\n" +
+	"\x13GetCandidateRequest\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\x02 \x01(\tR\tversionId\"\\\n" +
+	"\x14GetCandidateResponse\x12D\n" +
+	"\bsnapshot\x18\x01 \x01(\v2(.bambuflow.config.v1.GetSnapshotResponseR\bsnapshot\"a\n" +
 	"\fWatchRequest\x12\x18\n" +
 	"\aservice\x18\x01 \x01(\tR\aservice\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\tR\n" +
@@ -949,7 +1939,7 @@ const file_bambuflow_config_v1_config_proto_rawDesc = "" +
 	"\n" +
 	"public_key\x18\x02 \x01(\fR\tpublicKey\".\n" +
 	"\x12GetSnapshotRequest\x12\x18\n" +
-	"\aservice\x18\x01 \x01(\tR\aservice\"\xbe\x03\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\"\xb6\x06\n" +
 	"\x13GetSnapshotResponse\x12)\n" +
 	"\x10snapshot_version\x18\x01 \x01(\tR\x0fsnapshotVersion\x12C\n" +
 	"\fvocabularies\x18\x02 \x03(\v2\x1f.bambuflow.config.v1.VocabularyR\fvocabularies\x12E\n" +
@@ -958,18 +1948,102 @@ const file_bambuflow_config_v1_config_proto_rawDesc = "" +
 	"\x0esigned_payload\x18\x05 \x01(\fR\rsignedPayload\x12\x1c\n" +
 	"\tsignature\x18\x06 \x01(\fR\tsignature\x12$\n" +
 	"\x0esigning_key_id\x18\a \x01(\tR\fsigningKeyId\x12;\n" +
-	"\atenants\x18\b \x03(\v2!.bambuflow.config.v1.TenantConfigR\atenants\"_\n" +
+	"\atenants\x18\b \x03(\v2!.bambuflow.config.v1.TenantConfigR\atenants\x12A\n" +
+	"\tpipelines\x18\t \x03(\v2#.bambuflow.config.v1.PipelineConfigR\tpipelines\x12<\n" +
+	"\arouting\x18\n" +
+	" \x01(\v2\".bambuflow.config.v1.RoutingConfigR\arouting\x129\n" +
+	"\x06policy\x18\v \x01(\v2!.bambuflow.config.v1.PolicyBundleR\x06policy\x12=\n" +
+	"\aprompts\x18\f \x03(\v2#.bambuflow.config.v1.PromptTemplateR\aprompts\x127\n" +
+	"\bcanaries\x18\r \x03(\v2\x1b.bambuflow.config.v1.CanaryR\bcanaries\x12B\n" +
+	"\fpush_sources\x18\x0e \x03(\v2\x1f.bambuflow.config.v1.PushSourceR\vpushSources\"\xa6\x01\n" +
+	"\n" +
+	"PushSource\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x1f\n" +
+	"\vpush_client\x18\x02 \x01(\tR\n" +
+	"pushClient\x12Z\n" +
+	"\x16default_classification\x18\x03 \x01(\x0e2#.bambuflow.common.v1.ClassificationR\x15defaultClassification\"\xb2\x03\n" +
+	"\x06Canary\x12\x16\n" +
+	"\x06object\x18\x01 \x01(\tR\x06object\x12\x14\n" +
+	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\x1d\n" +
+	"\n" +
+	"release_id\x18\x03 \x01(\tR\treleaseId\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\x04 \x01(\tR\tversionId\x12\x16\n" +
+	"\x06tenant\x18\x05 \x01(\tR\x06tenant\x12\x18\n" +
+	"\apercent\x18\x06 \x01(\x05R\apercent\x12A\n" +
+	"\bpipeline\x18\a \x01(\v2#.bambuflow.config.v1.PipelineConfigH\x00R\bpipeline\x12>\n" +
+	"\arouting\x18\b \x01(\v2\".bambuflow.config.v1.RoutingConfigH\x00R\arouting\x12=\n" +
+	"\x06prompt\x18\t \x01(\v2#.bambuflow.config.v1.PromptTemplateH\x00R\x06prompt\x12;\n" +
+	"\x06policy\x18\n" +
+	" \x01(\v2!.bambuflow.config.v1.PolicyBundleH\x00R\x06policyB\v\n" +
+	"\tcandidate\"q\n" +
+	"\x0ePromptTemplate\x12\x14\n" +
+	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\x02 \x01(\tR\tversionId\x12\x16\n" +
+	"\x06system\x18\x03 \x01(\tR\x06system\x12\x12\n" +
+	"\x04user\x18\x04 \x01(\tR\x04user\"e\n" +
+	"\fPolicyBundle\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12;\n" +
+	"\amodules\x18\x02 \x03(\v2!.bambuflow.config.v1.PolicyModuleR\amodules\":\n" +
+	"\fPolicyModule\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\"\xc2\x01\n" +
+	"\x0ePipelineConfig\x12\x16\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\x02 \x01(\tR\tversionId\x12@\n" +
+	"\tretrieval\x18\x03 \x01(\v2\".bambuflow.config.v1.RetrievalPlanR\tretrieval\x127\n" +
+	"\x06answer\x18\x04 \x01(\v2\x1f.bambuflow.config.v1.AnswerPlanR\x06answer\"\xfc\x01\n" +
+	"\rRetrievalPlan\x12'\n" +
+	"\x0fdisabled_routes\x18\x01 \x03(\tR\x0edisabledRoutes\x12Y\n" +
+	"\rroute_weights\x18\x02 \x03(\v24.bambuflow.config.v1.RetrievalPlan.RouteWeightsEntryR\frouteWeights\x12\x1b\n" +
+	"\x06rerank\x18\x03 \x01(\bH\x00R\x06rerank\x88\x01\x01\x1a?\n" +
+	"\x11RouteWeightsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01B\t\n" +
+	"\a_rerank\"\xff\x02\n" +
+	"\n" +
+	"AnswerPlan\x120\n" +
+	"\x11support_threshold\x18\x01 \x01(\x01H\x00R\x10supportThreshold\x88\x01\x01\x12&\n" +
+	"\fmin_coverage\x18\x02 \x01(\x01H\x01R\vminCoverage\x88\x01\x01\x121\n" +
+	"\x15single_hop_llm_rerank\x18\x03 \x01(\bR\x12singleHopLlmRerank\x12!\n" +
+	"\ftenant_rules\x18\x04 \x01(\tR\vtenantRules\x12-\n" +
+	"\x10agent_max_rounds\x18\x05 \x01(\x05H\x02R\x0eagentMaxRounds\x88\x01\x01\x12:\n" +
+	"\x17agent_max_sub_questions\x18\x06 \x01(\x05H\x03R\x14agentMaxSubQuestions\x88\x01\x01B\x14\n" +
+	"\x12_support_thresholdB\x0f\n" +
+	"\r_min_coverageB\x13\n" +
+	"\x11_agent_max_roundsB\x1a\n" +
+	"\x18_agent_max_sub_questions\"\xa1\x01\n" +
+	"\rRoutingConfig\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\x01 \x01(\tR\tversionId\x12F\n" +
+	"\n" +
+	"confidence\x18\x02 \x01(\v2&.bambuflow.config.v1.ConfidenceWeightsR\n" +
+	"confidence\x12)\n" +
+	"\x10generation_model\x18\x03 \x01(\tR\x0fgenerationModel\"\xc9\x01\n" +
+	"\x11ConfidenceWeights\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12\x1a\n" +
+	"\bcoverage\x18\x02 \x01(\x01R\bcoverage\x12\x18\n" +
+	"\asupport\x18\x03 \x01(\x01R\asupport\x12\x16\n" +
+	"\x06rerank\x18\x04 \x01(\x01R\x06rerank\x12\x1c\n" +
+	"\tdiversity\x18\x05 \x01(\x01R\tdiversity\x12\x1a\n" +
+	"\bconflict\x18\x06 \x01(\x01R\bconflict\x12\x12\n" +
+	"\x04bias\x18\a \x01(\x01R\x04bias\"_\n" +
 	"\fTenantConfig\x12\x16\n" +
 	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1d\n" +
 	"\n" +
 	"version_id\x18\x02 \x01(\tR\tversionId\x12\x18\n" +
-	"\acontent\x18\x03 \x01(\tR\acontent\"\xec\x01\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\"\xaa\x03\n" +
 	"\x11RunningExperiment\x12\x15\n" +
 	"\x06exp_id\x18\x01 \x01(\tR\x05expId\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12'\n" +
 	"\x0ftraffic_percent\x18\x03 \x01(\x05R\x0etrafficPercent\x120\n" +
 	"\x11support_threshold\x18\x04 \x01(\x01H\x00R\x10supportThreshold\x88\x01\x01\x12&\n" +
-	"\fmin_coverage\x18\x05 \x01(\x01H\x01R\vminCoverage\x88\x01\x01B\x14\n" +
+	"\fmin_coverage\x18\x05 \x01(\x01H\x01R\vminCoverage\x88\x01\x01\x12?\n" +
+	"\bpipeline\x18\x06 \x01(\v2#.bambuflow.config.v1.PipelineConfigR\bpipeline\x12<\n" +
+	"\arouting\x18\a \x01(\v2\".bambuflow.config.v1.RoutingConfigR\arouting\x12=\n" +
+	"\aprompts\x18\b \x03(\v2#.bambuflow.config.v1.PromptTemplateR\apromptsB\x14\n" +
 	"\x12_support_thresholdB\x0f\n" +
 	"\r_min_coverage\"B\n" +
 	"\vSourceGrant\x12\x16\n" +
@@ -991,13 +2065,14 @@ const file_bambuflow_config_v1_config_proto_rawDesc = "" +
 	"TermStatus\x12\x1b\n" +
 	"\x17TERM_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12TERM_STATUS_ACTIVE\x10\x01\x12\x1a\n" +
-	"\x16TERM_STATUS_DEPRECATED\x10\x022\xf8\x02\n" +
+	"\x16TERM_STATUS_DEPRECATED\x10\x022\xdd\x03\n" +
 	"\rConfigService\x12`\n" +
 	"\vGetSnapshot\x12'.bambuflow.config.v1.GetSnapshotRequest\x1a(.bambuflow.config.v1.GetSnapshotResponse\x12P\n" +
 	"\x05Watch\x12!.bambuflow.config.v1.WatchRequest\x1a\".bambuflow.config.v1.WatchResponse0\x01\x12H\n" +
 	"\x03Ack\x12\x1f.bambuflow.config.v1.AckRequest\x1a .bambuflow.config.v1.AckResponse\x12i\n" +
-	"\x0eGetSigningKeys\x12*.bambuflow.config.v1.GetSigningKeysRequest\x1a+.bambuflow.config.v1.GetSigningKeysResponseB\xe1\x01\n" +
-	"\x17com.bambuflow.config.v1B\vConfigProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\xa2\x02\x03BCX\xaa\x02\x13Bambuflow.Config.V1\xca\x02\x13Bambuflow\\Config\\V1\xe2\x02\x1fBambuflow\\Config\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Config::V1b\x06proto3"
+	"\x0eGetSigningKeys\x12*.bambuflow.config.v1.GetSigningKeysRequest\x1a+.bambuflow.config.v1.GetSigningKeysResponse\x12c\n" +
+	"\fGetCandidate\x12(.bambuflow.config.v1.GetCandidateRequest\x1a).bambuflow.config.v1.GetCandidateResponseB\xdd\x01\n" +
+	"\x17com.bambuflow.config.v1B\vConfigProtoP\x01ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\xa2\x02\x03BCX\xaa\x02\x13Bambuflow.Config.V1\xca\x02\x13Bambuflow\\Config\\V1\xe2\x02\x1fBambuflow\\Config\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Config::V1b\x06proto3"
 
 var (
 	file_bambuflow_config_v1_config_proto_rawDescOnce sync.Once
@@ -1012,45 +2087,81 @@ func file_bambuflow_config_v1_config_proto_rawDescGZIP() []byte {
 }
 
 var file_bambuflow_config_v1_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_bambuflow_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_bambuflow_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_bambuflow_config_v1_config_proto_goTypes = []any{
 	(TermStatus)(0),                // 0: bambuflow.config.v1.TermStatus
-	(*WatchRequest)(nil),           // 1: bambuflow.config.v1.WatchRequest
-	(*WatchResponse)(nil),          // 2: bambuflow.config.v1.WatchResponse
-	(*AckRequest)(nil),             // 3: bambuflow.config.v1.AckRequest
-	(*AckResponse)(nil),            // 4: bambuflow.config.v1.AckResponse
-	(*GetSigningKeysRequest)(nil),  // 5: bambuflow.config.v1.GetSigningKeysRequest
-	(*GetSigningKeysResponse)(nil), // 6: bambuflow.config.v1.GetSigningKeysResponse
-	(*SigningKey)(nil),             // 7: bambuflow.config.v1.SigningKey
-	(*GetSnapshotRequest)(nil),     // 8: bambuflow.config.v1.GetSnapshotRequest
-	(*GetSnapshotResponse)(nil),    // 9: bambuflow.config.v1.GetSnapshotResponse
-	(*TenantConfig)(nil),           // 10: bambuflow.config.v1.TenantConfig
-	(*RunningExperiment)(nil),      // 11: bambuflow.config.v1.RunningExperiment
-	(*SourceGrant)(nil),            // 12: bambuflow.config.v1.SourceGrant
-	(*Vocabulary)(nil),             // 13: bambuflow.config.v1.Vocabulary
-	(*VocabularyTerm)(nil),         // 14: bambuflow.config.v1.VocabularyTerm
+	(*GetCandidateRequest)(nil),    // 1: bambuflow.config.v1.GetCandidateRequest
+	(*GetCandidateResponse)(nil),   // 2: bambuflow.config.v1.GetCandidateResponse
+	(*WatchRequest)(nil),           // 3: bambuflow.config.v1.WatchRequest
+	(*WatchResponse)(nil),          // 4: bambuflow.config.v1.WatchResponse
+	(*AckRequest)(nil),             // 5: bambuflow.config.v1.AckRequest
+	(*AckResponse)(nil),            // 6: bambuflow.config.v1.AckResponse
+	(*GetSigningKeysRequest)(nil),  // 7: bambuflow.config.v1.GetSigningKeysRequest
+	(*GetSigningKeysResponse)(nil), // 8: bambuflow.config.v1.GetSigningKeysResponse
+	(*SigningKey)(nil),             // 9: bambuflow.config.v1.SigningKey
+	(*GetSnapshotRequest)(nil),     // 10: bambuflow.config.v1.GetSnapshotRequest
+	(*GetSnapshotResponse)(nil),    // 11: bambuflow.config.v1.GetSnapshotResponse
+	(*PushSource)(nil),             // 12: bambuflow.config.v1.PushSource
+	(*Canary)(nil),                 // 13: bambuflow.config.v1.Canary
+	(*PromptTemplate)(nil),         // 14: bambuflow.config.v1.PromptTemplate
+	(*PolicyBundle)(nil),           // 15: bambuflow.config.v1.PolicyBundle
+	(*PolicyModule)(nil),           // 16: bambuflow.config.v1.PolicyModule
+	(*PipelineConfig)(nil),         // 17: bambuflow.config.v1.PipelineConfig
+	(*RetrievalPlan)(nil),          // 18: bambuflow.config.v1.RetrievalPlan
+	(*AnswerPlan)(nil),             // 19: bambuflow.config.v1.AnswerPlan
+	(*RoutingConfig)(nil),          // 20: bambuflow.config.v1.RoutingConfig
+	(*ConfidenceWeights)(nil),      // 21: bambuflow.config.v1.ConfidenceWeights
+	(*TenantConfig)(nil),           // 22: bambuflow.config.v1.TenantConfig
+	(*RunningExperiment)(nil),      // 23: bambuflow.config.v1.RunningExperiment
+	(*SourceGrant)(nil),            // 24: bambuflow.config.v1.SourceGrant
+	(*Vocabulary)(nil),             // 25: bambuflow.config.v1.Vocabulary
+	(*VocabularyTerm)(nil),         // 26: bambuflow.config.v1.VocabularyTerm
+	nil,                            // 27: bambuflow.config.v1.RetrievalPlan.RouteWeightsEntry
+	(v1.Classification)(0),         // 28: bambuflow.common.v1.Classification
 }
 var file_bambuflow_config_v1_config_proto_depIdxs = []int32{
-	7,  // 0: bambuflow.config.v1.GetSigningKeysResponse.keys:type_name -> bambuflow.config.v1.SigningKey
-	13, // 1: bambuflow.config.v1.GetSnapshotResponse.vocabularies:type_name -> bambuflow.config.v1.Vocabulary
-	12, // 2: bambuflow.config.v1.GetSnapshotResponse.source_grants:type_name -> bambuflow.config.v1.SourceGrant
-	11, // 3: bambuflow.config.v1.GetSnapshotResponse.experiments:type_name -> bambuflow.config.v1.RunningExperiment
-	10, // 4: bambuflow.config.v1.GetSnapshotResponse.tenants:type_name -> bambuflow.config.v1.TenantConfig
-	14, // 5: bambuflow.config.v1.Vocabulary.terms:type_name -> bambuflow.config.v1.VocabularyTerm
-	0,  // 6: bambuflow.config.v1.VocabularyTerm.status:type_name -> bambuflow.config.v1.TermStatus
-	8,  // 7: bambuflow.config.v1.ConfigService.GetSnapshot:input_type -> bambuflow.config.v1.GetSnapshotRequest
-	1,  // 8: bambuflow.config.v1.ConfigService.Watch:input_type -> bambuflow.config.v1.WatchRequest
-	3,  // 9: bambuflow.config.v1.ConfigService.Ack:input_type -> bambuflow.config.v1.AckRequest
-	5,  // 10: bambuflow.config.v1.ConfigService.GetSigningKeys:input_type -> bambuflow.config.v1.GetSigningKeysRequest
-	9,  // 11: bambuflow.config.v1.ConfigService.GetSnapshot:output_type -> bambuflow.config.v1.GetSnapshotResponse
-	2,  // 12: bambuflow.config.v1.ConfigService.Watch:output_type -> bambuflow.config.v1.WatchResponse
-	4,  // 13: bambuflow.config.v1.ConfigService.Ack:output_type -> bambuflow.config.v1.AckResponse
-	6,  // 14: bambuflow.config.v1.ConfigService.GetSigningKeys:output_type -> bambuflow.config.v1.GetSigningKeysResponse
-	11, // [11:15] is the sub-list for method output_type
-	7,  // [7:11] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	11, // 0: bambuflow.config.v1.GetCandidateResponse.snapshot:type_name -> bambuflow.config.v1.GetSnapshotResponse
+	9,  // 1: bambuflow.config.v1.GetSigningKeysResponse.keys:type_name -> bambuflow.config.v1.SigningKey
+	25, // 2: bambuflow.config.v1.GetSnapshotResponse.vocabularies:type_name -> bambuflow.config.v1.Vocabulary
+	24, // 3: bambuflow.config.v1.GetSnapshotResponse.source_grants:type_name -> bambuflow.config.v1.SourceGrant
+	23, // 4: bambuflow.config.v1.GetSnapshotResponse.experiments:type_name -> bambuflow.config.v1.RunningExperiment
+	22, // 5: bambuflow.config.v1.GetSnapshotResponse.tenants:type_name -> bambuflow.config.v1.TenantConfig
+	17, // 6: bambuflow.config.v1.GetSnapshotResponse.pipelines:type_name -> bambuflow.config.v1.PipelineConfig
+	20, // 7: bambuflow.config.v1.GetSnapshotResponse.routing:type_name -> bambuflow.config.v1.RoutingConfig
+	15, // 8: bambuflow.config.v1.GetSnapshotResponse.policy:type_name -> bambuflow.config.v1.PolicyBundle
+	14, // 9: bambuflow.config.v1.GetSnapshotResponse.prompts:type_name -> bambuflow.config.v1.PromptTemplate
+	13, // 10: bambuflow.config.v1.GetSnapshotResponse.canaries:type_name -> bambuflow.config.v1.Canary
+	12, // 11: bambuflow.config.v1.GetSnapshotResponse.push_sources:type_name -> bambuflow.config.v1.PushSource
+	28, // 12: bambuflow.config.v1.PushSource.default_classification:type_name -> bambuflow.common.v1.Classification
+	17, // 13: bambuflow.config.v1.Canary.pipeline:type_name -> bambuflow.config.v1.PipelineConfig
+	20, // 14: bambuflow.config.v1.Canary.routing:type_name -> bambuflow.config.v1.RoutingConfig
+	14, // 15: bambuflow.config.v1.Canary.prompt:type_name -> bambuflow.config.v1.PromptTemplate
+	15, // 16: bambuflow.config.v1.Canary.policy:type_name -> bambuflow.config.v1.PolicyBundle
+	16, // 17: bambuflow.config.v1.PolicyBundle.modules:type_name -> bambuflow.config.v1.PolicyModule
+	18, // 18: bambuflow.config.v1.PipelineConfig.retrieval:type_name -> bambuflow.config.v1.RetrievalPlan
+	19, // 19: bambuflow.config.v1.PipelineConfig.answer:type_name -> bambuflow.config.v1.AnswerPlan
+	27, // 20: bambuflow.config.v1.RetrievalPlan.route_weights:type_name -> bambuflow.config.v1.RetrievalPlan.RouteWeightsEntry
+	21, // 21: bambuflow.config.v1.RoutingConfig.confidence:type_name -> bambuflow.config.v1.ConfidenceWeights
+	17, // 22: bambuflow.config.v1.RunningExperiment.pipeline:type_name -> bambuflow.config.v1.PipelineConfig
+	20, // 23: bambuflow.config.v1.RunningExperiment.routing:type_name -> bambuflow.config.v1.RoutingConfig
+	14, // 24: bambuflow.config.v1.RunningExperiment.prompts:type_name -> bambuflow.config.v1.PromptTemplate
+	26, // 25: bambuflow.config.v1.Vocabulary.terms:type_name -> bambuflow.config.v1.VocabularyTerm
+	0,  // 26: bambuflow.config.v1.VocabularyTerm.status:type_name -> bambuflow.config.v1.TermStatus
+	10, // 27: bambuflow.config.v1.ConfigService.GetSnapshot:input_type -> bambuflow.config.v1.GetSnapshotRequest
+	3,  // 28: bambuflow.config.v1.ConfigService.Watch:input_type -> bambuflow.config.v1.WatchRequest
+	5,  // 29: bambuflow.config.v1.ConfigService.Ack:input_type -> bambuflow.config.v1.AckRequest
+	7,  // 30: bambuflow.config.v1.ConfigService.GetSigningKeys:input_type -> bambuflow.config.v1.GetSigningKeysRequest
+	1,  // 31: bambuflow.config.v1.ConfigService.GetCandidate:input_type -> bambuflow.config.v1.GetCandidateRequest
+	11, // 32: bambuflow.config.v1.ConfigService.GetSnapshot:output_type -> bambuflow.config.v1.GetSnapshotResponse
+	4,  // 33: bambuflow.config.v1.ConfigService.Watch:output_type -> bambuflow.config.v1.WatchResponse
+	6,  // 34: bambuflow.config.v1.ConfigService.Ack:output_type -> bambuflow.config.v1.AckResponse
+	8,  // 35: bambuflow.config.v1.ConfigService.GetSigningKeys:output_type -> bambuflow.config.v1.GetSigningKeysResponse
+	2,  // 36: bambuflow.config.v1.ConfigService.GetCandidate:output_type -> bambuflow.config.v1.GetCandidateResponse
+	32, // [32:37] is the sub-list for method output_type
+	27, // [27:32] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_config_v1_config_proto_init() }
@@ -1058,14 +2169,22 @@ func file_bambuflow_config_v1_config_proto_init() {
 	if File_bambuflow_config_v1_config_proto != nil {
 		return
 	}
-	file_bambuflow_config_v1_config_proto_msgTypes[10].OneofWrappers = []any{}
+	file_bambuflow_config_v1_config_proto_msgTypes[12].OneofWrappers = []any{
+		(*Canary_Pipeline)(nil),
+		(*Canary_Routing)(nil),
+		(*Canary_Prompt)(nil),
+		(*Canary_Policy)(nil),
+	}
+	file_bambuflow_config_v1_config_proto_msgTypes[17].OneofWrappers = []any{}
+	file_bambuflow_config_v1_config_proto_msgTypes[18].OneofWrappers = []any{}
+	file_bambuflow_config_v1_config_proto_msgTypes[22].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_config_v1_config_proto_rawDesc), len(file_bambuflow_config_v1_config_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

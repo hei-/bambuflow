@@ -1,7 +1,7 @@
 # 共享盘样例源（只用于开发与 CI）
 
 `fileshare/` 模拟公司共享盘上的制度文件与通知（P1-T2），数据源 ID `src_fileshare`，授权给 credit、risk、ops 三个测试租户
-（`policy/data.json`）。内容均为虚构，主题与 Wiki 样例相关但不重复。
+（`sources.yaml`）。内容均为虚构，主题与 Wiki 样例相关但不重复。
 
 文件由 `gen_fileshare.py` 确定地生成（PyMuPDF、python-docx、openpyxl、标准库 email），合计不到 200 KB，随仓库提交，
 这样 chunk_id 与评测题不随库版本漂移。每个文件旁挂 `<文件名>.meta.yaml`，模拟文档管理系统接口返回的 ID、属主、密级与 ACL，

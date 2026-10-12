@@ -32,7 +32,7 @@ func TestShipUploadsSealedSegmentsAndKeepsThemOnFailure(t *testing.T) {
 	}
 	defer func() { _ = w.Close() }()
 	store := &memStore{objs: map[string]string{}, fail: true}
-	s := &Shipper{W: w, Store: store, Prefix: "gw-1/"}
+	s := &Shipper{W: w, Store: store, Instance: "gw-1"}
 	ctx := context.Background()
 
 	if err := w.Write(Record{TraceID: "t1", ShownChunkIDs: []string{"c1"}}); err != nil {
@@ -50,7 +50,7 @@ func TestShipUploadsSealedSegmentsAndKeepsThemOnFailure(t *testing.T) {
 	if err != nil || n != 2 {
 		t.Fatalf("应送出两段: n=%d err=%v", n, err)
 	}
-	if len(store.objs) != 2 || !strings.Contains(store.objs["gw-1/audit.jsonl.0000000001000000000"], `"shown_chunk_ids":["c1"]`) {
+	if len(store.objs) != 2 || !strings.Contains(store.objs["gateway/1970/01/01/gw-1/audit.jsonl.0000000001000000000"], `"shown_chunk_ids":["c1"]`) {
 		t.Fatalf("对象不符: %v", store.objs)
 	}
 	if left, _ := w.Sealed(); len(left) != 0 {

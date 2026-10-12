@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 配置对象的版本、变更单与发布（governance 详设 3、4、7.2）：/v1/admin/tenants、/v1/admin/change-requests、
-// /v1/admin/releases，由 governance 实现。现在的配置对象只有租户配置。
+// /v1/admin/releases、/v1/admin/config-versions，由 governance 实现。配置对象有租户配置（变更单审批后生效）与
+// pipeline、routing、policy、prompt（Git 类：console 的修改写成合并请求，合并后由 CI 发布）。
 
 var (
 	chgIDPattern = regexp.MustCompile(`^chg_[a-f0-9]{24}$`)
@@ -27,6 +28,8 @@ type configVersionJSON struct {
 	CreatedAt   string `json:"created_at"`
 	SourceRef   string `json:"source_ref"`
 	Active      bool   `json:"active"`
+	// 策略层的差异分析：生效后可见范围变大的代表性主体
+	Widened []string `json:"widened,omitempty"`
 }
 
 func configVersionOf(v *adminv1.ConfigVersion) *configVersionJSON {
@@ -35,7 +38,7 @@ func configVersionOf(v *adminv1.ConfigVersion) *configVersionJSON {
 	}
 	return &configVersionJSON{VersionID: v.GetVersionId(), Object: v.GetObject(), Scope: v.GetScope(), Number: v.GetNumber(),
 		Content: v.GetContent(), ContentHash: v.GetContentHash(), CreatedBy: v.GetCreatedBy(), CreatedAt: rfc3339(v.GetCreatedAt()),
-		SourceRef: v.GetSourceRef(), Active: v.GetActive()}
+		SourceRef: v.GetSourceRef(), Active: v.GetActive(), Widened: v.GetWidened()}
 }
 
 type changeRequestJSON struct {
@@ -53,13 +56,15 @@ type changeRequestJSON struct {
 	DecidedAt     string             `json:"decided_at,omitempty"`
 	RejectReason  string             `json:"reject_reason,omitempty"`
 	ReleaseID     string             `json:"release_id,omitempty"`
+	// Git 类对象写成的合并请求
+	MergeRequestURL string `json:"merge_request_url,omitempty"`
 }
 
 func changeRequestOf(c *adminv1.ChangeRequest) changeRequestJSON {
 	return changeRequestJSON{ChgID: c.GetChgId(), Object: c.GetObject(), Scope: c.GetScope(), BaseVersionID: c.GetBaseVersionId(),
 		Version: configVersionOf(c.GetVersion()), Reason: c.GetReason(), GateID: c.GetGateId(), Author: c.GetAuthor(),
 		CreatedAt: rfc3339(c.GetCreatedAt()), Status: c.GetStatus(), DecidedBy: c.GetDecidedBy(), DecidedAt: rfc3339(c.GetDecidedAt()),
-		RejectReason: c.GetRejectReason(), ReleaseID: c.GetReleaseId()}
+		RejectReason: c.GetRejectReason(), ReleaseID: c.GetReleaseId(), MergeRequestURL: c.GetMergeRequestUrl()}
 }
 
 type releaseJSON struct {
@@ -79,14 +84,34 @@ type releaseJSON struct {
 	ApprovedAt    string             `json:"approved_at,omitempty"`
 	RolledBackBy  string             `json:"rolled_back_by,omitempty"`
 	RolledBackAt  string             `json:"rolled_back_at,omitempty"`
+	// 策略层的第二位审批人
+	SecondApprovedBy string `json:"second_approved_by,omitempty"`
+	SecondApprovedAt string `json:"second_approved_at,omitempty"`
+	CanaryTenant     string `json:"canary_tenant,omitempty"`
+	// status 为 rolling_out 时的灰度范围
+	Rollout *rolloutJSON `json:"rollout,omitempty"`
+}
+
+type rolloutJSON struct {
+	Tenant      string `json:"tenant"`
+	Percent     int32  `json:"percent"`
+	StartedAt   string `json:"started_at"`
+	Observation string `json:"observation,omitempty"`
+	ObservedAt  string `json:"observed_at,omitempty"`
 }
 
 func releaseOf(r *adminv1.Release) releaseJSON {
-	return releaseJSON{ReleaseID: r.GetReleaseId(), Object: r.GetObject(), Scope: r.GetScope(), Version: configVersionOf(r.GetVersion()),
+	var ro *rolloutJSON
+	if x := r.GetRollout(); x != nil {
+		ro = &rolloutJSON{Tenant: x.GetTenant(), Percent: x.GetPercent(), StartedAt: rfc3339(x.GetStartedAt()),
+			Observation: x.GetObservation(), ObservedAt: rfc3339(x.GetObservedAt())}
+	}
+	return releaseJSON{CanaryTenant: r.GetCanaryTenant(), Rollout: ro, ReleaseID: r.GetReleaseId(), Object: r.GetObject(), Scope: r.GetScope(), Version: configVersionOf(r.GetVersion()),
 		FromVersionID: r.GetFromVersionId(), Source: r.GetSource(), SourceRef: r.GetSourceRef(), GateID: r.GetGateId(),
 		Status: r.GetStatus(), Reason: r.GetReason(), RequestedBy: r.GetRequestedBy(), RequestedAt: rfc3339(r.GetRequestedAt()),
 		ApprovedBy: r.GetApprovedBy(), ApprovedAt: rfc3339(r.GetApprovedAt()), RolledBackBy: r.GetRolledBackBy(),
-		RolledBackAt: rfc3339(r.GetRolledBackAt())}
+		RolledBackAt: rfc3339(r.GetRolledBackAt()), SecondApprovedBy: r.GetSecondApprovedBy(),
+		SecondApprovedAt: rfc3339(r.GetSecondApprovedAt())}
 }
 
 type tenantSummaryJSON struct {
@@ -155,6 +180,26 @@ func (s *Server) listConfigVersions(ctx context.Context, in *adminInput) (adminO
 	return adminOutput{body: out}, nil
 }
 
+// configObjects 是 /v1/admin/config-versions 可查的对象；租户配置另有 /v1/admin/tenants/{tenant}/config-versions
+var configObjects = map[string]bool{"tenant": true, "pipeline": true, "routing": true, "policy": true, "prompt": true}
+
+// listObjectVersions 按对象与作用域列出版本（console 编辑 Git 类对象时取当前生效内容）。作用域格式由 governance 校验。
+func (s *Server) listObjectVersions(ctx context.Context, in *adminInput) (adminOutput, error) {
+	object, scope := in.query.Get("object"), in.query.Get("scope")
+	if !configObjects[object] || scope == "" || len(scope) > 128 {
+		return adminOutput{}, problemInvalid
+	}
+	r, err := s.Configs.ListConfigVersions(ctx, &adminv1.ListConfigVersionsRequest{Object: object, Scope: scope})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	out := configVersionListJSON{Versions: []*configVersionJSON{}}
+	for _, v := range r.GetVersions() {
+		out.Versions = append(out.Versions, configVersionOf(v))
+	}
+	return adminOutput{body: out}, nil
+}
+
 type createChangeRequestJSON struct {
 	Object        string `json:"object"`
 	Scope         string `json:"scope"`
@@ -175,6 +220,35 @@ func (s *Server) createChangeRequest(ctx context.Context, in *adminInput) (admin
 		return adminOutput{}, err
 	}
 	return adminOutput{status: http.StatusCreated, body: changeRequestOf(r.GetChangeRequest())}, nil
+}
+
+// listChangeRequests、listReleases 按状态列出（新的在前，最多 100 条）；状态是否合法由 governance 判断。
+func (s *Server) listChangeRequests(ctx context.Context, in *adminInput) (adminOutput, error) {
+	r, err := s.Configs.ListChangeRequests(ctx, &adminv1.ListChangeRequestsRequest{Status: in.query.Get("status")})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	out := struct {
+		ChangeRequests []changeRequestJSON `json:"change_requests"`
+	}{ChangeRequests: []changeRequestJSON{}}
+	for _, c := range r.GetChangeRequests() {
+		out.ChangeRequests = append(out.ChangeRequests, changeRequestOf(c))
+	}
+	return adminOutput{body: out}, nil
+}
+
+func (s *Server) listReleases(ctx context.Context, in *adminInput) (adminOutput, error) {
+	r, err := s.Configs.ListReleases(ctx, &adminv1.ListReleasesRequest{Status: in.query.Get("status")})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	out := struct {
+		Releases []releaseJSON `json:"releases"`
+	}{Releases: []releaseJSON{}}
+	for _, x := range r.GetReleases() {
+		out.Releases = append(out.Releases, releaseOf(x))
+	}
+	return adminOutput{body: out}, nil
 }
 
 func chgID(in *adminInput) (string, error) {
@@ -223,6 +297,8 @@ type createReleaseJSON struct {
 	SourceRef string `json:"source_ref"`
 	GateID    string `json:"gate_id"`
 	Reason    string `json:"reason"`
+	// 全局对象灰度的试点租户；不填则审批时选第一个试点阶段的租户
+	CanaryTenant string `json:"canary_tenant"`
 }
 
 // createRelease 由 CI 在 Git 合并后发起（202，待审批）。
@@ -232,7 +308,7 @@ func (s *Server) createRelease(ctx context.Context, in *adminInput) (adminOutput
 		return adminOutput{}, err
 	}
 	r, err := s.Configs.CreateRelease(ctx, &adminv1.CreateReleaseRequest{Object: req.Object, Scope: req.Scope, Content: req.Content,
-		SourceRef: req.SourceRef, GateId: req.GateID, Reason: req.Reason})
+		SourceRef: req.SourceRef, GateId: req.GateID, Reason: req.Reason, CanaryTenant: req.CanaryTenant})
 	if err != nil {
 		return adminOutput{}, err
 	}
@@ -268,6 +344,39 @@ func (s *Server) getRelease(ctx context.Context, in *adminInput) (adminOutput, e
 		return adminOutput{}, err
 	}
 	r, err := s.Configs.GetRelease(ctx, &adminv1.GetReleaseRequest{ReleaseId: id})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	return adminOutput{body: releaseOf(r.GetRelease())}, nil
+}
+
+// promoteRelease 让灰度中的发布全量生效。
+func (s *Server) promoteRelease(ctx context.Context, in *adminInput) (adminOutput, error) {
+	id, err := relID(in)
+	if err != nil {
+		return adminOutput{}, err
+	}
+	if err := decodeBody(in.body, &struct{}{}); err != nil {
+		return adminOutput{}, err
+	}
+	r, err := s.Configs.PromoteRelease(ctx, &adminv1.PromoteReleaseRequest{ReleaseId: id})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	return adminOutput{body: releaseOf(r.GetRelease())}, nil
+}
+
+// abortRollout 终止灰度。
+func (s *Server) abortRollout(ctx context.Context, in *adminInput) (adminOutput, error) {
+	id, err := relID(in)
+	if err != nil {
+		return adminOutput{}, err
+	}
+	var req activateJSON
+	if err := decodeBody(in.body, &req); err != nil {
+		return adminOutput{}, err
+	}
+	r, err := s.Configs.AbortRollout(ctx, &adminv1.AbortRolloutRequest{ReleaseId: id, Reason: req.Reason})
 	if err != nil {
 		return adminOutput{}, err
 	}

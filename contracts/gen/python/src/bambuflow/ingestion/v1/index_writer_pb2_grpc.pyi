@@ -45,6 +45,20 @@ class IndexWriterServiceStub:
     """UpdateAcl 只更新文档的权限与密级（快速通道，入库管道详设第 9 节）：不重算向量、不进待发布版本，
     对线上立即生效。
     """
+    LookupVectors: _grpc.UnaryUnaryMultiCallable[_index_writer_pb2.LookupVectorsRequest, _index_writer_pb2.LookupVectorsResponse]
+    """按块的向量缓存（入库管道详设第 8 节）：按向量化输入的摘要与嵌入模型版本取已入库的向量，命中的块不再送嵌入模型。
+    只读，查不到的不在结果里；缓存不可用时调用方照常全部向量化。
+    """
+    SetPartitionGrants: _grpc.UnaryUnaryMultiCallable[_index_writer_pb2.SetPartitionGrantsRequest, _index_writer_pb2.SetPartitionGrantsResponse]
+    """替换分区级数据源一个分区的全部被授权方（PartitionGrantChanged）；不改索引与文档权限。"""
+    ListSourceDocuments: _grpc.UnaryStreamMultiCallable[_index_writer_pb2.ListSourceDocumentsRequest, _index_writer_pb2.ListSourceDocumentsResponse]
+    """ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
+    connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
+    """
+    RecordPurge: _grpc.UnaryUnaryMultiCallable[_index_writer_pb2.RecordPurgeRequest, _index_writer_pb2.RecordPurgeResponse]
+    """RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+    同一存储重复记录时保留最早的时间。
+    """
 
 @_typing.type_check_only
 class IndexWriterServiceAsyncStub(IndexWriterServiceStub):
@@ -62,6 +76,20 @@ class IndexWriterServiceAsyncStub(IndexWriterServiceStub):
     UpdateAcl: _aio.UnaryUnaryMultiCallable[_index_writer_pb2.UpdateAclRequest, _index_writer_pb2.UpdateAclResponse]  # type: ignore[assignment]
     """UpdateAcl 只更新文档的权限与密级（快速通道，入库管道详设第 9 节）：不重算向量、不进待发布版本，
     对线上立即生效。
+    """
+    LookupVectors: _aio.UnaryUnaryMultiCallable[_index_writer_pb2.LookupVectorsRequest, _index_writer_pb2.LookupVectorsResponse]  # type: ignore[assignment]
+    """按块的向量缓存（入库管道详设第 8 节）：按向量化输入的摘要与嵌入模型版本取已入库的向量，命中的块不再送嵌入模型。
+    只读，查不到的不在结果里；缓存不可用时调用方照常全部向量化。
+    """
+    SetPartitionGrants: _aio.UnaryUnaryMultiCallable[_index_writer_pb2.SetPartitionGrantsRequest, _index_writer_pb2.SetPartitionGrantsResponse]  # type: ignore[assignment]
+    """替换分区级数据源一个分区的全部被授权方（PartitionGrantChanged）；不改索引与文档权限。"""
+    ListSourceDocuments: _aio.UnaryStreamMultiCallable[_index_writer_pb2.ListSourceDocumentsRequest, _index_writer_pb2.ListSourceDocumentsResponse]  # type: ignore[assignment]
+    """ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
+    connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
+    """
+    RecordPurge: _aio.UnaryUnaryMultiCallable[_index_writer_pb2.RecordPurgeRequest, _index_writer_pb2.RecordPurgeResponse]  # type: ignore[assignment]
+    """RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+    同一存储重复记录时保留最早的时间。
     """
 
 class IndexWriterServiceServicer(metaclass=_abc_1.ABCMeta):
@@ -95,6 +123,44 @@ class IndexWriterServiceServicer(metaclass=_abc_1.ABCMeta):
     ) -> _typing.Union[_index_writer_pb2.UpdateAclResponse, _abc.Awaitable[_index_writer_pb2.UpdateAclResponse]]:
         """UpdateAcl 只更新文档的权限与密级（快速通道，入库管道详设第 9 节）：不重算向量、不进待发布版本，
         对线上立即生效。
+        """
+
+    @_abc_1.abstractmethod
+    def LookupVectors(
+        self,
+        request: _index_writer_pb2.LookupVectorsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_index_writer_pb2.LookupVectorsResponse, _abc.Awaitable[_index_writer_pb2.LookupVectorsResponse]]:
+        """按块的向量缓存（入库管道详设第 8 节）：按向量化输入的摘要与嵌入模型版本取已入库的向量，命中的块不再送嵌入模型。
+        只读，查不到的不在结果里；缓存不可用时调用方照常全部向量化。
+        """
+
+    @_abc_1.abstractmethod
+    def SetPartitionGrants(
+        self,
+        request: _index_writer_pb2.SetPartitionGrantsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_index_writer_pb2.SetPartitionGrantsResponse, _abc.Awaitable[_index_writer_pb2.SetPartitionGrantsResponse]]:
+        """替换分区级数据源一个分区的全部被授权方（PartitionGrantChanged）；不改索引与文档权限。"""
+
+    @_abc_1.abstractmethod
+    def ListSourceDocuments(
+        self,
+        request: _index_writer_pb2.ListSourceDocumentsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_abc.Iterator[_index_writer_pb2.ListSourceDocumentsResponse], _abc.AsyncIterator[_index_writer_pb2.ListSourceDocumentsResponse]]:
+        """ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
+        connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
+        """
+
+    @_abc_1.abstractmethod
+    def RecordPurge(
+        self,
+        request: _index_writer_pb2.RecordPurgeRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_index_writer_pb2.RecordPurgeResponse, _abc.Awaitable[_index_writer_pb2.RecordPurgeResponse]]:
+        """RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+        同一存储重复记录时保留最早的时间。
         """
 
 def add_IndexWriterServiceServicer_to_server(servicer: IndexWriterServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

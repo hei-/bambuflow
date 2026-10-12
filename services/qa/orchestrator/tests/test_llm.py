@@ -165,3 +165,38 @@ def test_reader_stopping_early_counts_as_success() -> None:
 
     client = asyncio.run(go())
     assert client.breaker.state is State.HALF_OPEN
+
+
+def test_router_picks_model_by_classification() -> None:
+    from bambuflow.common.v1 import types_pb2
+    from bambuflow_orchestrator.llm import ModelNotAllowedError, RefusedGeneration, Router
+
+    async def main() -> None:
+        async with httpx.AsyncClient() as http:
+            private = ChatClient("http://llm", "private@1", http)
+            restricted = ChatClient("http://llm-r", "restricted@1", http)
+            r = Router(private, restricted=restricted)
+            assert r.choose(types_pb2.CLASSIFICATION_PUBLIC) is private
+            assert r.choose(types_pb2.CLASSIFICATION_CONFIDENTIAL) is private
+            assert r.choose(types_pb2.CLASSIFICATION_UNSPECIFIED) is private
+            assert r.choose(types_pb2.CLASSIFICATION_RESTRICTED) is restricted
+            # 没配受限级专用实例：受限级不调用
+            assert Router(private).choose(types_pb2.CLASSIFICATION_RESTRICTED) is None
+            # 默认模型是外部模型：只处理公开级
+            ext = Router(private, external=True)
+            assert ext.choose(types_pb2.CLASSIFICATION_PUBLIC) is private
+            assert ext.choose(types_pb2.CLASSIFICATION_INTERNAL) is None
+            # routing 指定的模型：部署允许的才调用，受限级仍用专用实例
+            alt = ChatClient("http://llm", "alt@1", http)
+            r = Router(private, restricted=restricted, alternatives={"alt@1": alt})
+            assert r.choose(types_pb2.CLASSIFICATION_INTERNAL, "alt@1") is alt
+            assert r.choose(types_pb2.CLASSIFICATION_INTERNAL, "private@1") is private
+            assert r.choose(types_pb2.CLASSIFICATION_PUBLIC, "unknown@1") is None
+            assert r.choose(types_pb2.CLASSIFICATION_RESTRICTED, "alt@1") is restricted
+            ext = Router(private, external=True, alternatives={"alt@1": alt})
+            assert ext.choose(types_pb2.CLASSIFICATION_INTERNAL, "alt@1") is None
+            with pytest.raises(ModelNotAllowedError):
+                async for _ in RefusedGeneration(types_pb2.CLASSIFICATION_INTERNAL):
+                    pass
+
+    asyncio.run(main())

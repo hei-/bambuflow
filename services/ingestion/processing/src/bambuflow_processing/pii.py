@@ -10,6 +10,7 @@ AES-256-GCM 加密（附加数据为 chunk_id，密文换到别的块上无法�
 每份文档申请一个数据密钥。
 没有配置密钥服务时只掩码、不保存原值：原文绝不以明文进索引，能看 PII 的人也只能看到掩码。
 
+规则之外还可以接 NER（NerModel 端口，BF_NER_URL）识别人名、地址等；NER 只在入库时用。
 识别规则与 retrieval（Go）、orchestrator 的掩码规则相同，
 以 tools/test-upstream/pii_cases.json 为共同样例；
 区别只在掩码形式：这里等长（邮箱的用户名除首字符外逐字替换为 *）。
@@ -21,6 +22,9 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, Protocol
+
+import httpx
 
 from bambuflow_platform import envelope
 from bambuflow_platform.envelope import KeyService
@@ -54,8 +58,68 @@ class Found:
     masked: str
 
 
-def find(text: str) -> list[Found]:
-    """文本里的 PII 片段（按位置排序、互不重叠），每个都给出等长的掩码。"""
+# NER 识别的实体类型（入库管道详设第 6 节：规则 + NER）：
+# 规则认不出的人名、地址、单位内部的账户名称等
+NER_LABELS = frozenset({"person", "address", "account_name"})
+NER_TIMEOUT_SECONDS = 30.0
+
+
+class NerError(RuntimeError):
+    """NER 服务不可用或返回了不合法的结果。
+
+    脱敏失败即停在本阶段（入库管道详设第 11 节），文档留在队列里重试。"""
+
+
+@dataclass(frozen=True)
+class Entity:
+    start: int
+    end: int
+    label: str
+
+
+class NerModel(Protocol):
+    """NER 端口：与 OCR 一样是平台内部部署的模型服务，不经外部模型。"""
+
+    def entities(self, text: str) -> list[Entity]: ...
+
+
+class HttpNerModel:
+    """调用 NER 服务的 POST /v1/ner：请求 {"text": ...}，
+    响应 {"entities": [{"start", "end", "label"}]}
+    （start、end 是 Unicode 字符位置，左闭右开）。"""
+
+    def __init__(self, base_url: str, client: httpx.Client | None = None) -> None:
+        self._url = base_url.rstrip("/") + "/v1/ner"
+        self._client = client or httpx.Client(timeout=NER_TIMEOUT_SECONDS)
+
+    def entities(self, text: str) -> list[Entity]:
+        try:
+            resp = self._client.post(self._url, json={"text": text})
+            resp.raise_for_status()
+            body: Any = resp.json()
+        except (httpx.HTTPError, ValueError) as e:
+            raise NerError(f"NER 服务调用失败: {e}") from e
+        if not isinstance(body, dict) or not isinstance(body.get("entities"), list):
+            raise NerError("NER 响应缺少 entities")
+        out = []
+        for item in body["entities"]:
+            if not isinstance(item, dict):
+                raise NerError("NER 响应的实体格式不对")
+            start, end, label = item.get("start"), item.get("end"), item.get("label")
+            if not (
+                isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(text)
+            ):
+                # 坐标越界就整段失败：错位的掩码会盖掉不该盖的字、漏掉该盖的
+                raise NerError("NER 响应的实体位置越界")
+            if label in NER_LABELS:
+                out.append(Entity(start, end, str(label)))
+        return out
+
+
+def find(text: str, ner: NerModel | None = None) -> list[Found]:
+    """文本里的 PII 片段（按位置排序、互不重叠），每个都给出等长的掩码。
+    先按规则（证件号、卡号、手机号、邮箱），再加 NER 识别的人名、地址等；
+    与规则结果重叠的 NER 实体不再重复掩码。"""
     out: list[Found] = []
     taken: list[tuple[int, int]] = []
 
@@ -78,12 +142,17 @@ def find(text: str) -> list[Found]:
     for m in _EMAIL.finditer(text):
         user = m.group(1)
         add(m.start(1), m.end(1), user, user[0] + "*" * (len(user) - 1))
+    if ner is not None:
+        for e in ner.entities(text):
+            s = text[e.start : e.end]
+            # 保留首字（“张**”“上海市********”），便于读者知道这里原本是什么
+            add(e.start, e.end, s, s[0] + "*" * (len(s) - 1))
     return sorted(out, key=lambda f: f.start)
 
 
-def mask(text: str) -> tuple[str, list[Found]]:
+def mask(text: str, ner: NerModel | None = None) -> tuple[str, list[Found]]:
     """等长掩码后的文本与被替换的片段。"""
-    found = find(text)
+    found = find(text, ner)
     parts: list[str] = []
     pos = 0
     for f in found:

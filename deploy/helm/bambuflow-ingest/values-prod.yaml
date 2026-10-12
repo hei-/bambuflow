@@ -1,0 +1,71 @@
+# 生产环境的 values 模板：地址按部署配置清单填写；release 名与在线平面相同，在线平面装在 bambuflow 命名空间。
+# values.schema.json 拒绝开发口令、模拟服务和本地地址，CI 用它校验（make helm-check）。
+image:
+  registry: registry.corp.example/bambuflow
+  tag: 0.1.0
+
+vault:
+  addr: https://vault.corp.example
+  role: bambuflow-ingest
+
+networkPolicy:
+  onlineNamespace: bambuflow
+  # 源系统的 Webhook 经入口网关进来
+  webhookFrom: [ingress-gateway]
+
+otel:
+  endpoint: http://otel-collector.observability:4317
+
+online:
+  jwksUrl: http://bambuflow-gateway.bambuflow:8081/internal/jwks.json
+  configAddr: bambuflow-governance.bambuflow:9090
+  evaluationAddr: bambuflow-evaluation.bambuflow:9090
+
+redisAddr: redis.corp.example:6379
+
+objectStore:
+  endpoint: https://s3.corp.example
+
+audit:
+  s3Endpoint: https://s3.corp.example
+
+indexing:
+  # 示例：邮件保留 3 年，其余数据源与源系统一致（按合规给出的保留期填写）
+  retention:
+    src_mail: 1095
+
+processing:
+  embedderUrl: https://models.corp.example/embedder
+  ocrUrl: https://models.corp.example/ocr
+
+connectors:
+  sources:
+    # 日志平台（订阅消息主题）；入库的服务、级别与归属见 logs.yaml
+    # 常驻轮询（5–15 分钟按日志平台的响应自适应）；能推送变更通知的源再加 webhook: true
+    - id: src_applogs
+      command: sync-logs
+      poll: true
+      env:
+        BF_LOG_CONFIG: /etc/bambuflow/source/logs.yaml
+        BF_LOG_BASE_URI: https://logs.corp.example/
+      configFiles:
+        logs.yaml: |
+          topic: app-logs
+          retention_days: 30
+          classification: internal
+          services:
+            payments-svc: {groups: [group:payments-oncall], levels: [ERROR, WARN]}
+    # 数据平台的白名单视图表结构（每小时）；只读账号的连接串 BF_DBSCHEMA_DSN 在 Vault 的 bambuflow/connectors-src-dbschema
+    - id: src_dbschema
+      command: sync-dbschema
+      schedule: "0 * * * *"
+      env:
+        BF_DBSCHEMA_CONFIG: /etc/bambuflow/source/dbschema.yaml
+        BF_DBSCHEMA_BASE_URI: db://
+      configFiles:
+        dbschema.yaml: |
+          database: dw
+          classification: internal
+          views: [dw.v_loan_balance]
+          roles:
+            report_finance: [group:finance-analysts]

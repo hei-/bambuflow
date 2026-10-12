@@ -7,7 +7,7 @@
 package retrievalv1
 
 import (
-	v1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -295,7 +295,13 @@ type SearchRequest struct {
 	Rerank *bool `protobuf:"varint,4,opt,name=rerank,proto3,oneof" json:"rerank,omitempty"`
 	// 调用方判定的问题意图（orchestrator 详设 5.3）。关系类问题提高图召回在融合中的权重（详设 7.1，
 	// 权重属于检索计划，由 retrieval 决定）；只影响排序，不改变召回范围与权限。不设时按普通问题处理。
-	Intent        SearchIntent `protobuf:"varint,5,opt,name=intent,proto3,enum=bambuflow.retrieval.v1.SearchIntent" json:"intent,omitempty"`
+	Intent SearchIntent `protobuf:"varint,5,opt,name=intent,proto3,enum=bambuflow.retrieval.v1.SearchIntent" json:"intent,omitempty"`
+	// 是否在每个 Hit 里返回各路分数 score_details（详设 3.2、7.5）；matched_by 总是返回。
+	IncludeScoreDetails bool `protobuf:"varint,6,opt,name=include_score_details,json=includeScoreDetails,proto3" json:"include_score_details,omitempty"`
+	// 用哪个检索计划版本（cfv_ 前缀，retrieval 详设 3.2 plan_override、10.4）：A/B 实验组由 orchestrator 传入，
+	// 只能是该租户运行中实验登记的 pipeline 变体。不认识的版本（实验刚停止等）按租户生效的计划执行，
+	// 实际用的版本见响应的 plan_version。不设时按租户生效的计划（含灰度）。
+	PlanVersion   string `protobuf:"bytes,7,opt,name=plan_version,json=planVersion,proto3" json:"plan_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -365,6 +371,20 @@ func (x *SearchRequest) GetIntent() SearchIntent {
 	return SearchIntent_SEARCH_INTENT_UNSPECIFIED
 }
 
+func (x *SearchRequest) GetIncludeScoreDetails() bool {
+	if x != nil {
+		return x.IncludeScoreDetails
+	}
+	return false
+}
+
+func (x *SearchRequest) GetPlanVersion() string {
+	if x != nil {
+		return x.PlanVersion
+	}
+	return ""
+}
+
 type SearchResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Hits  []*Hit                 `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
@@ -375,7 +395,9 @@ type SearchResponse struct {
 	// 本次召回所用索引版本的嵌入模型版本（如 bge-m3@mock-hash-1），调用方写入 why。
 	EmbeddingModel string `protobuf:"bytes,5,opt,name=embedding_model,json=embeddingModel,proto3" json:"embedding_model,omitempty"`
 	// 本次实际使用的精排模型版本；未精排（关闭、不可用或时间不足）时为空，原因见 degraded。
-	RerankModel   string `protobuf:"bytes,6,opt,name=rerank_model,json=rerankModel,proto3" json:"rerank_model,omitempty"`
+	RerankModel string `protobuf:"bytes,6,opt,name=rerank_model,json=rerankModel,proto3" json:"rerank_model,omitempty"`
+	// 本次使用的租户 pipeline 版本（检索计划，cfv_ 前缀）；租户没有 pipeline 时为空。
+	PlanVersion   string `protobuf:"bytes,7,opt,name=plan_version,json=planVersion,proto3" json:"plan_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -452,6 +474,13 @@ func (x *SearchResponse) GetRerankModel() string {
 	return ""
 }
 
+func (x *SearchResponse) GetPlanVersion() string {
+	if x != nil {
+		return x.PlanVersion
+	}
+	return ""
+}
+
 type Hit struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// chunk_id 与 doc_version 一起定位正文；二者和 span 缺一不可。
@@ -475,6 +504,10 @@ type Hit struct {
 	GraphPath []*GraphEdge `protobuf:"bytes,14,rep,name=graph_path,json=graphPath,proto3" json:"graph_path,omitempty"`
 	// 入库时检测到可疑指令（retrieval 详设 3.3）。调用方把它当作不可信内容：不能成为陈述的唯一依据，返回给 agent 时继续携带。
 	InjectionFlag bool `protobuf:"varint,15,opt,name=injection_flag,json=injectionFlag,proto3" json:"injection_flag,omitempty"`
+	// 各路分数（详设 7.5）；请求的 include_score_details 为 true 时才填。
+	ScoreDetails *ScoreDetails `protobuf:"bytes,16,opt,name=score_details,json=scoreDetails,proto3" json:"score_details,omitempty"`
+	// 命中这一块的召回路、子查询与名次（详设 7.5），按召回路、子查询排序。
+	MatchedBy     []*RouteMatch `protobuf:"bytes,17,rep,name=matched_by,json=matchedBy,proto3" json:"matched_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -614,6 +647,182 @@ func (x *Hit) GetInjectionFlag() bool {
 	return false
 }
 
+func (x *Hit) GetScoreDetails() *ScoreDetails {
+	if x != nil {
+		return x.ScoreDetails
+	}
+	return nil
+}
+
+func (x *Hit) GetMatchedBy() []*RouteMatch {
+	if x != nil {
+		return x.MatchedBy
+	}
+	return nil
+}
+
+// ScoreDetails 是一块在各环节的得分。各路原始分数归一化到 0–1，该路没有命中时不设。
+type ScoreDetails struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 关键词：全文检索相关度 r 归一化为 r / (r + 1)。
+	Keyword *float64 `protobuf:"fixed64,1,opt,name=keyword,proto3,oneof" json:"keyword,omitempty"`
+	// 稠密向量：1 − 余弦距离，截断到 0–1。
+	Dense *float64 `protobuf:"fixed64,2,opt,name=dense,proto3,oneof" json:"dense,omitempty"`
+	// 图召回：关系置信度 × 跳数衰减。
+	Graph *float64 `protobuf:"fixed64,3,opt,name=graph,proto3,oneof" json:"graph,omitempty"`
+	// 编号精确匹配：命中为 1。命中的块不参与融合排序，直接置顶（详设 7.1）。
+	Identifier *float64 `protobuf:"fixed64,4,opt,name=identifier,proto3,oneof" json:"identifier,omitempty"`
+	// 融合分（加权 RRF，多个子查询取最大）；只由编号精确匹配命中时为 0。
+	Rrf float64 `protobuf:"fixed64,5,opt,name=rrf,proto3" json:"rrf,omitempty"`
+	// 精排分；未精排时不设。
+	Rerank *float64 `protobuf:"fixed64,6,opt,name=rerank,proto3,oneof" json:"rerank,omitempty"`
+	// 学习型稀疏向量：内积 p 归一化为 p / (p + 1)。
+	Sparse        *float64 `protobuf:"fixed64,7,opt,name=sparse,proto3,oneof" json:"sparse,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScoreDetails) Reset() {
+	*x = ScoreDetails{}
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScoreDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScoreDetails) ProtoMessage() {}
+
+func (x *ScoreDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScoreDetails.ProtoReflect.Descriptor instead.
+func (*ScoreDetails) Descriptor() ([]byte, []int) {
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ScoreDetails) GetKeyword() float64 {
+	if x != nil && x.Keyword != nil {
+		return *x.Keyword
+	}
+	return 0
+}
+
+func (x *ScoreDetails) GetDense() float64 {
+	if x != nil && x.Dense != nil {
+		return *x.Dense
+	}
+	return 0
+}
+
+func (x *ScoreDetails) GetGraph() float64 {
+	if x != nil && x.Graph != nil {
+		return *x.Graph
+	}
+	return 0
+}
+
+func (x *ScoreDetails) GetIdentifier() float64 {
+	if x != nil && x.Identifier != nil {
+		return *x.Identifier
+	}
+	return 0
+}
+
+func (x *ScoreDetails) GetRrf() float64 {
+	if x != nil {
+		return x.Rrf
+	}
+	return 0
+}
+
+func (x *ScoreDetails) GetRerank() float64 {
+	if x != nil && x.Rerank != nil {
+		return *x.Rerank
+	}
+	return 0
+}
+
+func (x *ScoreDetails) GetSparse() float64 {
+	if x != nil && x.Sparse != nil {
+		return *x.Sparse
+	}
+	return 0
+}
+
+// RouteMatch 是一路召回在一个子查询上命中这一块的名次（从 1 开始）。
+type RouteMatch struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// keyword / dense / graph / identifier
+	Route         string `protobuf:"bytes,1,opt,name=route,proto3" json:"route,omitempty"`
+	QueryId       string `protobuf:"bytes,2,opt,name=query_id,json=queryId,proto3" json:"query_id,omitempty"`
+	Rank          int32  `protobuf:"varint,3,opt,name=rank,proto3" json:"rank,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RouteMatch) Reset() {
+	*x = RouteMatch{}
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouteMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouteMatch) ProtoMessage() {}
+
+func (x *RouteMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouteMatch.ProtoReflect.Descriptor instead.
+func (*RouteMatch) Descriptor() ([]byte, []int) {
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RouteMatch) GetRoute() string {
+	if x != nil {
+		return x.Route
+	}
+	return ""
+}
+
+func (x *RouteMatch) GetQueryId() string {
+	if x != nil {
+		return x.QueryId
+	}
+	return ""
+}
+
+func (x *RouteMatch) GetRank() int32 {
+	if x != nil {
+		return x.Rank
+	}
+	return 0
+}
+
 type GraphEdge struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 实体名称已按调用者密级脱敏
@@ -628,7 +837,7 @@ type GraphEdge struct {
 
 func (x *GraphEdge) Reset() {
 	*x = GraphEdge{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[4]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -640,7 +849,7 @@ func (x *GraphEdge) String() string {
 func (*GraphEdge) ProtoMessage() {}
 
 func (x *GraphEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[4]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -653,7 +862,7 @@ func (x *GraphEdge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphEdge.ProtoReflect.Descriptor instead.
 func (*GraphEdge) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GraphEdge) GetFromEntity() string {
@@ -705,7 +914,7 @@ type ListDocumentsRequest struct {
 
 func (x *ListDocumentsRequest) Reset() {
 	*x = ListDocumentsRequest{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[5]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -717,7 +926,7 @@ func (x *ListDocumentsRequest) String() string {
 func (*ListDocumentsRequest) ProtoMessage() {}
 
 func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[5]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -730,7 +939,7 @@ func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListDocumentsRequest) GetFilters() *v1.Filters {
@@ -778,7 +987,7 @@ type ListDocumentsResponse struct {
 
 func (x *ListDocumentsResponse) Reset() {
 	*x = ListDocumentsResponse{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[6]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -790,7 +999,7 @@ func (x *ListDocumentsResponse) String() string {
 func (*ListDocumentsResponse) ProtoMessage() {}
 
 func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[6]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -803,7 +1012,7 @@ func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*ListDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListDocumentsResponse) GetDocuments() []*DocumentSummary {
@@ -867,7 +1076,7 @@ type MetadataGap struct {
 
 func (x *MetadataGap) Reset() {
 	*x = MetadataGap{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[7]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -879,7 +1088,7 @@ func (x *MetadataGap) String() string {
 func (*MetadataGap) ProtoMessage() {}
 
 func (x *MetadataGap) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[7]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -892,7 +1101,7 @@ func (x *MetadataGap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetadataGap.ProtoReflect.Descriptor instead.
 func (*MetadataGap) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *MetadataGap) GetField() string {
@@ -927,7 +1136,7 @@ type DocumentSummary struct {
 
 func (x *DocumentSummary) Reset() {
 	*x = DocumentSummary{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[8]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -939,7 +1148,7 @@ func (x *DocumentSummary) String() string {
 func (*DocumentSummary) ProtoMessage() {}
 
 func (x *DocumentSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[8]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -952,7 +1161,7 @@ func (x *DocumentSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DocumentSummary.ProtoReflect.Descriptor instead.
 func (*DocumentSummary) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{8}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DocumentSummary) GetDocId() string {
@@ -1028,7 +1237,7 @@ type CountDocumentsRequest struct {
 
 func (x *CountDocumentsRequest) Reset() {
 	*x = CountDocumentsRequest{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[9]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1040,7 +1249,7 @@ func (x *CountDocumentsRequest) String() string {
 func (*CountDocumentsRequest) ProtoMessage() {}
 
 func (x *CountDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[9]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1053,7 +1262,7 @@ func (x *CountDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*CountDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{9}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CountDocumentsRequest) GetFilters() *v1.Filters {
@@ -1081,7 +1290,7 @@ type CountGroup struct {
 
 func (x *CountGroup) Reset() {
 	*x = CountGroup{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[10]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1093,7 +1302,7 @@ func (x *CountGroup) String() string {
 func (*CountGroup) ProtoMessage() {}
 
 func (x *CountGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[10]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1106,7 +1315,7 @@ func (x *CountGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountGroup.ProtoReflect.Descriptor instead.
 func (*CountGroup) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CountGroup) GetValue() string {
@@ -1139,7 +1348,7 @@ type CountDocumentsResponse struct {
 
 func (x *CountDocumentsResponse) Reset() {
 	*x = CountDocumentsResponse{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[11]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1151,7 +1360,7 @@ func (x *CountDocumentsResponse) String() string {
 func (*CountDocumentsResponse) ProtoMessage() {}
 
 func (x *CountDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[11]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1164,7 +1373,7 @@ func (x *CountDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*CountDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{11}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CountDocumentsResponse) GetTotalCount() int64 {
@@ -1220,7 +1429,7 @@ type GetExcerptRequest struct {
 
 func (x *GetExcerptRequest) Reset() {
 	*x = GetExcerptRequest{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[12]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1232,7 +1441,7 @@ func (x *GetExcerptRequest) String() string {
 func (*GetExcerptRequest) ProtoMessage() {}
 
 func (x *GetExcerptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[12]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1245,7 +1454,7 @@ func (x *GetExcerptRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetExcerptRequest.ProtoReflect.Descriptor instead.
 func (*GetExcerptRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{12}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetExcerptRequest) GetDocId() string {
@@ -1285,7 +1494,7 @@ type GetExcerptResponse struct {
 
 func (x *GetExcerptResponse) Reset() {
 	*x = GetExcerptResponse{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[13]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1297,7 +1506,7 @@ func (x *GetExcerptResponse) String() string {
 func (*GetExcerptResponse) ProtoMessage() {}
 
 func (x *GetExcerptResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[13]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1310,7 +1519,7 @@ func (x *GetExcerptResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetExcerptResponse.ProtoReflect.Descriptor instead.
 func (*GetExcerptResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{13}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetExcerptResponse) GetChunkId() string {
@@ -1421,7 +1630,7 @@ type CheckAccessRequest struct {
 
 func (x *CheckAccessRequest) Reset() {
 	*x = CheckAccessRequest{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[14]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1433,7 +1642,7 @@ func (x *CheckAccessRequest) String() string {
 func (*CheckAccessRequest) ProtoMessage() {}
 
 func (x *CheckAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[14]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1446,7 +1655,7 @@ func (x *CheckAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckAccessRequest.ProtoReflect.Descriptor instead.
 func (*CheckAccessRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{14}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CheckAccessRequest) GetChunkIds() []string {
@@ -1467,7 +1676,7 @@ type CheckAccessResponse struct {
 
 func (x *CheckAccessResponse) Reset() {
 	*x = CheckAccessResponse{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[15]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1479,7 +1688,7 @@ func (x *CheckAccessResponse) String() string {
 func (*CheckAccessResponse) ProtoMessage() {}
 
 func (x *CheckAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[15]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1492,7 +1701,7 @@ func (x *CheckAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckAccessResponse.ProtoReflect.Descriptor instead.
 func (*CheckAccessResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{15}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CheckAccessResponse) GetResults() []*AccessResult {
@@ -1527,7 +1736,7 @@ type AccessResult struct {
 
 func (x *AccessResult) Reset() {
 	*x = AccessResult{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[16]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1539,7 +1748,7 @@ func (x *AccessResult) String() string {
 func (*AccessResult) ProtoMessage() {}
 
 func (x *AccessResult) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[16]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1552,7 +1761,7 @@ func (x *AccessResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccessResult.ProtoReflect.Descriptor instead.
 func (*AccessResult) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{16}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *AccessResult) GetChunkId() string {
@@ -1586,7 +1795,7 @@ type CheckDocumentAccessRequest struct {
 
 func (x *CheckDocumentAccessRequest) Reset() {
 	*x = CheckDocumentAccessRequest{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[17]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1598,7 +1807,7 @@ func (x *CheckDocumentAccessRequest) String() string {
 func (*CheckDocumentAccessRequest) ProtoMessage() {}
 
 func (x *CheckDocumentAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[17]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1611,7 +1820,7 @@ func (x *CheckDocumentAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckDocumentAccessRequest.ProtoReflect.Descriptor instead.
 func (*CheckDocumentAccessRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{17}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CheckDocumentAccessRequest) GetDocIds() []string {
@@ -1632,7 +1841,7 @@ type CheckDocumentAccessResponse struct {
 
 func (x *CheckDocumentAccessResponse) Reset() {
 	*x = CheckDocumentAccessResponse{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[18]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1644,7 +1853,7 @@ func (x *CheckDocumentAccessResponse) String() string {
 func (*CheckDocumentAccessResponse) ProtoMessage() {}
 
 func (x *CheckDocumentAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[18]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1657,7 +1866,7 @@ func (x *CheckDocumentAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckDocumentAccessResponse.ProtoReflect.Descriptor instead.
 func (*CheckDocumentAccessResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{18}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CheckDocumentAccessResponse) GetResults() []*DocumentAccessResult {
@@ -1692,7 +1901,7 @@ type DocumentAccessResult struct {
 
 func (x *DocumentAccessResult) Reset() {
 	*x = DocumentAccessResult{}
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[19]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1704,7 +1913,7 @@ func (x *DocumentAccessResult) String() string {
 func (*DocumentAccessResult) ProtoMessage() {}
 
 func (x *DocumentAccessResult) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[19]
+	mi := &file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1717,7 +1926,7 @@ func (x *DocumentAccessResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DocumentAccessResult.ProtoReflect.Descriptor instead.
 func (*DocumentAccessResult) Descriptor() ([]byte, []int) {
-	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{19}
+	return file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DocumentAccessResult) GetDocId() string {
@@ -1748,21 +1957,24 @@ const file_bambuflow_retrieval_v1_retrieval_proto_rawDesc = "" +
 	"&bambuflow/retrieval/v1/retrieval.proto\x12\x16bambuflow.retrieval.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\".\n" +
 	"\bSubQuery\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04text\x18\x02 \x01(\tR\x04text\"\xfe\x01\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\"\xd5\x02\n" +
 	"\rSearchRequest\x12:\n" +
 	"\aqueries\x18\x01 \x03(\v2 .bambuflow.retrieval.v1.SubQueryR\aqueries\x126\n" +
 	"\afilters\x18\x02 \x01(\v2\x1c.bambuflow.common.v1.FiltersR\afilters\x12\x13\n" +
 	"\x05top_k\x18\x03 \x01(\x05R\x04topK\x12\x1b\n" +
 	"\x06rerank\x18\x04 \x01(\bH\x00R\x06rerank\x88\x01\x01\x12<\n" +
-	"\x06intent\x18\x05 \x01(\x0e2$.bambuflow.retrieval.v1.SearchIntentR\x06intentB\t\n" +
-	"\a_rerank\"\x97\x02\n" +
+	"\x06intent\x18\x05 \x01(\x0e2$.bambuflow.retrieval.v1.SearchIntentR\x06intent\x122\n" +
+	"\x15include_score_details\x18\x06 \x01(\bR\x13includeScoreDetails\x12!\n" +
+	"\fplan_version\x18\a \x01(\tR\vplanVersionB\t\n" +
+	"\a_rerank\"\xba\x02\n" +
 	"\x0eSearchResponse\x12/\n" +
 	"\x04hits\x18\x01 \x03(\v2\x1b.bambuflow.retrieval.v1.HitR\x04hits\x12#\n" +
 	"\rindex_version\x18\x02 \x01(\tR\findexVersion\x12%\n" +
 	"\x0epolicy_version\x18\x03 \x01(\tR\rpolicyVersion\x12<\n" +
 	"\bdegraded\x18\x04 \x03(\v2 .bambuflow.common.v1.DegradationR\bdegraded\x12'\n" +
 	"\x0fembedding_model\x18\x05 \x01(\tR\x0eembeddingModel\x12!\n" +
-	"\frerank_model\x18\x06 \x01(\tR\vrerankModel\"\xbf\x04\n" +
+	"\frerank_model\x18\x06 \x01(\tR\vrerankModel\x12!\n" +
+	"\fplan_version\x18\a \x01(\tR\vplanVersion\"\xcd\x05\n" +
 	"\x03Hit\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x15\n" +
 	"\x06doc_id\x18\x02 \x01(\tR\x05docId\x12\x1f\n" +
@@ -1783,7 +1995,32 @@ const file_bambuflow_retrieval_v1_retrieval_proto_rawDesc = "" +
 	"\x05score\x18\r \x01(\x01R\x05score\x12@\n" +
 	"\n" +
 	"graph_path\x18\x0e \x03(\v2!.bambuflow.retrieval.v1.GraphEdgeR\tgraphPath\x12%\n" +
-	"\x0einjection_flag\x18\x0f \x01(\bR\rinjectionFlag\"\x89\x02\n" +
+	"\x0einjection_flag\x18\x0f \x01(\bR\rinjectionFlag\x12I\n" +
+	"\rscore_details\x18\x10 \x01(\v2$.bambuflow.retrieval.v1.ScoreDetailsR\fscoreDetails\x12A\n" +
+	"\n" +
+	"matched_by\x18\x11 \x03(\v2\".bambuflow.retrieval.v1.RouteMatchR\tmatchedBy\"\x99\x02\n" +
+	"\fScoreDetails\x12\x1d\n" +
+	"\akeyword\x18\x01 \x01(\x01H\x00R\akeyword\x88\x01\x01\x12\x19\n" +
+	"\x05dense\x18\x02 \x01(\x01H\x01R\x05dense\x88\x01\x01\x12\x19\n" +
+	"\x05graph\x18\x03 \x01(\x01H\x02R\x05graph\x88\x01\x01\x12#\n" +
+	"\n" +
+	"identifier\x18\x04 \x01(\x01H\x03R\n" +
+	"identifier\x88\x01\x01\x12\x10\n" +
+	"\x03rrf\x18\x05 \x01(\x01R\x03rrf\x12\x1b\n" +
+	"\x06rerank\x18\x06 \x01(\x01H\x04R\x06rerank\x88\x01\x01\x12\x1b\n" +
+	"\x06sparse\x18\a \x01(\x01H\x05R\x06sparse\x88\x01\x01B\n" +
+	"\n" +
+	"\b_keywordB\b\n" +
+	"\x06_denseB\b\n" +
+	"\x06_graphB\r\n" +
+	"\v_identifierB\t\n" +
+	"\a_rerankB\t\n" +
+	"\a_sparse\"Q\n" +
+	"\n" +
+	"RouteMatch\x12\x14\n" +
+	"\x05route\x18\x01 \x01(\tR\x05route\x12\x19\n" +
+	"\bquery_id\x18\x02 \x01(\tR\aqueryId\x12\x12\n" +
+	"\x04rank\x18\x03 \x01(\x05R\x04rank\"\x89\x02\n" +
 	"\tGraphEdge\x12\x1f\n" +
 	"\vfrom_entity\x18\x01 \x01(\tR\n" +
 	"fromEntity\x12<\n" +
@@ -1907,8 +2144,8 @@ const file_bambuflow_retrieval_v1_retrieval_proto_rawDesc = "" +
 	"\x0eCountDocuments\x12-.bambuflow.retrieval.v1.CountDocumentsRequest\x1a..bambuflow.retrieval.v1.CountDocumentsResponse\x12c\n" +
 	"\n" +
 	"GetExcerpt\x12).bambuflow.retrieval.v1.GetExcerptRequest\x1a*.bambuflow.retrieval.v1.GetExcerptResponse\x12~\n" +
-	"\x13CheckDocumentAccess\x122.bambuflow.retrieval.v1.CheckDocumentAccessRequest\x1a3.bambuflow.retrieval.v1.CheckDocumentAccessResponseB\xf9\x01\n" +
-	"\x1acom.bambuflow.retrieval.v1B\x0eRetrievalProtoP\x01ZQgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1;retrievalv1\xa2\x02\x03BRX\xaa\x02\x16Bambuflow.Retrieval.V1\xca\x02\x16Bambuflow\\Retrieval\\V1\xe2\x02\"Bambuflow\\Retrieval\\V1\\GPBMetadata\xea\x02\x18Bambuflow::Retrieval::V1b\x06proto3"
+	"\x13CheckDocumentAccess\x122.bambuflow.retrieval.v1.CheckDocumentAccessRequest\x1a3.bambuflow.retrieval.v1.CheckDocumentAccessResponseB\xf5\x01\n" +
+	"\x1acom.bambuflow.retrieval.v1B\x0eRetrievalProtoP\x01ZMgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1;retrievalv1\xa2\x02\x03BRX\xaa\x02\x16Bambuflow.Retrieval.V1\xca\x02\x16Bambuflow\\Retrieval\\V1\xe2\x02\"Bambuflow\\Retrieval\\V1\\GPBMetadata\xea\x02\x18Bambuflow::Retrieval::V1b\x06proto3"
 
 var (
 	file_bambuflow_retrieval_v1_retrieval_proto_rawDescOnce sync.Once
@@ -1923,7 +2160,7 @@ func file_bambuflow_retrieval_v1_retrieval_proto_rawDescGZIP() []byte {
 }
 
 var file_bambuflow_retrieval_v1_retrieval_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_bambuflow_retrieval_v1_retrieval_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_bambuflow_retrieval_v1_retrieval_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_bambuflow_retrieval_v1_retrieval_proto_goTypes = []any{
 	(SearchIntent)(0),                   // 0: bambuflow.retrieval.v1.SearchIntent
 	(DocumentOrder)(0),                  // 1: bambuflow.retrieval.v1.DocumentOrder
@@ -1933,82 +2170,86 @@ var file_bambuflow_retrieval_v1_retrieval_proto_goTypes = []any{
 	(*SearchRequest)(nil),               // 5: bambuflow.retrieval.v1.SearchRequest
 	(*SearchResponse)(nil),              // 6: bambuflow.retrieval.v1.SearchResponse
 	(*Hit)(nil),                         // 7: bambuflow.retrieval.v1.Hit
-	(*GraphEdge)(nil),                   // 8: bambuflow.retrieval.v1.GraphEdge
-	(*ListDocumentsRequest)(nil),        // 9: bambuflow.retrieval.v1.ListDocumentsRequest
-	(*ListDocumentsResponse)(nil),       // 10: bambuflow.retrieval.v1.ListDocumentsResponse
-	(*MetadataGap)(nil),                 // 11: bambuflow.retrieval.v1.MetadataGap
-	(*DocumentSummary)(nil),             // 12: bambuflow.retrieval.v1.DocumentSummary
-	(*CountDocumentsRequest)(nil),       // 13: bambuflow.retrieval.v1.CountDocumentsRequest
-	(*CountGroup)(nil),                  // 14: bambuflow.retrieval.v1.CountGroup
-	(*CountDocumentsResponse)(nil),      // 15: bambuflow.retrieval.v1.CountDocumentsResponse
-	(*GetExcerptRequest)(nil),           // 16: bambuflow.retrieval.v1.GetExcerptRequest
-	(*GetExcerptResponse)(nil),          // 17: bambuflow.retrieval.v1.GetExcerptResponse
-	(*CheckAccessRequest)(nil),          // 18: bambuflow.retrieval.v1.CheckAccessRequest
-	(*CheckAccessResponse)(nil),         // 19: bambuflow.retrieval.v1.CheckAccessResponse
-	(*AccessResult)(nil),                // 20: bambuflow.retrieval.v1.AccessResult
-	(*CheckDocumentAccessRequest)(nil),  // 21: bambuflow.retrieval.v1.CheckDocumentAccessRequest
-	(*CheckDocumentAccessResponse)(nil), // 22: bambuflow.retrieval.v1.CheckDocumentAccessResponse
-	(*DocumentAccessResult)(nil),        // 23: bambuflow.retrieval.v1.DocumentAccessResult
-	(*v1.Filters)(nil),                  // 24: bambuflow.common.v1.Filters
-	(*v1.Degradation)(nil),              // 25: bambuflow.common.v1.Degradation
-	(*v1.Span)(nil),                     // 26: bambuflow.common.v1.Span
-	(v1.SourceType)(0),                  // 27: bambuflow.common.v1.SourceType
-	(v1.Classification)(0),              // 28: bambuflow.common.v1.Classification
-	(v1.EntityType)(0),                  // 29: bambuflow.common.v1.EntityType
-	(v1.RelationType)(0),                // 30: bambuflow.common.v1.RelationType
-	(*v1.DocMetadata)(nil),              // 31: bambuflow.common.v1.DocMetadata
-	(*timestamppb.Timestamp)(nil),       // 32: google.protobuf.Timestamp
+	(*ScoreDetails)(nil),                // 8: bambuflow.retrieval.v1.ScoreDetails
+	(*RouteMatch)(nil),                  // 9: bambuflow.retrieval.v1.RouteMatch
+	(*GraphEdge)(nil),                   // 10: bambuflow.retrieval.v1.GraphEdge
+	(*ListDocumentsRequest)(nil),        // 11: bambuflow.retrieval.v1.ListDocumentsRequest
+	(*ListDocumentsResponse)(nil),       // 12: bambuflow.retrieval.v1.ListDocumentsResponse
+	(*MetadataGap)(nil),                 // 13: bambuflow.retrieval.v1.MetadataGap
+	(*DocumentSummary)(nil),             // 14: bambuflow.retrieval.v1.DocumentSummary
+	(*CountDocumentsRequest)(nil),       // 15: bambuflow.retrieval.v1.CountDocumentsRequest
+	(*CountGroup)(nil),                  // 16: bambuflow.retrieval.v1.CountGroup
+	(*CountDocumentsResponse)(nil),      // 17: bambuflow.retrieval.v1.CountDocumentsResponse
+	(*GetExcerptRequest)(nil),           // 18: bambuflow.retrieval.v1.GetExcerptRequest
+	(*GetExcerptResponse)(nil),          // 19: bambuflow.retrieval.v1.GetExcerptResponse
+	(*CheckAccessRequest)(nil),          // 20: bambuflow.retrieval.v1.CheckAccessRequest
+	(*CheckAccessResponse)(nil),         // 21: bambuflow.retrieval.v1.CheckAccessResponse
+	(*AccessResult)(nil),                // 22: bambuflow.retrieval.v1.AccessResult
+	(*CheckDocumentAccessRequest)(nil),  // 23: bambuflow.retrieval.v1.CheckDocumentAccessRequest
+	(*CheckDocumentAccessResponse)(nil), // 24: bambuflow.retrieval.v1.CheckDocumentAccessResponse
+	(*DocumentAccessResult)(nil),        // 25: bambuflow.retrieval.v1.DocumentAccessResult
+	(*v1.Filters)(nil),                  // 26: bambuflow.common.v1.Filters
+	(*v1.Degradation)(nil),              // 27: bambuflow.common.v1.Degradation
+	(*v1.Span)(nil),                     // 28: bambuflow.common.v1.Span
+	(v1.SourceType)(0),                  // 29: bambuflow.common.v1.SourceType
+	(v1.Classification)(0),              // 30: bambuflow.common.v1.Classification
+	(v1.EntityType)(0),                  // 31: bambuflow.common.v1.EntityType
+	(v1.RelationType)(0),                // 32: bambuflow.common.v1.RelationType
+	(*v1.DocMetadata)(nil),              // 33: bambuflow.common.v1.DocMetadata
+	(*timestamppb.Timestamp)(nil),       // 34: google.protobuf.Timestamp
 }
 var file_bambuflow_retrieval_v1_retrieval_proto_depIdxs = []int32{
 	4,  // 0: bambuflow.retrieval.v1.SearchRequest.queries:type_name -> bambuflow.retrieval.v1.SubQuery
-	24, // 1: bambuflow.retrieval.v1.SearchRequest.filters:type_name -> bambuflow.common.v1.Filters
+	26, // 1: bambuflow.retrieval.v1.SearchRequest.filters:type_name -> bambuflow.common.v1.Filters
 	0,  // 2: bambuflow.retrieval.v1.SearchRequest.intent:type_name -> bambuflow.retrieval.v1.SearchIntent
 	7,  // 3: bambuflow.retrieval.v1.SearchResponse.hits:type_name -> bambuflow.retrieval.v1.Hit
-	25, // 4: bambuflow.retrieval.v1.SearchResponse.degraded:type_name -> bambuflow.common.v1.Degradation
-	26, // 5: bambuflow.retrieval.v1.Hit.span:type_name -> bambuflow.common.v1.Span
-	27, // 6: bambuflow.retrieval.v1.Hit.source_type:type_name -> bambuflow.common.v1.SourceType
-	28, // 7: bambuflow.retrieval.v1.Hit.classification:type_name -> bambuflow.common.v1.Classification
-	8,  // 8: bambuflow.retrieval.v1.Hit.graph_path:type_name -> bambuflow.retrieval.v1.GraphEdge
-	29, // 9: bambuflow.retrieval.v1.GraphEdge.from_type:type_name -> bambuflow.common.v1.EntityType
-	30, // 10: bambuflow.retrieval.v1.GraphEdge.relation_type:type_name -> bambuflow.common.v1.RelationType
-	29, // 11: bambuflow.retrieval.v1.GraphEdge.to_type:type_name -> bambuflow.common.v1.EntityType
-	24, // 12: bambuflow.retrieval.v1.ListDocumentsRequest.filters:type_name -> bambuflow.common.v1.Filters
-	1,  // 13: bambuflow.retrieval.v1.ListDocumentsRequest.order_by:type_name -> bambuflow.retrieval.v1.DocumentOrder
-	12, // 14: bambuflow.retrieval.v1.ListDocumentsResponse.documents:type_name -> bambuflow.retrieval.v1.DocumentSummary
-	11, // 15: bambuflow.retrieval.v1.ListDocumentsResponse.metadata_gaps:type_name -> bambuflow.retrieval.v1.MetadataGap
-	27, // 16: bambuflow.retrieval.v1.DocumentSummary.source_type:type_name -> bambuflow.common.v1.SourceType
-	28, // 17: bambuflow.retrieval.v1.DocumentSummary.classification:type_name -> bambuflow.common.v1.Classification
-	31, // 18: bambuflow.retrieval.v1.DocumentSummary.metadata:type_name -> bambuflow.common.v1.DocMetadata
-	24, // 19: bambuflow.retrieval.v1.CountDocumentsRequest.filters:type_name -> bambuflow.common.v1.Filters
-	2,  // 20: bambuflow.retrieval.v1.CountDocumentsRequest.group_by:type_name -> bambuflow.retrieval.v1.CountGroupBy
-	14, // 21: bambuflow.retrieval.v1.CountDocumentsResponse.groups:type_name -> bambuflow.retrieval.v1.CountGroup
-	11, // 22: bambuflow.retrieval.v1.CountDocumentsResponse.metadata_gaps:type_name -> bambuflow.retrieval.v1.MetadataGap
-	26, // 23: bambuflow.retrieval.v1.GetExcerptResponse.span:type_name -> bambuflow.common.v1.Span
-	27, // 24: bambuflow.retrieval.v1.GetExcerptResponse.source_type:type_name -> bambuflow.common.v1.SourceType
-	28, // 25: bambuflow.retrieval.v1.GetExcerptResponse.classification:type_name -> bambuflow.common.v1.Classification
-	20, // 26: bambuflow.retrieval.v1.CheckAccessResponse.results:type_name -> bambuflow.retrieval.v1.AccessResult
-	32, // 27: bambuflow.retrieval.v1.CheckAccessResponse.checked_at:type_name -> google.protobuf.Timestamp
-	3,  // 28: bambuflow.retrieval.v1.AccessResult.reason:type_name -> bambuflow.retrieval.v1.AccessReason
-	23, // 29: bambuflow.retrieval.v1.CheckDocumentAccessResponse.results:type_name -> bambuflow.retrieval.v1.DocumentAccessResult
-	32, // 30: bambuflow.retrieval.v1.CheckDocumentAccessResponse.checked_at:type_name -> google.protobuf.Timestamp
-	3,  // 31: bambuflow.retrieval.v1.DocumentAccessResult.reason:type_name -> bambuflow.retrieval.v1.AccessReason
-	5,  // 32: bambuflow.retrieval.v1.RetrievalService.Search:input_type -> bambuflow.retrieval.v1.SearchRequest
-	18, // 33: bambuflow.retrieval.v1.RetrievalService.CheckAccess:input_type -> bambuflow.retrieval.v1.CheckAccessRequest
-	9,  // 34: bambuflow.retrieval.v1.RetrievalService.ListDocuments:input_type -> bambuflow.retrieval.v1.ListDocumentsRequest
-	13, // 35: bambuflow.retrieval.v1.RetrievalService.CountDocuments:input_type -> bambuflow.retrieval.v1.CountDocumentsRequest
-	16, // 36: bambuflow.retrieval.v1.RetrievalService.GetExcerpt:input_type -> bambuflow.retrieval.v1.GetExcerptRequest
-	21, // 37: bambuflow.retrieval.v1.RetrievalService.CheckDocumentAccess:input_type -> bambuflow.retrieval.v1.CheckDocumentAccessRequest
-	6,  // 38: bambuflow.retrieval.v1.RetrievalService.Search:output_type -> bambuflow.retrieval.v1.SearchResponse
-	19, // 39: bambuflow.retrieval.v1.RetrievalService.CheckAccess:output_type -> bambuflow.retrieval.v1.CheckAccessResponse
-	10, // 40: bambuflow.retrieval.v1.RetrievalService.ListDocuments:output_type -> bambuflow.retrieval.v1.ListDocumentsResponse
-	15, // 41: bambuflow.retrieval.v1.RetrievalService.CountDocuments:output_type -> bambuflow.retrieval.v1.CountDocumentsResponse
-	17, // 42: bambuflow.retrieval.v1.RetrievalService.GetExcerpt:output_type -> bambuflow.retrieval.v1.GetExcerptResponse
-	22, // 43: bambuflow.retrieval.v1.RetrievalService.CheckDocumentAccess:output_type -> bambuflow.retrieval.v1.CheckDocumentAccessResponse
-	38, // [38:44] is the sub-list for method output_type
-	32, // [32:38] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	27, // 4: bambuflow.retrieval.v1.SearchResponse.degraded:type_name -> bambuflow.common.v1.Degradation
+	28, // 5: bambuflow.retrieval.v1.Hit.span:type_name -> bambuflow.common.v1.Span
+	29, // 6: bambuflow.retrieval.v1.Hit.source_type:type_name -> bambuflow.common.v1.SourceType
+	30, // 7: bambuflow.retrieval.v1.Hit.classification:type_name -> bambuflow.common.v1.Classification
+	10, // 8: bambuflow.retrieval.v1.Hit.graph_path:type_name -> bambuflow.retrieval.v1.GraphEdge
+	8,  // 9: bambuflow.retrieval.v1.Hit.score_details:type_name -> bambuflow.retrieval.v1.ScoreDetails
+	9,  // 10: bambuflow.retrieval.v1.Hit.matched_by:type_name -> bambuflow.retrieval.v1.RouteMatch
+	31, // 11: bambuflow.retrieval.v1.GraphEdge.from_type:type_name -> bambuflow.common.v1.EntityType
+	32, // 12: bambuflow.retrieval.v1.GraphEdge.relation_type:type_name -> bambuflow.common.v1.RelationType
+	31, // 13: bambuflow.retrieval.v1.GraphEdge.to_type:type_name -> bambuflow.common.v1.EntityType
+	26, // 14: bambuflow.retrieval.v1.ListDocumentsRequest.filters:type_name -> bambuflow.common.v1.Filters
+	1,  // 15: bambuflow.retrieval.v1.ListDocumentsRequest.order_by:type_name -> bambuflow.retrieval.v1.DocumentOrder
+	14, // 16: bambuflow.retrieval.v1.ListDocumentsResponse.documents:type_name -> bambuflow.retrieval.v1.DocumentSummary
+	13, // 17: bambuflow.retrieval.v1.ListDocumentsResponse.metadata_gaps:type_name -> bambuflow.retrieval.v1.MetadataGap
+	29, // 18: bambuflow.retrieval.v1.DocumentSummary.source_type:type_name -> bambuflow.common.v1.SourceType
+	30, // 19: bambuflow.retrieval.v1.DocumentSummary.classification:type_name -> bambuflow.common.v1.Classification
+	33, // 20: bambuflow.retrieval.v1.DocumentSummary.metadata:type_name -> bambuflow.common.v1.DocMetadata
+	26, // 21: bambuflow.retrieval.v1.CountDocumentsRequest.filters:type_name -> bambuflow.common.v1.Filters
+	2,  // 22: bambuflow.retrieval.v1.CountDocumentsRequest.group_by:type_name -> bambuflow.retrieval.v1.CountGroupBy
+	16, // 23: bambuflow.retrieval.v1.CountDocumentsResponse.groups:type_name -> bambuflow.retrieval.v1.CountGroup
+	13, // 24: bambuflow.retrieval.v1.CountDocumentsResponse.metadata_gaps:type_name -> bambuflow.retrieval.v1.MetadataGap
+	28, // 25: bambuflow.retrieval.v1.GetExcerptResponse.span:type_name -> bambuflow.common.v1.Span
+	29, // 26: bambuflow.retrieval.v1.GetExcerptResponse.source_type:type_name -> bambuflow.common.v1.SourceType
+	30, // 27: bambuflow.retrieval.v1.GetExcerptResponse.classification:type_name -> bambuflow.common.v1.Classification
+	22, // 28: bambuflow.retrieval.v1.CheckAccessResponse.results:type_name -> bambuflow.retrieval.v1.AccessResult
+	34, // 29: bambuflow.retrieval.v1.CheckAccessResponse.checked_at:type_name -> google.protobuf.Timestamp
+	3,  // 30: bambuflow.retrieval.v1.AccessResult.reason:type_name -> bambuflow.retrieval.v1.AccessReason
+	25, // 31: bambuflow.retrieval.v1.CheckDocumentAccessResponse.results:type_name -> bambuflow.retrieval.v1.DocumentAccessResult
+	34, // 32: bambuflow.retrieval.v1.CheckDocumentAccessResponse.checked_at:type_name -> google.protobuf.Timestamp
+	3,  // 33: bambuflow.retrieval.v1.DocumentAccessResult.reason:type_name -> bambuflow.retrieval.v1.AccessReason
+	5,  // 34: bambuflow.retrieval.v1.RetrievalService.Search:input_type -> bambuflow.retrieval.v1.SearchRequest
+	20, // 35: bambuflow.retrieval.v1.RetrievalService.CheckAccess:input_type -> bambuflow.retrieval.v1.CheckAccessRequest
+	11, // 36: bambuflow.retrieval.v1.RetrievalService.ListDocuments:input_type -> bambuflow.retrieval.v1.ListDocumentsRequest
+	15, // 37: bambuflow.retrieval.v1.RetrievalService.CountDocuments:input_type -> bambuflow.retrieval.v1.CountDocumentsRequest
+	18, // 38: bambuflow.retrieval.v1.RetrievalService.GetExcerpt:input_type -> bambuflow.retrieval.v1.GetExcerptRequest
+	23, // 39: bambuflow.retrieval.v1.RetrievalService.CheckDocumentAccess:input_type -> bambuflow.retrieval.v1.CheckDocumentAccessRequest
+	6,  // 40: bambuflow.retrieval.v1.RetrievalService.Search:output_type -> bambuflow.retrieval.v1.SearchResponse
+	21, // 41: bambuflow.retrieval.v1.RetrievalService.CheckAccess:output_type -> bambuflow.retrieval.v1.CheckAccessResponse
+	12, // 42: bambuflow.retrieval.v1.RetrievalService.ListDocuments:output_type -> bambuflow.retrieval.v1.ListDocumentsResponse
+	17, // 43: bambuflow.retrieval.v1.RetrievalService.CountDocuments:output_type -> bambuflow.retrieval.v1.CountDocumentsResponse
+	19, // 44: bambuflow.retrieval.v1.RetrievalService.GetExcerpt:output_type -> bambuflow.retrieval.v1.GetExcerptResponse
+	24, // 45: bambuflow.retrieval.v1.RetrievalService.CheckDocumentAccess:output_type -> bambuflow.retrieval.v1.CheckDocumentAccessResponse
+	40, // [40:46] is the sub-list for method output_type
+	34, // [34:40] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_retrieval_v1_retrieval_proto_init() }
@@ -2017,13 +2258,14 @@ func file_bambuflow_retrieval_v1_retrieval_proto_init() {
 		return
 	}
 	file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[1].OneofWrappers = []any{}
+	file_bambuflow_retrieval_v1_retrieval_proto_msgTypes[4].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_retrieval_v1_retrieval_proto_rawDesc), len(file_bambuflow_retrieval_v1_retrieval_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

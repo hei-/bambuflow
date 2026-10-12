@@ -12,7 +12,8 @@ import httpx
 
 KC = os.environ.get("KEYCLOAK_URL", "http://keycloak:8080")
 REALM = f"{KC}/realms/bambuflow"
-REDIRECT_URI = "http://localhost/callback"
+# console 客户端登记的回调地址（deploy/compose/compose.yaml 的 CONSOLE_REDIRECT_URI）
+REDIRECT_URI = os.environ.get("CONSOLE_REDIRECT_URI", "http://localhost/callback")
 # 测试目录的统一口令，与构建 OpenLDAP 镜像时传入的是同一个变量（deploy/compose/compose.yaml）
 TEST_PASSWORD = os.environ["TEST_USER_PASSWORD"]
 

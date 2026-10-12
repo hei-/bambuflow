@@ -1,9 +1,11 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -15,12 +17,13 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/services/retrieval/internal/guard"
-	"github.com/bambu-ai/bambuflow/services/retrieval/internal/policy"
-	"github.com/bambu-ai/bambuflow/services/retrieval/internal/redact"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/policy"
+	"github.com/hei-/bambuflow/services/retrieval/internal/guard"
+	"github.com/hei-/bambuflow/services/retrieval/internal/redact"
 )
 
 const (
@@ -51,6 +54,9 @@ type Candidate struct {
 	// 图召回找到它时的路径，以及路径上各条边的证据块所属文档：组装复核时这些文档也必须仍然可见
 	GraphPath []PathStep
 	PathDocs  []string
+	// RouteScore 是召回它的那一路的原始分数，归一化到 0–1（分数解释，详设 7.5）：
+	// 稠密为 1 − 余弦距离，关键词为 r / (r + 1)，图为关系置信度 × 跳数衰减，编号精确匹配为 1
+	RouteScore float64
 }
 
 // SealedPII 是一个块里 PII 原值的密文与被主密钥包裹的数据密钥（contracts SealedPII）。
@@ -86,8 +92,13 @@ type Store interface {
 	VersionModel(ctx context.Context, version string) (model string, err error)
 	// Dense 在给定索引版本里按过滤条件召回与 vec 最近的 k 个块，按相似度降序。
 	Dense(ctx context.Context, version string, f Filter, vec []float32, k int) ([]Candidate, error)
+	// Sparse 按学习型稀疏向量的内积召回 k 个块（没有稀疏向量的块不参与），按内积降序。
+	Sparse(ctx context.Context, version string, f Filter, vec map[uint32]float32, k int) ([]Candidate, error)
 	// Keyword 在给定索引版本里按过滤条件召回含任一 terms 的 k 个块，按相关度降序。
 	Keyword(ctx context.Context, version string, f Filter, terms []string, k int) ([]Candidate, error)
+	// Identifier 在给定索引版本里按过滤条件召回正文或标题里原样出现任一 ids 的 k 个块（不区分大小写），
+	// 标题命中的在前（编号精确匹配，详设 6.2）。
+	Identifier(ctx context.Context, version string, f Filter, ids []string, k int) ([]Candidate, error)
 	// DocACL 读文档的最新权限状态；不存在的文档不在结果里。
 	DocACL(ctx context.Context, docIDs []string) (map[string]ACL, error)
 	// ChunkACL 读块所属文档的最新权限状态，键是 chunk_id；不存在的块不在结果里。
@@ -100,8 +111,13 @@ type Store interface {
 	CountGroups(ctx context.Context, version string, f Filter, by string, limit int) ([]Group, error)
 	// Excerpt 读给定索引版本里属于 docID 的块 chunkID；查询带全部必含条件，不可见或不存在时 ok 为 false。
 	Excerpt(ctx context.Context, version string, f Filter, docID, chunkID string) (c Candidate, ok bool, err error)
+	// Chunks 按块 ID 取给定索引版本里的块（检索结果缓存命中时用），带全部必含条件：现在不可见的块不在结果里。
+	Chunks(ctx context.Context, version string, f Filter, chunkIDs []string) (map[string]Candidate, error)
 	// TenantDenied 判断租户是否在紧急拒绝名单里（governance 的紧急拒绝规则，按租户）。
 	TenantDenied(ctx context.Context, tenant string) (bool, error)
+	// PartitionTokens 按主体的 token（user:、group:、dept:）从分区授权表展开出可见的分区 token（part:<数据源>/<分区>，
+	// 总体设计 ADR-14、详设 5.1）
+	PartitionTokens(ctx context.Context, tokens []string) ([]string, error)
 	// Groups 从平台身份库读用户的完整群组列表（Principal 只带 groups_ref 时用）。
 	Groups(ctx context.Context, username string) ([]string, error)
 	// LinkEntities 找出名称或别名出现在 text 里的实体，最多 limit 个，名称长的在前（实体链接）。
@@ -112,9 +128,15 @@ type Store interface {
 	Edges(ctx context.Context, version string, f Filter, entityIDs []string, k int) ([]Edge, error)
 }
 
-// Embedder 批量计算查询向量，同时返回模型版本（如 bge-m3@mock-hash-1）。
+// QueryVector 是一个子查询的向量：稠密向量，以及模型给出时的学习型稀疏向量（词元 ID → 权重，详设 6.2）。
+type QueryVector struct {
+	Dense  []float32
+	Sparse map[uint32]float32
+}
+
+// Embedder 批量计算查询向量，同时返回模型版本（如 bge-m3@mock-hash-1）。稠密与稀疏向量出自同一次调用。
 type Embedder interface {
-	Embed(ctx context.Context, texts []string) ([][]float32, string, error)
+	Embed(ctx context.Context, texts []string) ([]QueryVector, string, error)
 }
 
 // Reranker 是交叉编码器精排：对每对（查询，段落）给出 0–1 的分数，同时返回模型版本。
@@ -124,12 +146,15 @@ type Reranker interface {
 
 // Policy 是已加载的策略包。
 type Policy interface {
+	// Decide 评估策略；Decision.Version 是给出决定的策略包版本
 	Decide(ctx context.Context, in policy.Input, granted []string) (policy.Decision, error)
-	Version() string
 }
 
 // Grants 是租户可访问的数据源（internal/grants，governance 下发）：拿不到时返回错误，请求 fail-closed。
 type Grants interface {
+	// Plan 是租户对这个用户生效的 pipeline（检索计划，governance 下发，灰度中按用户分流，评测请求可指定候选）；
+	// 没有时为 nil，按默认计划
+	Plan(ctx context.Context, tenant, user, version string) *configv1.PipelineConfig
 	Sources(tenant string) (sources []string, version string, err error)
 }
 
@@ -153,7 +178,21 @@ type Server struct {
 	Admission *guard.Admission
 	// PII 为能看 PII 原文的调用者还原入库时掩码的原值（internal/pii）；为 nil 时一律返回掩码文本
 	PII PIIRestorer
-	Log *slog.Logger
+	// Local 是经备用通道收到的紧急拒绝规则（governance 详设 8.2，internal/denials），与索引库的拒绝名单同时生效；为 nil 表示没有
+	Local LocalDenials
+	// Results、Vectors 是检索结果与查询向量缓存（cache.go，internal/cache）；为 nil 时不缓存
+	Results ResultCache
+	Vectors VectorCache
+	Log     *slog.Logger
+
+	decisions decisions
+}
+
+// LocalDenials 是经备用通道（事件流的独立主题、配置卷里的规则文件）收到、验签通过的紧急拒绝规则，只增不减。
+type LocalDenials interface {
+	Source(id string) bool
+	Doc(id string) bool
+	Tenant(name string) bool
 }
 
 // PIIRestorer 解开一个块的 PII 原值并回填到掩码正文里。
@@ -164,6 +203,7 @@ type PIIRestorer interface {
 var (
 	errUnavailable = status.Error(codes.Unavailable, "检索暂不可用")
 	errDenied      = status.Error(codes.PermissionDenied, "无权检索")
+	planVersionRe  = regexp.MustCompile(`^cfv_[0-9a-f]{24}$`)
 )
 
 func (s *Server) Search(ctx context.Context, r *retrievalv1.SearchRequest) (*retrievalv1.SearchResponse, error) {
@@ -184,29 +224,48 @@ func (s *Server) Search(ctx context.Context, r *retrievalv1.SearchRequest) (*ret
 		return nil, err
 	}
 	f = f.Narrow(r.GetFilters())
-	cands, indexVersion, model, degraded, err := s.recall(ctx, f, r.GetQueries(), r.GetIntent())
+	p := grpcmw.PrincipalFrom(ctx)
+	plan := s.Grants.Plan(ctx, p.GetTenant(), p.GetSub(), r.GetPlanVersion())
+	start := time.Now()
+	indexVersion, model, err := s.liveIndex(ctx)
 	if err != nil {
 		return nil, err
 	}
-	rerankModel := ""
-	if wantRerank(ctx, r) && len(cands) > 0 {
-		var reason string
-		cands, rerankModel, reason = s.rerank(ctx, r.GetQueries(), cands)
-		if reason != "" {
-			degraded = append(degraded, &commonv1.Degradation{Stage: "rerank", Reason: reason})
+	// 检索计划关闭精排时不精排，即使请求要求（计划只能在平台能力范围内收窄，retrieval 详设 10.1）
+	rp := plan.GetRetrieval()
+	planRerank := rp == nil || rp.Rerank == nil || rp.GetRerank()
+	doRerank := wantRerank(ctx, r) && planRerank
+	// 检索结果缓存（详设 8.1）：命中时跳过召回与精排，按块 ID 带全部必含条件重新取块，再照常组装复核
+	key := s.resultKey(ctx, f, indexVersion, plan.GetVersionId(), r, doRerank)
+	cands, rerankModel, degraded, hit := s.cachedResult(ctx, key, f, indexVersion)
+	if !hit {
+		cands, degraded, err = s.recall(ctx, f, indexVersion, model, r.GetQueries(), r.GetIntent(), rp)
+		if err != nil {
+			return nil, err
+		}
+		if doRerank && len(cands) > 0 {
+			var reason string
+			cands, rerankModel, reason = s.rerank(ctx, r.GetQueries(), cands)
+			if reason != "" {
+				degraded = append(degraded, &commonv1.Degradation{Stage: "rerank", Reason: reason})
+			}
+		}
+		// 降级的结果不缓存：下一次可能就是完整的
+		if len(degraded) == 0 {
+			s.storeResult(ctx, key, cands, rerankModel, start)
 		}
 	}
 	topK := int(r.GetTopK())
 	if topK == 0 {
 		topK = defaultTopK
 	}
-	hits, err := s.assemble(ctx, f, cands, topK)
+	hits, err := s.assemble(ctx, f, cands, topK, r.GetQueries(), r.GetIncludeScoreDetails())
 	if err != nil {
 		return nil, err
 	}
 	return &retrievalv1.SearchResponse{
 		Hits: hits, IndexVersion: indexVersion, PolicyVersion: pv, EmbeddingModel: model,
-		RerankModel: rerankModel, Degraded: degraded,
+		RerankModel: rerankModel, Degraded: degraded, PlanVersion: plan.GetVersionId(),
 	}, nil
 }
 
@@ -299,10 +358,10 @@ func (s *Server) authorize(ctx context.Context) (Filter, string, error) {
 		s.Log.ErrorContext(ctx, "租户授权不可用，拒绝请求", slog.Any("err", err))
 		return Filter{}, "", errUnavailable
 	}
-	d, err := s.Policy.Decide(ctx, policy.Input{
+	d, err := s.decide(ctx, policy.Input{
 		Sub: p.GetSub(), Tenant: p.GetTenant(), Dept: p.GetDept(), Clearance: int32(p.GetClearance()),
 		Region: p.GetRegion(), Groups: groups,
-	}, granted)
+	}, granted, grantsVersion)
 	if err != nil {
 		s.Log.ErrorContext(ctx, "策略评估失败", slog.Any("err", err))
 		return Filter{}, "", errUnavailable
@@ -316,7 +375,19 @@ func (s *Server) authorize(ctx context.Context) (Filter, string, error) {
 		ShowPII: d.Obligations.Redaction == "none",
 	}
 	if err := f.Validate(p.GetSub(), p.GetClearance()); err != nil {
-		s.Log.ErrorContext(ctx, "过滤条件未通过必含条件断言", slog.Any("err", err), slog.String("policy_version", s.Policy.Version()))
+		s.Log.ErrorContext(ctx, "过滤条件未通过必含条件断言", slog.Any("err", err), slog.String("policy_version", d.Version))
+		return Filter{}, "", errDenied
+	}
+	// 分区级数据源（ADR-14）：文档只带分区 token，按主体从分区授权表展开后与文档级 token 合并成同一个必含条件；
+	// 召回、计数、列举与返回前复核都用它，分区授权一变下一个请求就按新的判定。读不到授权表时拒绝（fail-closed）
+	parts, err := s.Store.PartitionTokens(ctx, f.Tokens)
+	if err != nil {
+		s.Log.ErrorContext(ctx, "读取分区授权失败", slog.Any("err", err))
+		return Filter{}, "", errUnavailable
+	}
+	f.Tokens = append(slices.Clone(f.Tokens), parts...)
+	if len(f.Tokens) > MaxTokens {
+		s.Log.ErrorContext(ctx, "展开分区后 token 超出上限", slog.Int("tokens", len(f.Tokens)))
 		return Filter{}, "", errDenied
 	}
 	// 租户被紧急拒绝：可检索的数据源清空。召回与返回前复核都经这里，两处同时生效；读不到名单时拒绝（fail-closed）
@@ -325,12 +396,18 @@ func (s *Server) authorize(ctx context.Context) (Filter, string, error) {
 		s.Log.ErrorContext(ctx, "读取紧急拒绝名单失败", slog.Any("err", err))
 		return Filter{}, "", errUnavailable
 	}
-	if denied {
+	if denied || s.Local != nil && s.Local.Tenant(p.GetTenant()) {
 		s.Log.WarnContext(ctx, "租户在紧急拒绝名单里", slog.String("tenant", p.GetTenant()))
 		f.Sources = nil
 	}
+	if s.Local != nil {
+		// 备用通道按数据源的拒绝：从可检索的数据源里去掉，召回、计数、列举与返回前复核都不再包含它
+		f.Sources = slices.DeleteFunc(slices.Clone(f.Sources), s.Local.Source)
+		f.DeniedDoc = s.Local.Doc
+	}
 	// 授权快照的版本也影响能看到什么，与策略包版本一起写进 policy_version（进入 why 与审计）
-	return f, s.Policy.Version() + "+" + grantsVersion, nil
+	// 策略包版本取给出这次决定的那个包（灰度时可能是候选包）
+	return f, d.Version + "+" + grantsVersion, nil
 }
 
 // route 是一路召回在各子查询上的结果（lists[q] 对应第 q 个子查询，未执行为 nil）；
@@ -345,43 +422,44 @@ type route struct {
 	idle bool
 }
 
-// recall 并发执行稠密向量、关键词与图三路召回，按加权 RRF 融合（详设第 4 节第 6–8 步）；权重随意图变化（routeWeight）。
+// recall 并发执行稠密向量、关键词、图与编号精确匹配四路召回，按加权 RRF 融合（详设第 4 节第 6–8 步）；
+// 权重随意图变化（routeWeight），编号精确匹配命中的块置顶（pinFirst）。
 // 单路失败只降级、不影响其他路；全部失败才返回 UNAVAILABLE（详设 9.4）。
-func (s *Server) recall(ctx context.Context, f Filter, queries []*retrievalv1.SubQuery, intent retrievalv1.SearchIntent) ([]scored, string, string, []*commonv1.Degradation, error) {
-	fail := func(reason string, attrs ...any) ([]scored, string, string, []*commonv1.Degradation, error) {
-		s.Log.ErrorContext(ctx, "召回不可用", append(attrs, slog.String("reason", reason))...)
-		return nil, "", "", nil, errUnavailable
-	}
-	version, model, err := s.indexVersion(ctx)
-	if errors.Is(err, ErrNoLiveIndex) {
-		return fail("no_live_index")
-	}
-	if _, ok := status.FromError(err); ok && err != nil {
-		return nil, "", "", nil, err
-	}
-	if err != nil {
-		return fail("metadata_unavailable", slog.Any("err", err))
-	}
+func (s *Server) recall(ctx context.Context, f Filter, version, model string, queries []*retrievalv1.SubQuery,
+	intent retrievalv1.SearchIntent, plan *configv1.RetrievalPlan) ([]scored, []*commonv1.Degradation, error) {
+	// 部署时关闭的（Disabled）与租户检索计划关闭的召回路都不执行、不算降级
+	off := func(route string) bool { return s.Disabled[route] || slices.Contains(plan.GetDisabledRoutes(), route) }
 	if len(f.Sources) == 0 {
 		// 没有可检索的数据源：结果必然为空，不必访问后端
-		return nil, version, model, nil, nil
+		return nil, nil, nil
 	}
-	routes := make([]route, 0, 3)
-	results := make([]route, 3)
+	routes := make([]route, 0, 5)
+	results := make([]route, 5)
+	vectors := s.lazyVectors(ctx, model, queries)
 	var wg sync.WaitGroup
-	if !s.Disabled["dense"] {
+	if !off("dense") {
 		wg.Go(func() {
-			results[0] = s.guarded("dense", func() route { return s.dense(ctx, version, model, f, queries) })
+			results[0] = s.guarded("dense", func() route { return s.dense(ctx, version, model, f, vectors) })
 		})
 	}
-	if !s.Disabled["keyword"] {
+	if !off("sparse") {
+		wg.Go(func() {
+			results[4] = s.guarded("sparse", func() route { return s.sparse(ctx, version, model, f, vectors) })
+		})
+	}
+	if !off("keyword") {
 		wg.Go(func() {
 			results[1] = s.guarded("keyword", func() route { return s.keyword(ctx, version, f, queries) })
 		})
 	}
-	if !s.Disabled["graph"] {
+	if !off("graph") {
 		wg.Go(func() {
 			results[2] = s.guarded("graph", func() route { return s.graph(ctx, version, f, queries) })
+		})
+	}
+	if !off("identifier") {
+		wg.Go(func() {
+			results[3] = s.guarded("identifier", func() route { return s.identifier(ctx, version, f, queries) })
 		})
 	}
 	wg.Wait()
@@ -395,7 +473,7 @@ func (s *Server) recall(ctx context.Context, f Filter, queries []*retrievalv1.Su
 	for _, r := range routes {
 		if r.reason == "" {
 			for q, list := range r.lists {
-				perQuery[q] = append(perQuery[q], ranking{list: list, weight: routeWeight(r.name, intent)})
+				perQuery[q] = append(perQuery[q], ranking{route: r.name, list: list, weight: routeWeight(r.name, intent, plan)})
 			}
 			continue
 		}
@@ -403,9 +481,27 @@ func (s *Server) recall(ctx context.Context, f Filter, queries []*retrievalv1.Su
 		degraded = append(degraded, &commonv1.Degradation{Stage: r.name, Reason: r.reason})
 	}
 	if len(degraded) == len(routes) {
-		return fail("all_routes_failed")
+		s.Log.ErrorContext(ctx, "召回不可用", slog.String("reason", "all_routes_failed"))
+		return nil, nil, errUnavailable
 	}
-	return diversify(fuse(perQuery)), version, model, degraded, nil
+	return pinFirst(fuse(perQuery)), degraded, nil
+}
+
+// liveIndex 取这次检索用的索引版本与嵌入模型（评测副本可指定版本）；拿不到时按不可用处理。
+func (s *Server) liveIndex(ctx context.Context) (string, string, error) {
+	version, model, err := s.indexVersion(ctx)
+	if errors.Is(err, ErrNoLiveIndex) {
+		s.Log.ErrorContext(ctx, "召回不可用", slog.String("reason", "no_live_index"))
+		return "", "", errUnavailable
+	}
+	if _, ok := status.FromError(err); ok && err != nil {
+		return "", "", err
+	}
+	if err != nil {
+		s.Log.ErrorContext(ctx, "召回不可用", slog.String("reason", "metadata_unavailable"), slog.Any("err", err))
+		return "", "", errUnavailable
+	}
+	return version, model, nil
 }
 
 // guarded 经熔断器执行一路召回：熔断打开时不调用后端，直接标记 circuit_open（详设 9.4）。
@@ -439,25 +535,80 @@ func (s *Server) admit(ctx context.Context) (func(), error) {
 	return done, nil
 }
 
-func (s *Server) dense(ctx context.Context, version, model string, f Filter, queries []*retrievalv1.SubQuery) route {
-	r := route{name: "dense"}
+// queryVectors 是一次检索的查询向量：稠密与稀疏两路共用一次嵌入调用（详设 6.2），哪一路先用到就由它触发。
+type queryVectors func() ([]QueryVector, string, error)
+
+func (s *Server) lazyVectors(ctx context.Context, model string, queries []*retrievalv1.SubQuery) queryVectors {
 	texts := make([]string, len(queries))
 	for i, q := range queries {
 		texts[i] = q.GetText()
 	}
-	vecs, qModel, err := s.Embedder.Embed(ctx, texts)
-	if err != nil {
-		r.reason, r.err = "embed_unavailable", err
-		return r
+	type result struct {
+		vecs  []QueryVector
+		model string
+		err   error
 	}
-	if qModel != model {
+	once := sync.OnceValue(func() result {
+		vecs, qModel, err := s.embed(ctx, model, texts)
+		return result{vecs, qModel, err}
+	})
+	return func() ([]QueryVector, string, error) {
+		r := once()
+		return r.vecs, r.model, r.err
+	}
+}
+
+// vectorsFor 取查询向量并核对模型版本；不能用时返回降级原因。
+func vectorsFor(vectors queryVectors, model string) ([]QueryVector, string, error) {
+	vecs, qModel, err := vectors()
+	switch {
+	case err != nil:
+		return nil, "embed_unavailable", err
+	case qModel != model:
 		// 用不同模型的向量去查只会得到错配结果（详设 6.2）
-		r.reason = "model_mismatch"
+		return nil, "model_mismatch", nil
+	}
+	return vecs, "", nil
+}
+
+func (s *Server) dense(ctx context.Context, version, model string, f Filter, vectors queryVectors) route {
+	r := route{name: "dense"}
+	vecs, reason, err := vectorsFor(vectors, model)
+	if reason != "" {
+		r.reason, r.err = reason, err
 		return r
 	}
 	r.lists = make([][]Candidate, len(vecs))
 	for q, v := range vecs {
-		list, err := s.Store.Dense(ctx, version, f, v, recallK)
+		list, err := s.Store.Dense(ctx, version, f, v.Dense, recallK)
+		if err != nil {
+			r.reason, r.err = "backend_error", err
+			return r
+		}
+		r.lists[q] = list
+	}
+	return r
+}
+
+// sparse 是学习型稀疏向量召回路（详设 6.2）：按内积排序。嵌入模型不给稀疏向量时降级 sparse_unavailable
+// （部署时显式开启了这一路，却没接上能给稀疏向量的模型，要让人看得见）。
+func (s *Server) sparse(ctx context.Context, version, model string, f Filter, vectors queryVectors) route {
+	r := route{name: "sparse"}
+	vecs, reason, err := vectorsFor(vectors, model)
+	if reason != "" {
+		r.reason, r.err = reason, err
+		return r
+	}
+	r.lists = make([][]Candidate, len(vecs))
+	for q, v := range vecs {
+		if v.Sparse == nil {
+			r.reason = "sparse_unavailable"
+			return r
+		}
+		if len(v.Sparse) == 0 {
+			continue
+		}
+		list, err := s.Store.Sparse(ctx, version, f, v.Sparse, recallK)
 		if err != nil {
 			r.reason, r.err = "backend_error", err
 			return r
@@ -504,7 +655,8 @@ func uniq(xs []string) []string {
 
 // assemble 用权限表的最新状态再过滤一次，再截取 top_k：覆盖“召回之后权限才变化”的窗口（详设第 4 节第 10 步）。
 // 先复核再截取，被拦下的块不会让结果少于 top_k。
-func (s *Server) assemble(ctx context.Context, f Filter, cands []scored, topK int) ([]*retrievalv1.Hit, error) {
+func (s *Server) assemble(ctx context.Context, f Filter, cands []scored, topK int,
+	queries []*retrievalv1.SubQuery, details bool) ([]*retrievalv1.Hit, error) {
 	if len(cands) == 0 {
 		return []*retrievalv1.Hit{}, nil
 	}
@@ -535,13 +687,41 @@ func (s *Server) assemble(ctx context.Context, f Filter, cands []scored, topK in
 			ChunkId: c.ChunkID, DocId: c.DocID, DocVersion: c.DocVersion, ParentChunkId: c.ParentChunkID,
 			Text: s.text(ctx, f, c.Candidate), Span: c.Span, Title: c.Title, HeadingPath: c.HeadingPath, SourceUri: c.SourceURI,
 			SourceType: c.SourceType, Owner: c.Owner, Classification: commonv1.Classification(a.Classification), Score: c.score,
-			GraphPath: graphPath(f, c.GraphPath), InjectionFlag: c.InjectionFlag,
+			GraphPath: graphPath(f, c.GraphPath), InjectionFlag: c.InjectionFlag, MatchedBy: matchedBy(c, queries),
 		})
+		if details {
+			hits[len(hits)-1].ScoreDetails = scoreDetails(c)
+		}
 		if len(hits) == topK {
 			break
 		}
 	}
 	return hits, nil
+}
+
+// matchedBy 按召回路、子查询排序，结果可复现。
+func matchedBy(c scored, queries []*retrievalv1.SubQuery) []*retrievalv1.RouteMatch {
+	ms := slices.Clone(c.matches)
+	slices.SortFunc(ms, func(a, b match) int {
+		return cmp.Or(cmp.Compare(a.route, b.route), cmp.Compare(a.query, b.query), cmp.Compare(a.rank, b.rank))
+	})
+	out := make([]*retrievalv1.RouteMatch, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, &retrievalv1.RouteMatch{Route: m.route, QueryId: queries[m.query].GetId(), Rank: m.rank})
+	}
+	return out
+}
+
+func scoreDetails(c scored) *retrievalv1.ScoreDetails {
+	d := &retrievalv1.ScoreDetails{Rrf: c.rrf, Rerank: c.rerank}
+	opt := func(route string) *float64 {
+		if v, ok := c.routeScores[route]; ok {
+			return &v
+		}
+		return nil
+	}
+	d.Keyword, d.Dense, d.Graph, d.Identifier, d.Sparse = opt("keyword"), opt("dense"), opt("graph"), opt("identifier"), opt("sparse")
+	return d
 }
 
 func visible(f Filter, acls map[string]ACL, docID string) bool {
@@ -615,8 +795,22 @@ func (s *Server) rerank(ctx context.Context, queries []*retrievalv1.SubQuery, ca
 	out := slices.Clone(cands)
 	for i := range out {
 		out[i].score = scores[i]
+		out[i].rerank = &scores[i]
+		// 精排分过低的编号命中块不再置顶（详设 7.1）
+		out[i].pinned = out[i].pinned && scores[i] >= pinFloor
 	}
-	byScore(out)
+	slices.SortStableFunc(out, func(a, b scored) int {
+		if a.pinned != b.pinned {
+			if a.pinned {
+				return -1
+			}
+			return 1
+		}
+		if c := cmp.Compare(b.score, a.score); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.ChunkID, b.ChunkID)
+	})
 	return out, model, ""
 }
 
@@ -647,6 +841,9 @@ func validateSearch(ctx context.Context, r *retrievalv1.SearchRequest) error {
 	}
 	if r.GetTopK() < 0 || r.GetTopK() > maxTopK {
 		return status.Errorf(codes.InvalidArgument, "top_k 需在 1–%d 之间", maxTopK)
+	}
+	if v := r.GetPlanVersion(); v != "" && !planVersionRe.MatchString(v) {
+		return status.Error(codes.InvalidArgument, "plan_version 须为 cfv_ 版本")
 	}
 	return nil
 }

@@ -13,9 +13,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
 )
 
 const testExpID = "exp_0123456789abcdef01234567"
@@ -73,10 +73,11 @@ func TestExperimentRoutes(t *testing.T) {
 	key := func(k string) map[string]string { return map[string]string{"Idempotency-Key": k} }
 
 	body := `{"tenant":"credit","hypothesis":"h","primary_metric":"useful_rate","baseline_rate":0.6,"min_detectable_effect":0.05,
-		"overrides":{"support_threshold":0.4}}`
+		"overrides":{"support_threshold":0.4,"config_versions":["cfv_000000000000000000000001"]}}`
 	r := e.request(t, http.MethodPost, "/v1/admin/experiments", paul, body, key("a"))
 	if r.status != 201 || r.body["exp_id"] != testExpID || r.body["status"] != "running" || r.body["primary_metric"] != "useful_rate" ||
-		r.body["traffic_percent"] != float64(5) || f.created.GetOverrides().GetSupportThreshold() != 0.4 || f.created.GetOverrides().MinCoverage != nil {
+		r.body["traffic_percent"] != float64(5) || f.created.GetOverrides().GetSupportThreshold() != 0.4 || f.created.GetOverrides().MinCoverage != nil ||
+		len(f.created.GetOverrides().GetConfigVersions()) != 1 {
 		t.Fatalf("立项: %d %s", r.status, r.raw)
 	}
 	if _, ok := r.body["stopped_at"]; ok {

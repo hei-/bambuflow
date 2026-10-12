@@ -50,4 +50,13 @@ message AnswerRecord {
   bool body_withheld = 10;
   // include_answer 且正文已保存时才有
   AnswerResponse answer = 11;
+  // include_answer 时才有：掩码后的问题（负反馈进候选题池用，evaluation 详设 3.4）
+  string masked_question = 12;
+  // include_answer 时才有：反馈的说明（保存前已做 PII 掩码）
+  repeated string feedback_comments = 13;
+  // 灰度观察用（governance 详设 4.1 第 ⑨ 步）：引用覆盖率（confidence.coverage）、返回前复核拦下的证据数，
+  // 与提问人所在的灰度（why.canary_releases），据此区分候选组与对照组
+  double coverage = 14;
+  int32 access_denied = 15;
+  repeated string canary_releases = 16;
 }

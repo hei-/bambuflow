@@ -24,8 +24,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/docmeta"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/publish"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/docmeta"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/publish"
 )
 
 // View 是一个视图的表结构、说明与 SELECT 授权（授权给哪些数据库角色）。

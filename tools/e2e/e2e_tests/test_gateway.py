@@ -167,8 +167,18 @@ def test_large_groups_expanded_from_identity_store() -> None:
 
 
 def test_pilot_tenant_closes_answers_to_non_pilot_members() -> None:
-    r = search(token("bob"), "risk", path="/v1/answers")
+    # ruth 是 risk 的成员但不在试点群组：能检索、不能问答；试点群组里的 bob 能问答
+    ruth = token("ruth")
+    assert search(ruth, "risk").status_code == 200
+    r = search(ruth, "risk", path="/v1/answers")
     assert r.status_code == 403 and r.json()["type"] == "answers_not_enabled"
+    r = httpx.post(
+        GATEWAY + "/v1/answers",
+        json={"question": QUESTION["question"]},
+        headers={"Authorization": "Bearer " + token("bob"), "Bambuflow-Tenant": "risk"},
+        timeout=10,
+    )
+    assert r.status_code == 200, r.text
 
 
 @pytest.fixture

@@ -9,7 +9,8 @@ import "google/protobuf/duration.proto";
 // 调用方按 gate_id 轮询 GetGate，超时未得到结论一律按不通过处理，没有跳过门禁的入口。
 //
 // 门禁在评测副本上跑（BF_EVAL_MODE 的 orchestrator 与 retrieval，不接任何来自 gateway 的流量）：
-// 请求里的索引版本经 metadata x-eval-index-version 传给它们，因此可以在待发布版本上线之前评测它。
+// 请求里的索引版本经 metadata x-eval-index-version、候选配置版本经 x-eval-config-version 传给它们，
+// 因此可以在待发布的索引版本上线之前、待审批的配置版本生效之前评测它。
 service EvalService {
   rpc RunGate(RunGateRequest) returns (RunGateResponse);
   rpc GetGate(GetGateRequest) returns (GetGateResponse);
@@ -19,8 +20,11 @@ service EvalService {
 message EvalConfig {
   // 要评测的索引版本（如待发布版本）；不填为当前线上版本
   string index_version = 1;
-  // 配置快照版本；现在评测副本用自己加载的快照，这里只记录
+  // 配置快照版本：只记录；评测副本用自己加载的生效快照，再按 config_version 换上候选
   string snapshot_version = 2;
+  // 要评测的候选配置版本（cfv_ 前缀，governance 配置发布时给出）：评测副本向 governance 按版本取候选
+  // （ConfigService.GetCandidate），只在候选这一侧换上；不填为当前生效的配置
+  string config_version = 3;
 }
 
 message RunGateRequest {
@@ -31,12 +35,16 @@ message RunGateRequest {
   repeated string tenants = 3;
   // 增量发布时本批文档（记录用；按文档挑权限题还没有做）
   repeated string doc_ids = 4;
-  // 规则集，默认按 trigger 选：index_publish 用每租户 30 题的冒烟集，其余用全部题
+  // 规则集，默认按 trigger 选：index_publish 用每租户 30 题的冒烟集（smoke），其余用全部题（full）；
+  // permission 只跑权限题（带 must_not_cite 的题），策略包的发布用它（governance 详设 4.2）
   string ruleset = 5;
   // 不填按 trigger 取：index_publish 5 分钟，其余 30 分钟，index_rebuild 4 小时
   google.protobuf.Duration deadline = 6;
   // 同一个候选重复调用返回同一个 gate_id
   string idempotency_key = 7;
+  // 还没有线上版本（第一次发布）：没有可对照的基线，只检查越权与待复核。由调用方明确声明，
+  // 不从基线是否报错推断：线上检索故障时门禁必须得不出结论，而不是放宽
+  bool first_release = 8;
 }
 
 message RunGateResponse {

@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import re
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -21,7 +22,7 @@ import psycopg
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from bambuflow.admin.v1 import eval_gate_admin_pb2, eval_gate_admin_pb2_grpc
-from bambuflow_evaluation.service import Ctx, abort
+from bambuflow_evaluation.service import Ctx, abort, owned_tenants
 from bambuflow_platform.grpc_server import current_principal
 
 TRIGGERS = ("ci", "config_release", "index_publish", "index_rebuild", "scheduled", "manual")
@@ -48,6 +49,8 @@ CREATE INDEX IF NOT EXISTS gate_runs_created ON evaluation.gate_runs (created_at
 -- 异步门禁（EvalService.RunGate）：先以 running 记下，跑完改成结论；同一个幂等键返回同一个门禁
 ALTER TABLE evaluation.gate_runs ADD COLUMN IF NOT EXISTS idempotency_key text;
 ALTER TABLE evaluation.gate_runs ADD COLUMN IF NOT EXISTS index_version text NOT NULL DEFAULT '';
+-- 配置发布的门禁评测的候选配置版本（governance 详设 4.1 第 ③④ 步）
+ALTER TABLE evaluation.gate_runs ADD COLUMN IF NOT EXISTS config_version text NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS gate_runs_idempotency ON evaluation.gate_runs (idempotency_key)
     WHERE idempotency_key IS NOT NULL;
 ALTER TABLE evaluation.gate_runs DROP CONSTRAINT IF EXISTS gate_runs_conclusion_check;
@@ -80,7 +83,9 @@ def new_gate(trigger: str, tenants: list[str], data: dict[str, Any], report_md: 
         tenants=tuple(sorted(tenants)),
         conclusion=str(data["conclusion"]),
         summary={
-            k: data[k] for k in ("reasons", "unstable", "metrics", "config", "repeats") if k in data
+            k: data[k]
+            for k in ("reasons", "unstable", "metrics", "config", "repeats", "readiness")
+            if k in data
         },
         report_md=report_md,
     )
@@ -89,7 +94,11 @@ def new_gate(trigger: str, tenants: list[str], data: dict[str, Any], report_md: 
 class Store(Protocol):
     async def put(self, g: GateRun) -> None: ...
 
-    async def list(self, tenant: str, trigger: str, offset: int, limit: int) -> list[GateRun]: ...
+    async def list(
+        self, tenants: Sequence[str], trigger: str, offset: int, limit: int
+    ) -> list[GateRun]:
+        """覆盖 tenants 里任一租户的门禁（为空不限），新的在前。"""
+        ...
 
     async def get(self, gate_id: str) -> GateRun | None: ...
 
@@ -123,26 +132,29 @@ class PGStore:
                 ),
             )
 
-    async def list(self, tenant: str, trigger: str, offset: int, limit: int) -> list[GateRun]:
+    async def list(
+        self, tenants: Sequence[str], trigger: str, offset: int, limit: int
+    ) -> list[GateRun]:
         async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
             cur = await conn.execute(
                 """SELECT gate_id, trigger, golden_set, golden_version, tenants, conclusion,
                           summary, '', created_at
                      FROM evaluation.gate_runs
-                    WHERE (%s = '' OR %s = ANY(tenants)) AND (%s = '' OR trigger = %s)
+                    WHERE (cardinality(%s::text[]) = 0 OR tenants && %s::text[])
+                      AND (%s = '' OR trigger = %s)
                     ORDER BY created_at DESC, gate_id DESC OFFSET %s LIMIT %s""",
-                (tenant, tenant, trigger, trigger, offset, limit),
+                (list(tenants), list(tenants), trigger, trigger, offset, limit),
             )
             return [_row(r) for r in await cur.fetchall()]
 
-    async def start(self, g: GateRun, key: str, index_version: str) -> str:
+    async def start(self, g: GateRun, key: str, index_version: str, config_version: str) -> str:
         """记下进行中的门禁；同一幂等键已有门禁时返回它的 gate_id（不再新起）。"""
         async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
             cur = await conn.execute(
                 """INSERT INTO evaluation.gate_runs (gate_id, trigger, golden_set, golden_version,
                      tenants, conclusion, summary, report_md, created_at, idempotency_key,
-                     index_version)
-                   VALUES (%s, %s, %s, %s, %s, 'running', '{}', '', %s, NULLIF(%s, ''), %s)
+                     index_version, config_version)
+                   VALUES (%s, %s, %s, %s, %s, 'running', '{}', '', %s, NULLIF(%s, ''), %s, %s)
                    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
                    RETURNING gate_id""",
                 (
@@ -154,6 +166,7 @@ class PGStore:
                     g.created_at,
                     key,
                     index_version,
+                    config_version,
                 ),
             )
             if await cur.fetchone():
@@ -230,6 +243,19 @@ def _proto(g: GateRun) -> eval_gate_admin_pb2.Gate:
         ],
         repeats=int(s.get("repeats", 0)),
         created_at=created,
+        readiness=[
+            eval_gate_admin_pb2.TenantReadiness(
+                tenant=str(r["tenant"]),
+                stage=str(r["stage"]),
+                counted=int(r["counted"]),
+                unreviewed=int(r["unreviewed"]),
+                refuse_share=float(r["refuse_share"]),
+                synthetic_share=float(r["synthetic_share"]),
+                double_reviewed=int(r["double_reviewed"]),
+                gaps=[str(x) for x in r.get("gaps", [])],
+            )
+            for r in s.get("readiness", [])
+        ],
     )
 
 
@@ -251,15 +277,22 @@ class GateService(eval_gate_admin_pb2_grpc.EvalGateAdminServiceServicer):
     def __init__(self, store: Store) -> None:
         self._store = store
 
-    async def _allowed(self, context: Ctx) -> None:
+    async def _scope(self, context: Ctx) -> frozenset[str] | None:
+        """平台管理员、平台运维看全部（None）；租户负责人只看覆盖自己负责的租户的门禁。"""
         p = current_principal()
-        if p is None or not ROLES.intersection(p.roles):
-            await abort(context, grpc.StatusCode.PERMISSION_DENIED, "需要平台管理员或平台运维")
+        if p is not None and ROLES.intersection(p.roles):
+            return None
+        owned = owned_tenants(p.roles) if p is not None else frozenset()
+        if not owned:
+            await abort(
+                context, grpc.StatusCode.PERMISSION_DENIED, "需要平台管理员、平台运维或租户负责人"
+            )
+        return owned
 
     async def ListGates(
         self, request: eval_gate_admin_pb2.ListGatesRequest, context: Ctx
     ) -> eval_gate_admin_pb2.ListGatesResponse:
-        await self._allowed(context)
+        scope = await self._scope(context)
         page = _page(request.page_size, request.page_token)
         if (
             page is None
@@ -267,8 +300,11 @@ class GateService(eval_gate_admin_pb2_grpc.EvalGateAdminServiceServicer):
             or (request.trigger and request.trigger not in TRIGGERS)
         ):
             await abort(context, grpc.StatusCode.INVALID_ARGUMENT, "参数不合法")
+        if scope is not None and request.tenant and request.tenant not in scope:
+            await abort(context, grpc.StatusCode.PERMISSION_DENIED, "只能查看自己负责的租户")
+        tenants = [request.tenant] if request.tenant else sorted(scope or ())
         size, offset = page
-        gates = await self._store.list(request.tenant, request.trigger, offset, size + 1)
+        gates = await self._store.list(tenants, request.trigger, offset, size + 1)
         out = eval_gate_admin_pb2.ListGatesResponse(gates=[_proto(g) for g in gates[:size]])
         if len(gates) > size:
             out.next_page_token = base64.urlsafe_b64encode(f"o:{offset + size}".encode()).decode()
@@ -277,8 +313,9 @@ class GateService(eval_gate_admin_pb2_grpc.EvalGateAdminServiceServicer):
     async def GetGate(
         self, request: eval_gate_admin_pb2.GetGateRequest, context: Ctx
     ) -> eval_gate_admin_pb2.GetGateResponse:
-        await self._allowed(context)
+        scope = await self._scope(context)
         g = await self._store.get(request.gate_id) if GATE_ID.match(request.gate_id) else None
-        if g is None:
+        # 不覆盖自己负责的租户的门禁与不存在的一样处理
+        if g is None or (scope is not None and not scope.intersection(g.tenants)):
             await abort(context, grpc.StatusCode.NOT_FOUND, "门禁不存在")
         return eval_gate_admin_pb2.GetGateResponse(gate=_proto(g), report_markdown=g.report_md)

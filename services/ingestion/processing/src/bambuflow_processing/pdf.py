@@ -24,6 +24,7 @@ from pdfplumber.page import Page as PlumberPage
 from pdfplumber.utils.exceptions import PdfminerException
 
 from bambuflow_processing.blocks import Block, Box, Outline, ParseError, table_text, union
+from bambuflow_processing.images import ImageDescriber, image_text
 from bambuflow_processing.ocr import (
     OcrEngine,
     TextLine,
@@ -38,6 +39,8 @@ from bambuflow_processing.ocr import (
 OCR_ZOOM = 2.0
 # 文字层少于这么多字符、且有图片的页面视为扫描页
 MIN_TEXT_CHARS = 10
+# 小于 64 × 64 像素的内嵌图片多是图标与装饰，跳过（技术设计文档 5.5）
+MIN_IMAGE_SIDE = 64
 # 页眉页脚所在的上下边距（页面高度的比例）
 MARGIN = 0.08
 # 同一行里两个词的间距超过这么多倍字号就断开：多栏版面的左右两栏不拼成一行
@@ -58,15 +61,26 @@ class _Table:
     box: Box
 
 
+@dataclass(frozen=True)
+class _Image:
+    """有文字层的页里的内嵌图片（入库管道详设第 6 节）：
+    OCR 文字加描述，区域是图片在页面上的位置。"""
+
+    text: str
+    box: Box
+
+
 @dataclass
 class _Page:
     height: float
     ocr: bool = False
     # 按纵坐标排好序的行与表格
-    items: list[TextLine | _Table] = field(default_factory=list)
+    items: list[TextLine | _Table | _Image] = field(default_factory=list)
 
 
-def parse_pdf(data: bytes, title: str, ocr: OcrEngine | None) -> list[Block]:
+def parse_pdf(
+    data: bytes, title: str, ocr: OcrEngine | None, describe: ImageDescriber | None = None
+) -> list[Block]:
     try:
         doc = pdfium.PdfDocument(data)
     except pdfium.PdfiumError as e:
@@ -75,7 +89,9 @@ def parse_pdf(data: bytes, title: str, ocr: OcrEngine | None) -> list[Block]:
         raise ParseError(f"PDF 无法打开: {e}") from e
     try:
         with pdfplumber.open(io.BytesIO(data)) as plumb:
-            pages = [_read_page(no, doc[no], plumb.pages[no], ocr) for no in range(len(doc))]
+            pages = [
+                _read_page(no, doc[no], plumb.pages[no], ocr, describe) for no in range(len(doc))
+            ]
     except PdfminerException as e:
         raise ParseError(f"PDF 无法解析: {e}") from e
     finally:
@@ -99,12 +115,16 @@ def parse_pdf(data: bytes, title: str, ocr: OcrEngine | None) -> list[Block]:
     return blocks
 
 
-def _lines(items: Iterable[TextLine | _Table]) -> list[TextLine]:
+def _lines(items: Iterable[TextLine | _Table | _Image]) -> list[TextLine]:
     return [it for it in items if isinstance(it, TextLine)]
 
 
 def _read_page(
-    index: int, page: pdfium.PdfPage, plumb: PlumberPage, ocr: OcrEngine | None
+    index: int,
+    page: pdfium.PdfPage,
+    plumb: PlumberPage,
+    ocr: OcrEngine | None,
+    describe: ImageDescriber | None = None,
 ) -> _Page:
     out = _Page(page.get_height())
     textpage = page.get_textpage()
@@ -134,8 +154,34 @@ def _read_page(
             raise ParseError(f"第 {index + 1} 页的表格有空行，无法逐行定位")
         tables.append(_Table(rendered, boxes, _box(tab.bbox)))
     lines = [ln for ln in _text_lines(plumb) if not any(_inside(ln.box, t.box) for t in tables)]
-    items: list[TextLine | _Table] = [*reading_order(lines), *tables]
+    images = _embedded_images(page, out.height, ocr, describe)
+    items: list[TextLine | _Table | _Image] = [*reading_order(lines), *tables, *images]
     out.items = sorted(items, key=lambda it: it.box[1])
+    return out
+
+
+def _embedded_images(
+    page: pdfium.PdfPage, height: float, ocr: OcrEngine | None, describe: ImageDescriber | None
+) -> list[_Image]:
+    """有文字层的页里的内嵌图片：OCR 加描述生成图片块，挂在所属章节下；小于 64 × 64 像素的图标跳过。
+    OCR 与描述都没配置时不处理：正文已经有文字层，图片只是补充，不因此让整份文档等待。"""
+    if ocr is None and describe is None:
+        return []
+    out: list[_Image] = []
+    for obj in page.get_objects(filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,)):
+        if not isinstance(obj, pdfium.PdfImage):
+            continue
+        w, h = obj.get_px_size()
+        if w < MIN_IMAGE_SIDE or h < MIN_IMAGE_SIDE:
+            continue
+        png = io.BytesIO()
+        obj.get_bitmap(render=True).to_pil().save(png, format="PNG")
+        text, _ = image_text(png.getvalue(), ocr, describe)
+        if not text:
+            continue
+        # pdfium 的坐标原点在左下角，块的区域与 pdfplumber 一样以左上角为原点
+        left, bottom, right, top = obj.get_bounds()
+        out.append(_Image(text, _box((left, height - top, right, height - bottom))))
     return out
 
 
@@ -170,7 +216,11 @@ def _text_lines(page: PlumberPage) -> list[TextLine]:
 
 
 def _page_blocks(
-    no: int, items: list[TextLine | _Table], typo: Typography, outline: Outline, title: str
+    no: int,
+    items: list[TextLine | _Table | _Image],
+    typo: Typography,
+    outline: Outline,
+    title: str,
 ) -> list[Block]:
     """把一页的元素转成块：连续的行聚成段落（识别标题），表格单独成块。"""
     out: list[Block] = []
@@ -191,6 +241,9 @@ def _page_blocks(
             continue
         flush()
         path = outline.path or (title,)
+        if isinstance(it, _Image):
+            out.append(Block("image", it.text, path, no, it.box))
+            continue
         out.append(Block("table", "\n".join(it.rows), path, no, it.box, it.rows, it.row_boxes))
     flush()
     return out

@@ -15,23 +15,30 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/holds"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/syncstatus"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/holds"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/syncstatus"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/trigger"
 )
 
 const (
 	roleOperator  = "platform_operator"
 	roleDataOwner = "data_owner"
+	// pollJob 是唤醒常驻轮询时返回的任务名：没有单独的 Job，下一轮由轮询进程在十几秒内开始
+	pollJob = "poll"
 )
 
 type Server struct {
 	adminv1.UnimplementedConnectorAdminServiceServer
 	Store syncstatus.Store
 	Holds holds.Store
-	Log   *slog.Logger
-	Now   func() time.Time
+	// Trigger 拉起立即同步；没有接入调度时是 trigger.Unconfigured
+	Trigger trigger.Trigger
+	// Wake 唤醒常驻轮询的源（internal/poll.Wake）
+	Wake func(ctx context.Context, sourceID string) error
+	Log  *slog.Logger
+	Now  func() time.Time
 }
 
 func sourceID(id string) error {
@@ -62,9 +69,16 @@ func (s *Server) GetSyncStatus(ctx context.Context, r *adminv1.GetSyncStatusRequ
 		return nil, status.Error(codes.NotFound, "这个数据源还没有同步记录")
 	}
 	out := &adminv1.GetSyncStatusResponse{SourceId: r.GetSourceId(), LastRun: runOf(st.Last), LastSuccess: runOf(st.LastSuccess),
-		FreshnessSeconds: -1, Pause: pauseOf(st.Pause)}
+		FreshnessSeconds: -1, Pause: pauseOf(st.Pause), LastReconcile: runOf(st.LastReconcile)}
+	if st.RevokedAt != nil {
+		out.RevokedAt = timestamppb.New(*st.RevokedAt)
+	}
 	if st.LastSuccess != nil {
 		out.FreshnessSeconds = int64(s.Now().Sub(st.LastSuccess.FinishedAt).Seconds())
+	}
+	// 常驻清单轮询的当前间隔计入这个源的撤权时效（入库管道详设第 5 节）；按定时任务同步的源没有
+	if st.Polling.Alive(s.Now()) {
+		out.ListingIntervalSeconds, out.NextRoundAt = st.Polling.IntervalSeconds, timestamppb.New(st.Polling.NextRoundAt)
 	}
 	return out, nil
 }
@@ -109,14 +123,81 @@ func (s *Server) ResumeSource(ctx context.Context, r *adminv1.ResumeSourceReques
 	return &adminv1.ResumeSourceResponse{Changed: changed}, nil
 }
 
+// SyncNow 立即拉起一轮同步。暂停的数据源拒绝：恢复之后再同步。
+func (s *Server) SyncNow(ctx context.Context, r *adminv1.SyncNowRequest) (*adminv1.SyncNowResponse, error) {
+	p := grpcmw.PrincipalFrom(ctx)
+	if !grpcmw.HasRole(p, roleOperator) {
+		return nil, status.Error(codes.PermissionDenied, "需要平台运维")
+	}
+	if err := sourceID(r.GetSourceId()); err != nil {
+		return nil, err
+	}
+	reason := strings.TrimSpace(r.GetReason())
+	if reason == "" || utf8.RuneCountInString(reason) > 500 {
+		return nil, status.Error(codes.InvalidArgument, "reason 必填，不超过 500 字")
+	}
+	paused, err := s.Store.Paused(ctx, r.GetSourceId())
+	if err != nil {
+		return nil, s.unavailable(ctx, err)
+	}
+	if paused {
+		return nil, grpcmw.Reason(codes.FailedPrecondition, "conflict", "数据源已暂停，先恢复再同步")
+	}
+	revoked, err := s.Store.Revoked(ctx, r.GetSourceId())
+	if err != nil {
+		return nil, s.unavailable(ctx, err)
+	}
+	if revoked {
+		return nil, grpcmw.Reason(codes.FailedPrecondition, "conflict", "数据源已撤销，不再同步")
+	}
+	// 常驻轮询的源直接唤醒它（internal/poll）；按定时任务同步的源经调度方拉起一轮
+	st, err := s.Store.Get(ctx, r.GetSourceId())
+	if err != nil {
+		return nil, s.unavailable(ctx, err)
+	}
+	job := pollJob
+	if st.Polling.Alive(s.Now()) {
+		err = s.Wake(ctx, r.GetSourceId())
+	} else {
+		job, err = s.Trigger.Sync(ctx, r.GetSourceId())
+	}
+	switch {
+	case errors.Is(err, trigger.ErrUnconfigured):
+		return nil, grpcmw.Reason(codes.FailedPrecondition, "scheduler_unavailable", err.Error())
+	case errors.Is(err, trigger.ErrNoSchedule):
+		return nil, status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, trigger.ErrRunning):
+		return nil, grpcmw.Reason(codes.FailedPrecondition, "conflict", err.Error())
+	case err != nil:
+		s.Log.ErrorContext(ctx, "拉起立即同步失败", slog.String("source_id", r.GetSourceId()), slog.Any("err", err))
+		return nil, status.Error(codes.Unavailable, "暂时不可用")
+	}
+	now := s.Now()
+	s.Log.InfoContext(ctx, "已拉起立即同步", slog.String("source_id", r.GetSourceId()), slog.String("job", job),
+		slog.String("by", p.GetSub()), slog.String("reason", reason))
+	return &adminv1.SyncNowResponse{Job: job, RequestedAt: timestamppb.New(now)}, nil
+}
+
 func runOf(r *syncstatus.Run) *adminv1.SyncRun {
 	if r == nil {
 		return nil
 	}
-	return &adminv1.SyncRun{Command: r.Command, StartedAt: timestamppb.New(r.StartedAt), FinishedAt: timestamppb.New(r.FinishedAt),
+	out := &adminv1.SyncRun{Command: r.Command, StartedAt: timestamppb.New(r.StartedAt), FinishedAt: timestamppb.New(r.FinishedAt),
 		Result: r.Result, Error: r.Error, Documents: count(r.Documents), Upserts: count(r.Upserts), AclOnly: count(r.ACLOnly),
 		Deletes: count(r.Deletes), DeletesPaused: r.DeletesPaused, DeletesPausedReason: r.DeletesPausedReason,
-		Refetched: count(r.Refetched)}
+		Refetched: count(r.Refetched), Reconciliation: reconciliationOf(r.Reconciliation)}
+	if r.Skipped != nil {
+		out.Skipped, out.SkippedItems = count(r.Skipped.Count), r.Skipped.Items
+	}
+	return out
+}
+
+func reconciliationOf(c *syncstatus.Reconciliation) *adminv1.Reconciliation {
+	if c == nil {
+		return nil
+	}
+	return &adminv1.Reconciliation{Missing: count(c.Missing), ContentMismatch: count(c.ContentMismatch), AclMismatch: count(c.ACLMismatch),
+		Orphaned: count(c.Orphaned), TombstonedInSource: count(c.TombstonedInSource), Indexed: count(c.Indexed)}
 }
 
 func pauseOf(p *syncstatus.Pause) *adminv1.Pause {

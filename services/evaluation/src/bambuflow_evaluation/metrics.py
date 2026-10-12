@@ -1,4 +1,5 @@
-"""指标与门禁结论（技术设计文档 10.2，评测详设 5.2、6.1）。只用规则计算，不调用模型。"""
+"""指标与门禁结论（技术设计文档 10.2，评测详设 5.2、6.1）。这里只做统计；
+Groundedness 的 NLI 与 Faithfulness、答案正确率的 LLM 评审在 runner 里完成，结果放在 Outcome 上。"""
 
 from __future__ import annotations
 
@@ -12,7 +13,12 @@ MAX_DROP = 0.02
 MAX_PENDING = 0.10
 CORE = ("recall_at_10", "citation_coverage", "groundedness", "status_accuracy")
 # 设计门槛（技术设计文档 10.2），报告里对照展示；评测集审核前不作为门禁
-TARGETS = {"groundedness": 0.9, "citation_coverage": 0.95, "refusal_accuracy": 0.9}
+TARGETS = {
+    "groundedness": 0.9,
+    "citation_coverage": 0.95,
+    "refusal_accuracy": 0.9,
+    "faithfulness": 0.95,
+}
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,13 @@ class Outcome:
     pending: bool
     violations: tuple[str, ...]
     latency_ms: float
+    # LLM 评审（评测详设 6.2）：回答是否忠于引文、标准答案各要点是否覆盖；None / 空表示没有评审
+    faithful: bool | None = None
+    key_points_covered: tuple[bool, ...] = ()
+    # 回答的置信度特征（覆盖率、平均支持度、最高精排分、来源多样性、冲突）与当前权重算出的置信度，
+    # 用于置信度校准（评测详设 7.3）；回答没有置信度时为空
+    confidence_features: tuple[float, ...] = ()
+    confidence_score: float = 0.0
 
     def signature(self) -> tuple[object, ...]:
         """不含延迟的结果指纹：同一评测配置重跑时应完全相同。"""
@@ -69,6 +82,8 @@ def compute(outcomes: Sequence[Outcome]) -> dict[str, float | None]:
     refuse = [o for o in live if o.expected_status != "answered"]
     answer = [o for o in live if o.expected_status == "answered"]
     latencies = [o.latency_ms for o in outcomes]
+    judged = [o for o in live if o.faithful is not None]
+    graded = [o for o in answer if o.key_points_covered]
     return {
         "recall_at_10": recall,
         "citation_coverage": _ratio(sum(sum(o.sentence_refs) for o in live), sentences),
@@ -76,6 +91,13 @@ def compute(outcomes: Sequence[Outcome]) -> dict[str, float | None]:
         "status_accuracy": _ratio(sum(o.status == o.expected_status for o in live), len(live)),
         "refusal_accuracy": _ratio(sum(o.status == o.expected_status for o in refuse), len(refuse)),
         "false_refusal_rate": _ratio(sum(o.status != "answered" for o in answer), len(answer)),
+        # 没有配置评审模型时为 None：报告里显示“—”，不进门禁
+        "faithfulness": _ratio(sum(bool(o.faithful) for o in judged), len(judged)),
+        "answer_correctness": (
+            sum(sum(o.key_points_covered) / len(o.key_points_covered) for o in graded) / len(graded)
+            if graded
+            else None
+        ),
         "latency_p50_ms": _percentile(latencies, 0.5),
         "latency_p95_ms": _percentile(latencies, 0.95),
     }

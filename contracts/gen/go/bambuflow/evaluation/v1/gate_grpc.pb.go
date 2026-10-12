@@ -32,7 +32,8 @@ const (
 // 调用方按 gate_id 轮询 GetGate，超时未得到结论一律按不通过处理，没有跳过门禁的入口。
 //
 // 门禁在评测副本上跑（BF_EVAL_MODE 的 orchestrator 与 retrieval，不接任何来自 gateway 的流量）：
-// 请求里的索引版本经 metadata x-eval-index-version 传给它们，因此可以在待发布版本上线之前评测它。
+// 请求里的索引版本经 metadata x-eval-index-version、候选配置版本经 x-eval-config-version 传给它们，
+// 因此可以在待发布的索引版本上线之前、待审批的配置版本生效之前评测它。
 type EvalServiceClient interface {
 	RunGate(ctx context.Context, in *RunGateRequest, opts ...grpc.CallOption) (*RunGateResponse, error)
 	GetGate(ctx context.Context, in *GetGateRequest, opts ...grpc.CallOption) (*GetGateResponse, error)
@@ -75,7 +76,8 @@ func (c *evalServiceClient) GetGate(ctx context.Context, in *GetGateRequest, opt
 // 调用方按 gate_id 轮询 GetGate，超时未得到结论一律按不通过处理，没有跳过门禁的入口。
 //
 // 门禁在评测副本上跑（BF_EVAL_MODE 的 orchestrator 与 retrieval，不接任何来自 gateway 的流量）：
-// 请求里的索引版本经 metadata x-eval-index-version 传给它们，因此可以在待发布版本上线之前评测它。
+// 请求里的索引版本经 metadata x-eval-index-version、候选配置版本经 x-eval-config-version 传给它们，
+// 因此可以在待发布的索引版本上线之前、待审批的配置版本生效之前评测它。
 type EvalServiceServer interface {
 	RunGate(context.Context, *RunGateRequest) (*RunGateResponse, error)
 	GetGate(context.Context, *GetGateRequest) (*GetGateResponse, error)

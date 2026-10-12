@@ -28,7 +28,8 @@ message Principal {
   string jti = 13;
   string aud = 14;
   // 平台角色（platform_admin、platform_operator、infosec、data_owner、auditor），只出现在管理接口的 Principal 里：
-  // gateway 按部署配置把平台身份库的群组映射成角色（gateway 详设 4.2）。管理接口的 Principal 没有 tenant，
+  // gateway 按部署配置把平台身份库的群组映射成角色（gateway 详设 4.2）。租户负责人按租户配置的 owner_groups 得出，
+  // 写成带租户的 tenant_owner:<租户>，每个负责的租户一项，按租户的范围由实现方校验。管理接口的 Principal 没有 tenant，
   // 数据接口的 Principal 没有 roles，两类下游各自只接受自己那一类。
   repeated string roles = 15;
 }

@@ -50,6 +50,46 @@ WRITE_RESULT_UNCHANGED: WriteResult
 WRITE_RESULT_STALE_VERSION: WriteResult
 WRITE_RESULT_MODEL_MISMATCH: WriteResult
 
+class RecordPurgeRequest(_message.Message):
+    __slots__ = ("receipt_id", "store", "completed_at")
+    RECEIPT_ID_FIELD_NUMBER: _ClassVar[int]
+    STORE_FIELD_NUMBER: _ClassVar[int]
+    COMPLETED_AT_FIELD_NUMBER: _ClassVar[int]
+    receipt_id: str
+    store: str
+    completed_at: _timestamp_pb2.Timestamp
+    def __init__(self, receipt_id: _Optional[str] = ..., store: _Optional[str] = ..., completed_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+
+class RecordPurgeResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ListSourceDocumentsRequest(_message.Message):
+    __slots__ = ("source_id",)
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    source_id: str
+    def __init__(self, source_id: _Optional[str] = ...) -> None: ...
+
+class IndexedDocument(_message.Message):
+    __slots__ = ("doc_id", "content_hash", "acl_tokens", "classification", "tombstoned")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_HASH_FIELD_NUMBER: _ClassVar[int]
+    ACL_TOKENS_FIELD_NUMBER: _ClassVar[int]
+    CLASSIFICATION_FIELD_NUMBER: _ClassVar[int]
+    TOMBSTONED_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    content_hash: str
+    acl_tokens: _containers.RepeatedScalarFieldContainer[str]
+    classification: _types_pb2.Classification
+    tombstoned: bool
+    def __init__(self, doc_id: _Optional[str] = ..., content_hash: _Optional[str] = ..., acl_tokens: _Optional[_Iterable[str]] = ..., classification: _Optional[_Union[_types_pb2.Classification, str]] = ..., tombstoned: _Optional[bool] = ...) -> None: ...
+
+class ListSourceDocumentsResponse(_message.Message):
+    __slots__ = ("documents",)
+    DOCUMENTS_FIELD_NUMBER: _ClassVar[int]
+    documents: _containers.RepeatedCompositeFieldContainer[IndexedDocument]
+    def __init__(self, documents: _Optional[_Iterable[_Union[IndexedDocument, _Mapping]]] = ...) -> None: ...
+
 class UpdateAclRequest(_message.Message):
     __slots__ = ("source_id", "doc_id", "acl_tokens", "classification", "occurred_at")
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -65,6 +105,55 @@ class UpdateAclRequest(_message.Message):
     def __init__(self, source_id: _Optional[str] = ..., doc_id: _Optional[str] = ..., acl_tokens: _Optional[_Iterable[str]] = ..., classification: _Optional[_Union[_types_pb2.Classification, str]] = ..., occurred_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class UpdateAclResponse(_message.Message):
+    __slots__ = ("result",)
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    result: AclResult
+    def __init__(self, result: _Optional[_Union[AclResult, str]] = ...) -> None: ...
+
+class LookupVectorsRequest(_message.Message):
+    __slots__ = ("embedding_model_version", "input_hashes")
+    EMBEDDING_MODEL_VERSION_FIELD_NUMBER: _ClassVar[int]
+    INPUT_HASHES_FIELD_NUMBER: _ClassVar[int]
+    embedding_model_version: str
+    input_hashes: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, embedding_model_version: _Optional[str] = ..., input_hashes: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class CachedVector(_message.Message):
+    __slots__ = ("input_hash", "embedding", "sparse")
+    class SparseEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: int
+        value: float
+        def __init__(self, key: _Optional[int] = ..., value: _Optional[float] = ...) -> None: ...
+    INPUT_HASH_FIELD_NUMBER: _ClassVar[int]
+    EMBEDDING_FIELD_NUMBER: _ClassVar[int]
+    SPARSE_FIELD_NUMBER: _ClassVar[int]
+    input_hash: str
+    embedding: _containers.RepeatedScalarFieldContainer[float]
+    sparse: _containers.ScalarMap[int, float]
+    def __init__(self, input_hash: _Optional[str] = ..., embedding: _Optional[_Iterable[float]] = ..., sparse: _Optional[_Mapping[int, float]] = ...) -> None: ...
+
+class LookupVectorsResponse(_message.Message):
+    __slots__ = ("vectors",)
+    VECTORS_FIELD_NUMBER: _ClassVar[int]
+    vectors: _containers.RepeatedCompositeFieldContainer[CachedVector]
+    def __init__(self, vectors: _Optional[_Iterable[_Union[CachedVector, _Mapping]]] = ...) -> None: ...
+
+class SetPartitionGrantsRequest(_message.Message):
+    __slots__ = ("source_id", "partition", "grantees", "occurred_at")
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    PARTITION_FIELD_NUMBER: _ClassVar[int]
+    GRANTEES_FIELD_NUMBER: _ClassVar[int]
+    OCCURRED_AT_FIELD_NUMBER: _ClassVar[int]
+    source_id: str
+    partition: str
+    grantees: _containers.RepeatedScalarFieldContainer[str]
+    occurred_at: _timestamp_pb2.Timestamp
+    def __init__(self, source_id: _Optional[str] = ..., partition: _Optional[str] = ..., grantees: _Optional[_Iterable[str]] = ..., occurred_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+
+class SetPartitionGrantsResponse(_message.Message):
     __slots__ = ("result",)
     RESULT_FIELD_NUMBER: _ClassVar[int]
     result: AclResult
@@ -177,7 +266,14 @@ class Relation(_message.Message):
     def __init__(self, subject: _Optional[_Union[Entity, _Mapping]] = ..., relation_type: _Optional[_Union[_types_pb2.RelationType, str]] = ..., object: _Optional[_Union[Entity, _Mapping]] = ..., evidence_chunk_id: _Optional[str] = ..., confidence: _Optional[float] = ..., extractor_version: _Optional[str] = ...) -> None: ...
 
 class Chunk(_message.Message):
-    __slots__ = ("chunk_id", "parent_chunk_id", "heading_path", "text", "text_hash", "span", "embedding", "injection_flag", "pii")
+    __slots__ = ("chunk_id", "parent_chunk_id", "heading_path", "text", "text_hash", "span", "embedding", "injection_flag", "pii", "input_hash", "sparse")
+    class SparseEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: int
+        value: float
+        def __init__(self, key: _Optional[int] = ..., value: _Optional[float] = ...) -> None: ...
     CHUNK_ID_FIELD_NUMBER: _ClassVar[int]
     PARENT_CHUNK_ID_FIELD_NUMBER: _ClassVar[int]
     HEADING_PATH_FIELD_NUMBER: _ClassVar[int]
@@ -187,6 +283,8 @@ class Chunk(_message.Message):
     EMBEDDING_FIELD_NUMBER: _ClassVar[int]
     INJECTION_FLAG_FIELD_NUMBER: _ClassVar[int]
     PII_FIELD_NUMBER: _ClassVar[int]
+    INPUT_HASH_FIELD_NUMBER: _ClassVar[int]
+    SPARSE_FIELD_NUMBER: _ClassVar[int]
     chunk_id: str
     parent_chunk_id: str
     heading_path: _containers.RepeatedScalarFieldContainer[str]
@@ -196,7 +294,9 @@ class Chunk(_message.Message):
     embedding: _containers.RepeatedScalarFieldContainer[float]
     injection_flag: bool
     pii: SealedPII
-    def __init__(self, chunk_id: _Optional[str] = ..., parent_chunk_id: _Optional[str] = ..., heading_path: _Optional[_Iterable[str]] = ..., text: _Optional[str] = ..., text_hash: _Optional[str] = ..., span: _Optional[_Union[_types_pb2.Span, _Mapping]] = ..., embedding: _Optional[_Iterable[float]] = ..., injection_flag: _Optional[bool] = ..., pii: _Optional[_Union[SealedPII, _Mapping]] = ...) -> None: ...
+    input_hash: str
+    sparse: _containers.ScalarMap[int, float]
+    def __init__(self, chunk_id: _Optional[str] = ..., parent_chunk_id: _Optional[str] = ..., heading_path: _Optional[_Iterable[str]] = ..., text: _Optional[str] = ..., text_hash: _Optional[str] = ..., span: _Optional[_Union[_types_pb2.Span, _Mapping]] = ..., embedding: _Optional[_Iterable[float]] = ..., injection_flag: _Optional[bool] = ..., pii: _Optional[_Union[SealedPII, _Mapping]] = ..., input_hash: _Optional[str] = ..., sparse: _Optional[_Mapping[int, float]] = ...) -> None: ...
 
 class SealedPII(_message.Message):
     __slots__ = ("ciphertext", "wrapped_key", "key_id")

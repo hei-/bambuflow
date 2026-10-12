@@ -10,12 +10,15 @@ storageClass: ""
 
 vault:
   addr: ""
-  # 在线服务的角色：读 <kvMount>/bambuflow/*、<kvMount>/gateway/*、<kvMount>/governance/*（快照签名私钥），
+  # 在线服务的角色：读 <kvMount>/bambuflow/*、<kvMount>/governance/*（快照签名私钥）、
+  # <kvMount>/evaluation/*（评测身份的签名私钥），
   # 以及 transit/decrypt/bambuflow-pii
   # （retrieval 为能看 PII 原文的调用者解开入库时加密的原值）
   role: ""
   # webhook 的角色：只能读写 <kvMount>/webhooks/*（订阅的签名密钥），与在线服务的角色分开
   webhookRole: ""
+  # gateway 的角色：读写 <kvMount>/gateway/principal-signing（Principal 签名密钥，gateway 定期轮换并写回，部署配置清单 P10）
+  gatewayRole: ""
   kvMount: secret
   authMount: kubernetes
 
@@ -37,15 +40,18 @@ events:
 # 租户配置的初始版本（governance 详设 3、4）：governance 启动时只为还没有任何版本的租户导入，之后经变更单与发布修改、
 # 由配置快照推给 gateway，再改这里不会生效。键是租户名，
 # 值是 tenant.yaml 除 tenant 以外的字段（rollout、member_groups、pilot_groups、bound_clients、mcp_agents、mcp_tools、
-# auditor_groups：可回放本租户任何人回答的审计岗群组；quota：租户这一层的限制，gateway 详设 5.1）。
+# auditor_groups：可回放本租户任何人回答的审计岗群组；owner_groups：租户负责人，只读本租户的配置、门禁与质量趋势；quota：租户这一层的限制，gateway 详设 5.1）。
 # quota 的 max_concurrency 为在线并发上限，daily_tokens 为每日 token 配额；不填时取保守默认值（20 路、200 万 token），
 # 用尽后当日只提供仅检索。
 tenants: {}
 
-# 授权策略数据（config/policy 的 data.json）：每个租户一项（没有的租户一律拒绝），内容为租户策略：
-# denied_sources（策略禁止的数据源）、地域限定（source_regions）、可看 PII 的群组等。
+# 检索权限策略包的数据源层与租户层（governance 详设第 5 节，libs/platform-go/policy）：键为 tenant.<租户> 或
+# source.<数据源>，值为该层的 rego 规则（不含 package，至少一个 test_ 开头的测试）。每个租户都要有一层，没有的租户一律拒绝。
+# 租户层可给 deny_sources（不检索的数据源）、pii_viewer_groups（能看 PII 原文的群组）、deny（整个请求拒绝的原因）；
+# 数据源层给 deny（这个主体不能检索该数据源的原因，如地域限定）。全局基线随 governance 镜像提供（config/policies/global.rego）。
+# 这里只用作首次启动的初始版本，之后的修改走 governance 的发布（须附权限评测门禁，审批页显示可见范围变大的主体）。
 # 租户可访问的数据源不在这里，以 governance 为唯一事实来源（/v1/admin/sources/{src_id}/grants）
-policyData: {}
+policyLayers: {}
 
 # replicas 是 HPA 的下限
 gateway:
@@ -65,6 +71,18 @@ gateway:
   # platform_operator（平台运维）、infosec（信息安全）、data_owner（数据属主，按本人部门限定范围）、auditor（审计岗）；
   # 不配置的角色没有人拥有，对应的管理接口一律 403
   adminRoles: {}
+  # 审批类管理操作（变更单与发布的审批、数据源审批、索引切换与重建等双人复核的第二人）要求的加强认证
+  # （governance 详设 9.1，部署配置清单 P7，默认强制）：平台令牌的 acr 须是 acrValues 之一（逗号分隔，取值与 IAM 对齐，
+  # 如 Keycloak 认证强度映射里多因素登录的级别），且登录时间在 maxAge 之内；不满足时 console 引导用户重新认证
+  stepUp:
+    acrValues: ""
+    maxAge: 10m
+  # 业务系统代用户调用时的服务身份（gateway 详设 3.1）：入口代理终结 mTLS、校验客户端证书后，把证书主题 DN 写进这个请求头
+  # （如 ingress-nginx 的 ssl-client-subject-dn），并覆盖客户端自带的同名头；gateway 取其中的 CN 与令牌的 act 核对。
+  # 为空时不接受代用户调用（经令牌交换取得的令牌一律 401）。业务系统在平台授权服务的登记见 deploy/authz/register-business-client.sh
+  clientCertHeader: ""
+  # Principal 签名密钥的轮换周期（部署配置清单 P10，默认 30 天）；不能短于批量任务委托的最长有效期 7 天
+  signingKeyRotateEvery: 720h
   # 审计桶须开启对象锁（技术设计文档 8.3），gateway 启动时检查，没开就不启动
   audit:
     s3Endpoint: ""
@@ -82,6 +100,12 @@ retrieval:
   embedderUrl: ""
   # 精排模型服务；留空则不精排
   rerankerUrl: ""
+  # 紧急拒绝规则的签名文件（governance 详设 8.2 的备用通道）：governance 不可用时，信息安全用
+  # governance emergency-deny -out 签发，按“名字: 文件内容”放在这里经部署系统投放；只能增加拒绝，验签不通过的不生效
+  emergencyDenials: {}
+  # 检索结果与查询向量缓存用的 Redis（host:port，retrieval 详设第 8 节），与事件流的 Redis 分开；留空不缓存。
+  # 口令 BF_CACHE_REDIS_PASSWORD 放在 Vault 的 bambuflow/retrieval
+  cacheRedisAddr: ""
   resources:
     requests: {cpu: "1", memory: 1Gi}
     limits: {memory: 2Gi}
@@ -106,6 +130,15 @@ connectorsAdmin:
 governance:
   replicas: 2
   maxReplicas: 4
+  # console 修改 Git 类配置对象（pipeline、routing、策略包、回答模板）时写合并请求的去处（governance 详设 3.1）：
+  # kind 为空时 console 不能修改这些对象，只能经 CI 发布；gitlab 时经 GitLab API 建分支、提交并开合并请求，
+  # 令牌（api 权限的项目访问令牌）写在 Vault 的 bambuflow/governance-git（键 token）
+  gitForge:
+    kind: ""
+    gitlabUrl: ""
+    # 项目 ID 或 namespace/project
+    gitlabProject: ""
+    targetBranch: main
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {memory: 256Mi}
@@ -115,6 +148,14 @@ orchestrator:
   maxReplicas: 10
   llmUrl: ""
   llmModel: ""
+  # 按密级选模型（总体设计 8.6）：llmUrl 指向外部模型时设为 external，只处理公开级内容
+  llmKind: private
+  # 受限级专用的私有部署实例（公司内网访问，不带 API key）；留空时受限级内容不调用模型、只返回证据
+  llmRestrictedUrl: ""
+  llmRestrictedModel: ""
+  # 与 llmModel 同一网关、routing 可以选用的其他模型（逗号分隔，A/B 与模型切换，orchestrator 详设 12.3）；
+  # routing 指定的模型不在其中时不调用模型、只返回证据，评测门禁因此不会通过
+  llmAltModels: ""
   nliUrl: ""
   # 厂商专有的请求参数（JSON），如推理模型要关闭思考：{"thinking":{"type":"disabled"}}
   llmExtraBody: ""
@@ -149,24 +190,51 @@ batch:
 # （/v1/admin/quality-trends）；读 governance 的实验与 orchestrator 的回答记录（服务间接口）。
 # 在线抽样评审的结果存元数据库的 evaluation schema，连接串 BF_PG_DSN 经 Vault 注入（bambuflow/evaluation）；
 # 升级前执行 python -m bambuflow_evaluation migrate。
-# guardSchedule：每天检查运行中实验的护栏、触发即停止；onlineSchedule：每天抽样评审前一天的回答（CronJob，按集群时区）
+# guardSchedule：每天检查运行中实验的护栏、触发即停止；observeSchedule：观察配置灰度、超阈值终止或期满全量；
+# onlineSchedule：每天抽样评审前一天的回答（CronJob，按集群时区）
 evaluation:
   replicas: 2
   maxReplicas: 2
   guardSchedule: "0 1 * * *"
+  observeSchedule: "*/5 * * * *"
   onlineSchedule: "0 2 * * *"
-  # 在线抽样评审的租户；判定用的 NLI 服务与模型须与线上校验器不同（evaluation 详设 6.1）
+  # 在线抽样评审与评测门禁的判定用的 NLI 服务与模型，须与线上校验器不同（evaluation 详设 6.1）；
+  # 在线抽样评审的租户
   onlineTenants: []
   nliUrl: ""
   judgeModel: ""
+  # LLM 评审（Faithfulness、答案正确率，evaluation 详设 6.2）：OpenAI 兼容端点与模型，应与生成模型不同；
+  # 留空时不算这两项。密钥 BF_JUDGE_API_KEY 经 Vault 注入（bambuflow/evaluation）
+  llmJudgeUrl: ""
+  llmJudgeModel: ""
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {memory: 512Mi}
+
+# 评测副本 retrieval-eval、orchestrator-eval（evaluation 详设 4.2）：索引发布前的评测门禁在它们上面跑，
+# 与线上实例同一镜像与配置、只接 evaluation 的流量。没有它们，入库平面的定时发布拿不到门禁结论、不会发布
+evalReplicas:
+  replicas: 1
+  maxReplicas: 2
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 2Gi}
 
 # Webhook 投递（技术设计文档 13.7）：消费平台事件流、按订阅签名投递；数据库连接串与 Redis 口令经 Vault 注入（bambuflow/webhook）
 webhook:
   replicas: 2
   maxReplicas: 4
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+# 身份同步（gateway 详设 3.5，docs/identity-sync.md）：config 是身份同步的配置文件内容，上游 ldap、scim、file 三选一，必须配置；
+# 口令与凭证不写在这里，放在 Vault 的 bambuflow/identity-sync（变量名由 config 里的 *_env 指定），连同 BF_PG_DSN
+identitySync:
+  config: {}
+  # file 时：上游定时写入导出文件的 PVC 与挂载目录（config.file.path 要在这个目录下）
+  exportClaim: ""
+  exportMountPath: /var/lib/identity
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {memory: 256Mi}

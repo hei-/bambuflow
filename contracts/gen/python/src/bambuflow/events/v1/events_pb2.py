@@ -25,14 +25,16 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n bambuflow/events/v1/events.proto\x12\x13\x62\x61mbuflow.events.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb0\x01\n\rPlatformEvent\x12\x19\n\x08\x65vent_id\x18\x01 \x01(\tR\x07\x65ventId\x12\x12\n\x04type\x18\x02 \x01(\tR\x04type\x12\x16\n\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1b\n\tobject_id\x18\x04 \x01(\tR\x08objectId\x12;\n\x0boccurred_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAtB\xe1\x01\n\x17\x63om.bambuflow.events.v1B\x0b\x45ventsProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/events/v1;eventsv1\xa2\x02\x03\x42\x45X\xaa\x02\x13\x42\x61mbuflow.Events.V1\xca\x02\x13\x42\x61mbuflow\\Events\\V1\xe2\x02\x1f\x42\x61mbuflow\\Events\\V1\\GPBMetadata\xea\x02\x15\x42\x61mbuflow::Events::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n bambuflow/events/v1/events.proto\x12\x13\x62\x61mbuflow.events.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb0\x01\n\rPlatformEvent\x12\x19\n\x08\x65vent_id\x18\x01 \x01(\tR\x07\x65ventId\x12\x12\n\x04type\x18\x02 \x01(\tR\x04type\x12\x16\n\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1b\n\tobject_id\x18\x04 \x01(\tR\x08objectId\x12;\n\x0boccurred_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAt\"\xa3\x01\n\x0f\x43hunkAclChanged\x12\x19\n\x08\x65vent_id\x18\x01 \x01(\tR\x07\x65ventId\x12\x17\n\x07\x64oc_ids\x18\x02 \x03(\tR\x06\x64ocIds\x12\x1f\n\x0b\x63hange_type\x18\x03 \x01(\tR\nchangeType\x12;\n\x0boccurred_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAtB\xdd\x01\n\x17\x63om.bambuflow.events.v1B\x0b\x45ventsProtoP\x01ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/events/v1;eventsv1\xa2\x02\x03\x42\x45X\xaa\x02\x13\x42\x61mbuflow.Events.V1\xca\x02\x13\x42\x61mbuflow\\Events\\V1\xe2\x02\x1f\x42\x61mbuflow\\Events\\V1\\GPBMetadata\xea\x02\x15\x42\x61mbuflow::Events::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.events.v1.events_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\027com.bambuflow.events.v1B\013EventsProtoP\001ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/events/v1;eventsv1\242\002\003BEX\252\002\023Bambuflow.Events.V1\312\002\023Bambuflow\\Events\\V1\342\002\037Bambuflow\\Events\\V1\\GPBMetadata\352\002\025Bambuflow::Events::V1'
+  _globals['DESCRIPTOR']._serialized_options = b'\n\027com.bambuflow.events.v1B\013EventsProtoP\001ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/events/v1;eventsv1\242\002\003BEX\252\002\023Bambuflow.Events.V1\312\002\023Bambuflow\\Events\\V1\342\002\037Bambuflow\\Events\\V1\\GPBMetadata\352\002\025Bambuflow::Events::V1'
   _globals['_PLATFORMEVENT']._serialized_start=91
   _globals['_PLATFORMEVENT']._serialized_end=267
+  _globals['_CHUNKACLCHANGED']._serialized_start=270
+  _globals['_CHUNKACLCHANGED']._serialized_end=433
 # @@protoc_insertion_point(module_scope)

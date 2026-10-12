@@ -62,3 +62,41 @@ def test_answer_blocks_reach_append_only_audit_bucket() -> None:
         assert e.code == "AccessDenied", e.code
     else:
         raise AssertionError("审计对象在保留期内被删除了")
+
+
+def test_answer_audit_carries_versions_and_answer_digest() -> None:
+    """回答记录按保留期销毁原文后，审计里仍能查到当时的版本组合（技术设计文档 8.3）。"""
+    a = ask("alice", "credit", QUESTION)
+    c = s3()
+    found = None
+    for _ in range(30):
+        found = find_record(c, a["answer_id"])
+        if found:
+            break
+        time.sleep(1)
+    assert found, "审计桶里找不到这次问答"
+    _, rec = found
+    v = rec["versions"]
+    assert v["index_version"] == a["why"]["index_version"] and v["generation_model"], rec
+    assert rec["answer_status"] == a["status"] and len(rec["answer_sha256"]) == 64
+
+
+def changes(c: Minio, service: str, action: str) -> list[dict[str, Any]]:
+    out = []
+    for obj in c.list_objects(BUCKET, prefix=f"{service}/changes/", recursive=True):
+        rec: dict[str, Any] = json.loads(c.get_object(BUCKET, obj.object_name).read())
+        if rec["action"] == action:
+            out.append(rec)
+    return out
+
+
+def test_background_operations_write_change_audit() -> None:
+    """不经 gateway 的后台操作同样审计：定时发布（make ingest 时发布过）与它之前的评测门禁。"""
+    c = s3()
+    published = changes(c, "indexing", "index.publish")
+    assert published and published[-1]["actor"] == "service:indexing", published
+    assert published[-1]["detail"]["docs"] > 0
+    gates = changes(c, "evaluation", "gate.conclude")
+    assert gates and gates[-1]["detail"]["conclusion"] in ("passed", "failed", "indeterminate"), (
+        gates
+    )

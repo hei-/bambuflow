@@ -37,6 +37,11 @@ class ConfigServiceStub:
                 request_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysResponse.FromString,
                 _registered_method=True)
+        self.GetCandidate = channel.unary_unary(
+                '/bambuflow.config.v1.ConfigService/GetCandidate',
+                request_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetCandidateRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetCandidateResponse.FromString,
+                _registered_method=True)
 
 
 class ConfigServiceServicer:
@@ -73,6 +78,15 @@ class ConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetCandidate(self, request, context):
+        """GetCandidate 按版本取一个还没生效的候选配置，供评测副本跑配置发布的门禁（governance 详设 4.1 第 ③④ 步、evaluation 详设 4.2）。
+        只对评测身份开放：authorization 里要带 evaluation 签发的评测身份（评测副本转发正在回答的那道题的身份），
+        线上实例只持有 gateway 签发的 Principal，取不到候选。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -95,6 +109,11 @@ def add_ConfigServiceServicer_to_server(servicer, server):
                     servicer.GetSigningKeys,
                     request_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysRequest.FromString,
                     response_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysResponse.SerializeToString,
+            ),
+            'GetCandidate': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCandidate,
+                    request_deserializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetCandidateRequest.FromString,
+                    response_serializer=bambuflow_dot_config_dot_v1_dot_config__pb2.GetCandidateResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -208,6 +227,33 @@ class ConfigService:
             '/bambuflow.config.v1.ConfigService/GetSigningKeys',
             bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysRequest.SerializeToString,
             bambuflow_dot_config_dot_v1_dot_config__pb2.GetSigningKeysResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCandidate(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.config.v1.ConfigService/GetCandidate',
+            bambuflow_dot_config_dot_v1_dot_config__pb2.GetCandidateRequest.SerializeToString,
+            bambuflow_dot_config_dot_v1_dot_config__pb2.GetCandidateResponse.FromString,
             options,
             channel_credentials,
             insecure,

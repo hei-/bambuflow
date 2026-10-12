@@ -32,7 +32,7 @@
     "replicas": {"type": "integer", "minimum": 2, "description": "HPA 下限；至少 2 个，PDB 才能在驱逐时保住一个"},
     "maxReplicas": {"type": "integer", "minimum": 2}
   },
-  "required": ["image", "vault", "networkPolicy", "otel", "events", "tenants", "policyData", "indexing", "processingAdmin", "connectorsAdmin", "gateway", "retrieval", "governance", "orchestrator", "batch", "evaluation", "webhook"],
+  "required": ["image", "vault", "networkPolicy", "otel", "events", "tenants", "policyLayers", "indexing", "processingAdmin", "connectorsAdmin", "gateway", "retrieval", "governance", "orchestrator", "batch", "evaluation", "evalReplicas", "webhook", "identitySync"],
   "properties": {
     "image": {
       "type": "object",
@@ -45,11 +45,12 @@
     },
     "vault": {
       "type": "object",
-      "required": ["addr", "role", "webhookRole", "kvMount", "authMount"],
+      "required": ["addr", "role", "webhookRole", "gatewayRole", "kvMount", "authMount"],
       "properties": {
         "addr": {"$ref": "#/definitions/url"},
         "role": {"$ref": "#/definitions/noDev"},
         "webhookRole": {"$ref": "#/definitions/noDev"},
+        "gatewayRole": {"$ref": "#/definitions/noDev"},
         "kvMount": {"type": "string", "minLength": 1},
         "authMount": {"type": "string", "minLength": 1}
       }
@@ -65,6 +66,7 @@
           "member_groups": {"type": "array", "items": {"type": "string"}, "minItems": 1},
           "pilot_groups": {"type": "array", "items": {"type": "string"}},
           "auditor_groups": {"type": "array", "items": {"type": "string"}},
+          "owner_groups": {"type": "array", "items": {"type": "string"}},
           "bound_clients": {"type": "array", "items": {"type": "string"}},
           "mcp_agents": {
             "type": "array",
@@ -95,10 +97,11 @@
         }
       }
     },
-    "policyData": {
+    "policyLayers": {
       "type": "object",
-      "required": ["tenants"],
-      "properties": {"tenants": {"type": "object", "minProperties": 1}}
+      "minProperties": 1,
+      "patternProperties": {"^(tenant\\.[a-z0-9-]{1,64}|source\\.[a-z0-9_-]{1,64})$": {"type": "string", "minLength": 1}},
+      "additionalProperties": false
     },
     "networkPolicy": {
       "type": "object",
@@ -142,7 +145,7 @@
     },
     "gateway": {
       "type": "object",
-      "required": ["replicas", "maxReplicas", "publicUrl", "platformIssuer", "platformClients", "redisAddr", "userStreams", "quotaTimezone", "adminRoles", "audit", "resources"],
+      "required": ["replicas", "maxReplicas", "publicUrl", "platformIssuer", "platformClients", "redisAddr", "userStreams", "quotaTimezone", "adminRoles", "stepUp", "clientCertHeader", "signingKeyRotateEvery", "audit", "resources"],
       "properties": {
         "replicas": {"$ref": "#/definitions/replicas"},
         "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
@@ -152,6 +155,16 @@
         "redisAddr": {"$ref": "#/definitions/redisAddr"},
         "userStreams": {"type": "integer", "minimum": 1},
         "quotaTimezone": {"type": "string", "pattern": "^(UTC|[A-Z][A-Za-z_]+(/[A-Za-z0-9_+-]+)+)$"},
+        "stepUp": {
+          "type": "object",
+          "required": ["acrValues", "maxAge"],
+          "properties": {
+            "acrValues": {"type": "string", "pattern": "^[^,\\s]+(,[^,\\s]+)*$"},
+            "maxAge": {"type": "string", "pattern": "^[0-9]+(s|m)$"}
+          }
+        },
+        "clientCertHeader": {"type": "string", "pattern": "^([A-Za-z0-9-]+)?$"},
+        "signingKeyRotateEvery": {"type": "string", "pattern": "^[0-9]+h$"},
         "adminRoles": {
           "type": "object",
           "propertyNames": {"enum": ["platform_admin", "platform_operator", "infosec", "data_owner", "auditor"]},
@@ -174,6 +187,8 @@
       "type": "object",
       "required": ["replicas", "maxReplicas", "embedderUrl", "resources"],
       "properties": {
+        "emergencyDenials": {"type": "object", "propertyNames": {"pattern": "^[a-z0-9_-]{1,64}$"}, "additionalProperties": {"type": "string", "minLength": 1}},
+        "cacheRedisAddr": {"type": "string", "pattern": "^([^/:]+:[0-9]+)?$"},
         "replicas": {"$ref": "#/definitions/replicas"},
         "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
         "embedderUrl": {"$ref": "#/definitions/url"},
@@ -182,11 +197,24 @@
     },
     "governance": {
       "type": "object",
-      "required": ["replicas", "maxReplicas", "resources"],
+      "required": ["replicas", "maxReplicas", "resources", "gitForge"],
       "properties": {
         "replicas": {"$ref": "#/definitions/replicas"},
         "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
-        "resources": {"$ref": "#/definitions/resources"}
+        "resources": {"$ref": "#/definitions/resources"},
+        "gitForge": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {"enum": ["", "gitlab"]},
+            "gitlabUrl": {"type": "string"},
+            "gitlabProject": {"type": "string"},
+            "targetBranch": {"type": "string", "minLength": 1}
+          },
+          "if": {"properties": {"kind": {"const": "gitlab"}}},
+          "then": {"required": ["gitlabUrl", "gitlabProject", "targetBranch"],
+                   "properties": {"gitlabUrl": {"$ref": "#/definitions/url"}, "gitlabProject": {"minLength": 1}}}
+        }
       }
     },
     "orchestrator": {
@@ -197,6 +225,10 @@
         "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
         "llmUrl": {"$ref": "#/definitions/url"},
         "llmModel": {"$ref": "#/definitions/noDev"},
+        "llmKind": {"enum": ["private", "external"]},
+        "llmRestrictedUrl": {"type": "string"},
+        "llmRestrictedModel": {"type": "string"},
+        "llmAltModels": {"type": "string"},
         "nliUrl": {"$ref": "#/definitions/url"},
         "redisAddr": {"$ref": "#/definitions/redisAddr"},
         "maxConcurrency": {"type": "integer", "minimum": 1},
@@ -222,17 +254,29 @@
         "resources": {"$ref": "#/definitions/resources"}
       }
     },
+    "evalReplicas": {
+      "type": "object",
+      "required": ["replicas", "maxReplicas", "resources"],
+      "properties": {
+        "replicas": {"type": "integer", "minimum": 1, "description": "只接评测流量，不要求高可用"},
+        "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
     "evaluation": {
       "type": "object",
-      "required": ["replicas", "maxReplicas", "guardSchedule", "onlineSchedule", "onlineTenants", "nliUrl", "judgeModel", "resources"],
+      "required": ["replicas", "maxReplicas", "guardSchedule", "observeSchedule", "onlineSchedule", "onlineTenants", "nliUrl", "judgeModel", "resources"],
       "properties": {
         "replicas": {"$ref": "#/definitions/replicas"},
         "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
         "guardSchedule": {"type": "string", "minLength": 9},
+        "observeSchedule": {"type": "string", "minLength": 9},
         "onlineSchedule": {"type": "string", "minLength": 9},
         "onlineTenants": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"}},
         "nliUrl": {"type": "string"},
         "judgeModel": {"type": "string"},
+        "llmJudgeUrl": {"type": "string"},
+        "llmJudgeModel": {"type": "string"},
         "resources": {"$ref": "#/definitions/resources"}
       }
     },
@@ -242,6 +286,26 @@
       "properties": {
         "replicas": {"$ref": "#/definitions/replicas"},
         "maxReplicas": {"$ref": "#/definitions/maxReplicas"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "identitySync": {
+      "type": "object",
+      "required": ["config", "exportClaim", "exportMountPath", "resources"],
+      "properties": {
+        "config": {
+          "type": "object",
+          "required": ["source", "mapping", "interval"],
+          "oneOf": [{"required": ["ldap"]}, {"required": ["scim"]}, {"required": ["file"]}],
+          "properties": {
+            "source": {"type": "string", "minLength": 1},
+            "ldap": {"type": "object", "properties": {"url": {"allOf": [{"type": "string", "pattern": "^ldaps?://"}, {"not": {"pattern": "^ldaps?://(openldap|localhost|127\\.0\\.0\\.1)(:|/|$)"}}]}}},
+            "scim": {"type": "object", "required": ["listen", "token_env"], "properties": {"listen": {"type": "string", "pattern": "^:[0-9]+$"}}},
+            "file": {"type": "object", "required": ["path"]}
+          }
+        },
+        "exportClaim": {"type": "string"},
+        "exportMountPath": {"type": "string", "pattern": "^/"},
         "resources": {"$ref": "#/definitions/resources"}
       }
     }

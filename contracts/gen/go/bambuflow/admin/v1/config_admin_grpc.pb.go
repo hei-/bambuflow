@@ -22,12 +22,16 @@ const (
 	ConfigAdminService_ListTenants_FullMethodName          = "/bambuflow.admin.v1.ConfigAdminService/ListTenants"
 	ConfigAdminService_ListConfigVersions_FullMethodName   = "/bambuflow.admin.v1.ConfigAdminService/ListConfigVersions"
 	ConfigAdminService_CreateChangeRequest_FullMethodName  = "/bambuflow.admin.v1.ConfigAdminService/CreateChangeRequest"
+	ConfigAdminService_ListChangeRequests_FullMethodName   = "/bambuflow.admin.v1.ConfigAdminService/ListChangeRequests"
 	ConfigAdminService_ApproveChangeRequest_FullMethodName = "/bambuflow.admin.v1.ConfigAdminService/ApproveChangeRequest"
 	ConfigAdminService_RejectChangeRequest_FullMethodName  = "/bambuflow.admin.v1.ConfigAdminService/RejectChangeRequest"
 	ConfigAdminService_CreateRelease_FullMethodName        = "/bambuflow.admin.v1.ConfigAdminService/CreateRelease"
 	ConfigAdminService_ApproveRelease_FullMethodName       = "/bambuflow.admin.v1.ConfigAdminService/ApproveRelease"
 	ConfigAdminService_GetRelease_FullMethodName           = "/bambuflow.admin.v1.ConfigAdminService/GetRelease"
+	ConfigAdminService_ListReleases_FullMethodName         = "/bambuflow.admin.v1.ConfigAdminService/ListReleases"
 	ConfigAdminService_RollbackRelease_FullMethodName      = "/bambuflow.admin.v1.ConfigAdminService/RollbackRelease"
+	ConfigAdminService_PromoteRelease_FullMethodName       = "/bambuflow.admin.v1.ConfigAdminService/PromoteRelease"
+	ConfigAdminService_AbortRollout_FullMethodName         = "/bambuflow.admin.v1.ConfigAdminService/AbortRollout"
 )
 
 // ConfigAdminServiceClient is the client API for ConfigAdminService service.
@@ -37,20 +41,30 @@ const (
 // ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
 // gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 //
-// 现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-// 每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+// 配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+// 每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+// Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+// 全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
 // 变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
 // 已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
 type ConfigAdminServiceClient interface {
 	ListTenants(ctx context.Context, in *ListTenantsRequest, opts ...grpc.CallOption) (*ListTenantsResponse, error)
 	ListConfigVersions(ctx context.Context, in *ListConfigVersionsRequest, opts ...grpc.CallOption) (*ListConfigVersionsResponse, error)
 	CreateChangeRequest(ctx context.Context, in *CreateChangeRequestRequest, opts ...grpc.CallOption) (*CreateChangeRequestResponse, error)
+	// 按状态列出变更单（新的在前，最多 100 条），审批人据此找待审批的变更单
+	ListChangeRequests(ctx context.Context, in *ListChangeRequestsRequest, opts ...grpc.CallOption) (*ListChangeRequestsResponse, error)
 	ApproveChangeRequest(ctx context.Context, in *ApproveChangeRequestRequest, opts ...grpc.CallOption) (*ApproveChangeRequestResponse, error)
 	RejectChangeRequest(ctx context.Context, in *RejectChangeRequestRequest, opts ...grpc.CallOption) (*RejectChangeRequestResponse, error)
 	CreateRelease(ctx context.Context, in *CreateReleaseRequest, opts ...grpc.CallOption) (*CreateReleaseResponse, error)
 	ApproveRelease(ctx context.Context, in *ApproveReleaseRequest, opts ...grpc.CallOption) (*ApproveReleaseResponse, error)
 	GetRelease(ctx context.Context, in *GetReleaseRequest, opts ...grpc.CallOption) (*GetReleaseResponse, error)
+	// 按状态列出发布（新的在前，最多 100 条）
+	ListReleases(ctx context.Context, in *ListReleasesRequest, opts ...grpc.CallOption) (*ListReleasesResponse, error)
 	RollbackRelease(ctx context.Context, in *RollbackReleaseRequest, opts ...grpc.CallOption) (*RollbackReleaseResponse, error)
+	// 灰度中的发布全量生效（切生效指针）；一人执行
+	PromoteRelease(ctx context.Context, in *PromoteReleaseRequest, opts ...grpc.CallOption) (*PromoteReleaseResponse, error)
+	// 终止灰度：候选版本不再生效，发布记为 rolled_back；一人执行（收紧不需要第二个人）
+	AbortRollout(ctx context.Context, in *AbortRolloutRequest, opts ...grpc.CallOption) (*AbortRolloutResponse, error)
 }
 
 type configAdminServiceClient struct {
@@ -85,6 +99,16 @@ func (c *configAdminServiceClient) CreateChangeRequest(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateChangeRequestResponse)
 	err := c.cc.Invoke(ctx, ConfigAdminService_CreateChangeRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *configAdminServiceClient) ListChangeRequests(ctx context.Context, in *ListChangeRequestsRequest, opts ...grpc.CallOption) (*ListChangeRequestsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListChangeRequestsResponse)
+	err := c.cc.Invoke(ctx, ConfigAdminService_ListChangeRequests_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -141,10 +165,40 @@ func (c *configAdminServiceClient) GetRelease(ctx context.Context, in *GetReleas
 	return out, nil
 }
 
+func (c *configAdminServiceClient) ListReleases(ctx context.Context, in *ListReleasesRequest, opts ...grpc.CallOption) (*ListReleasesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListReleasesResponse)
+	err := c.cc.Invoke(ctx, ConfigAdminService_ListReleases_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *configAdminServiceClient) RollbackRelease(ctx context.Context, in *RollbackReleaseRequest, opts ...grpc.CallOption) (*RollbackReleaseResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RollbackReleaseResponse)
 	err := c.cc.Invoke(ctx, ConfigAdminService_RollbackRelease_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *configAdminServiceClient) PromoteRelease(ctx context.Context, in *PromoteReleaseRequest, opts ...grpc.CallOption) (*PromoteReleaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PromoteReleaseResponse)
+	err := c.cc.Invoke(ctx, ConfigAdminService_PromoteRelease_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *configAdminServiceClient) AbortRollout(ctx context.Context, in *AbortRolloutRequest, opts ...grpc.CallOption) (*AbortRolloutResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AbortRolloutResponse)
+	err := c.cc.Invoke(ctx, ConfigAdminService_AbortRollout_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,20 +212,30 @@ func (c *configAdminServiceClient) RollbackRelease(ctx context.Context, in *Roll
 // ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
 // gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 //
-// 现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-// 每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+// 配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+// 每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+// Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+// 全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
 // 变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
 // 已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
 type ConfigAdminServiceServer interface {
 	ListTenants(context.Context, *ListTenantsRequest) (*ListTenantsResponse, error)
 	ListConfigVersions(context.Context, *ListConfigVersionsRequest) (*ListConfigVersionsResponse, error)
 	CreateChangeRequest(context.Context, *CreateChangeRequestRequest) (*CreateChangeRequestResponse, error)
+	// 按状态列出变更单（新的在前，最多 100 条），审批人据此找待审批的变更单
+	ListChangeRequests(context.Context, *ListChangeRequestsRequest) (*ListChangeRequestsResponse, error)
 	ApproveChangeRequest(context.Context, *ApproveChangeRequestRequest) (*ApproveChangeRequestResponse, error)
 	RejectChangeRequest(context.Context, *RejectChangeRequestRequest) (*RejectChangeRequestResponse, error)
 	CreateRelease(context.Context, *CreateReleaseRequest) (*CreateReleaseResponse, error)
 	ApproveRelease(context.Context, *ApproveReleaseRequest) (*ApproveReleaseResponse, error)
 	GetRelease(context.Context, *GetReleaseRequest) (*GetReleaseResponse, error)
+	// 按状态列出发布（新的在前，最多 100 条）
+	ListReleases(context.Context, *ListReleasesRequest) (*ListReleasesResponse, error)
 	RollbackRelease(context.Context, *RollbackReleaseRequest) (*RollbackReleaseResponse, error)
+	// 灰度中的发布全量生效（切生效指针）；一人执行
+	PromoteRelease(context.Context, *PromoteReleaseRequest) (*PromoteReleaseResponse, error)
+	// 终止灰度：候选版本不再生效，发布记为 rolled_back；一人执行（收紧不需要第二个人）
+	AbortRollout(context.Context, *AbortRolloutRequest) (*AbortRolloutResponse, error)
 	mustEmbedUnimplementedConfigAdminServiceServer()
 }
 
@@ -191,6 +255,9 @@ func (UnimplementedConfigAdminServiceServer) ListConfigVersions(context.Context,
 func (UnimplementedConfigAdminServiceServer) CreateChangeRequest(context.Context, *CreateChangeRequestRequest) (*CreateChangeRequestResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateChangeRequest not implemented")
 }
+func (UnimplementedConfigAdminServiceServer) ListChangeRequests(context.Context, *ListChangeRequestsRequest) (*ListChangeRequestsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListChangeRequests not implemented")
+}
 func (UnimplementedConfigAdminServiceServer) ApproveChangeRequest(context.Context, *ApproveChangeRequestRequest) (*ApproveChangeRequestResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ApproveChangeRequest not implemented")
 }
@@ -206,8 +273,17 @@ func (UnimplementedConfigAdminServiceServer) ApproveRelease(context.Context, *Ap
 func (UnimplementedConfigAdminServiceServer) GetRelease(context.Context, *GetReleaseRequest) (*GetReleaseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetRelease not implemented")
 }
+func (UnimplementedConfigAdminServiceServer) ListReleases(context.Context, *ListReleasesRequest) (*ListReleasesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListReleases not implemented")
+}
 func (UnimplementedConfigAdminServiceServer) RollbackRelease(context.Context, *RollbackReleaseRequest) (*RollbackReleaseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RollbackRelease not implemented")
+}
+func (UnimplementedConfigAdminServiceServer) PromoteRelease(context.Context, *PromoteReleaseRequest) (*PromoteReleaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PromoteRelease not implemented")
+}
+func (UnimplementedConfigAdminServiceServer) AbortRollout(context.Context, *AbortRolloutRequest) (*AbortRolloutResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AbortRollout not implemented")
 }
 func (UnimplementedConfigAdminServiceServer) mustEmbedUnimplementedConfigAdminServiceServer() {}
 func (UnimplementedConfigAdminServiceServer) testEmbeddedByValue()                            {}
@@ -280,6 +356,24 @@ func _ConfigAdminService_CreateChangeRequest_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ConfigAdminServiceServer).CreateChangeRequest(ctx, req.(*CreateChangeRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConfigAdminService_ListChangeRequests_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListChangeRequestsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigAdminServiceServer).ListChangeRequests(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigAdminService_ListChangeRequests_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigAdminServiceServer).ListChangeRequests(ctx, req.(*ListChangeRequestsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -374,6 +468,24 @@ func _ConfigAdminService_GetRelease_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConfigAdminService_ListReleases_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListReleasesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigAdminServiceServer).ListReleases(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigAdminService_ListReleases_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigAdminServiceServer).ListReleases(ctx, req.(*ListReleasesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ConfigAdminService_RollbackRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RollbackReleaseRequest)
 	if err := dec(in); err != nil {
@@ -388,6 +500,42 @@ func _ConfigAdminService_RollbackRelease_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ConfigAdminServiceServer).RollbackRelease(ctx, req.(*RollbackReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConfigAdminService_PromoteRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromoteReleaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigAdminServiceServer).PromoteRelease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigAdminService_PromoteRelease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigAdminServiceServer).PromoteRelease(ctx, req.(*PromoteReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConfigAdminService_AbortRollout_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AbortRolloutRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigAdminServiceServer).AbortRollout(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigAdminService_AbortRollout_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigAdminServiceServer).AbortRollout(ctx, req.(*AbortRolloutRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -412,6 +560,10 @@ var ConfigAdminService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ConfigAdminService_CreateChangeRequest_Handler,
 		},
 		{
+			MethodName: "ListChangeRequests",
+			Handler:    _ConfigAdminService_ListChangeRequests_Handler,
+		},
+		{
 			MethodName: "ApproveChangeRequest",
 			Handler:    _ConfigAdminService_ApproveChangeRequest_Handler,
 		},
@@ -432,8 +584,20 @@ var ConfigAdminService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ConfigAdminService_GetRelease_Handler,
 		},
 		{
+			MethodName: "ListReleases",
+			Handler:    _ConfigAdminService_ListReleases_Handler,
+		},
+		{
 			MethodName: "RollbackRelease",
 			Handler:    _ConfigAdminService_RollbackRelease_Handler,
+		},
+		{
+			MethodName: "PromoteRelease",
+			Handler:    _ConfigAdminService_PromoteRelease_Handler,
+		},
+		{
+			MethodName: "AbortRollout",
+			Handler:    _ConfigAdminService_AbortRollout_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

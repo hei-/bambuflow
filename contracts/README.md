@@ -7,7 +7,7 @@
 | `bambuflow/<领域>/v1/` | protobuf：模块间 gRPC 接口与事件。proto 包名与目录一致（`bambuflow.answer.v1` 在 `bambuflow/answer/v1/`） |
 | `openapi/v1/openapi.yaml` | 对外 HTTP 接口，字段以技术设计文档 13.9 为准 |
 | `openapi/ruleset.yaml` | 对外命名规则（13.11）：路径 kebab-case、字段与枚举值 snake_case、对外 ID 带类型前缀 |
-| `gen/go/` | 生成的 Go 代码，独立模块 `github.com/bambu-ai/bambuflow/contracts/gen/go` |
+| `gen/go/` | 生成的 Go 代码，独立模块 `github.com/hei-/bambuflow/contracts/gen/go` |
 | `gen/python/` | 生成的 Python 包 `bambuflow-contracts`，导入路径 `bambuflow.<领域>.v1` |
 
 ## 规则

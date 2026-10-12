@@ -582,8 +582,14 @@ type DocMetadata struct {
 	Missing []string `protobuf:"bytes,6,rep,name=missing,proto3" json:"missing,omitempty"`
 	// 归一所用的词表快照版本。
 	VocabularyVersion string `protobuf:"bytes,7,opt,name=vocabulary_version,json=vocabularyVersion,proto3" json:"vocabulary_version,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// 替代关系（入库管道详设第 7 节效力信息）：这份文档被哪份文档替代（doc_id）；没有时为空。由 indexing 按新文档的声明关联，
+	// 被替代时 validity_status 为已废止（替代它的文档待生效时除外）。
+	SupersededBy string `protobuf:"bytes,8,opt,name=superseded_by,json=supersededBy,proto3" json:"superseded_by,omitempty"`
+	// 这份文档声明替代的文档：doc:<doc_id>（源系统字段）或 title:<规范化标题>（正文“《…》同时废止”）；只在入库请求里，
+	// indexing 在同一数据源里按它关联被替代的文档。
+	Supersedes    []string `protobuf:"bytes,9,rep,name=supersedes,proto3" json:"supersedes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DocMetadata) Reset() {
@@ -663,6 +669,20 @@ func (x *DocMetadata) GetVocabularyVersion() string {
 		return x.VocabularyVersion
 	}
 	return ""
+}
+
+func (x *DocMetadata) GetSupersededBy() string {
+	if x != nil {
+		return x.SupersededBy
+	}
+	return ""
+}
+
+func (x *DocMetadata) GetSupersedes() []string {
+	if x != nil {
+		return x.Supersedes
+	}
+	return nil
 }
 
 // Degradation 记录一个被跳过或降级的环节，如 stage = "dense"、reason = "timeout"。
@@ -749,7 +769,7 @@ const file_bambuflow_common_v1_types_proto_rawDesc = "" +
 	"topicCodes\x12%\n" +
 	"\x0eeffective_from\x18\x05 \x01(\tR\reffectiveFrom\x12!\n" +
 	"\feffective_to\x18\x06 \x01(\tR\veffectiveTo\x12P\n" +
-	"\x11validity_statuses\x18\a \x03(\x0e2#.bambuflow.common.v1.ValidityStatusR\x10validityStatuses\"\x9b\x02\n" +
+	"\x11validity_statuses\x18\a \x03(\x0e2#.bambuflow.common.v1.ValidityStatusR\x10validityStatuses\"\xe0\x02\n" +
 	"\vDocMetadata\x12\x19\n" +
 	"\bdoc_type\x18\x01 \x01(\tR\adocType\x12\x12\n" +
 	"\x04dept\x18\x02 \x01(\tR\x04dept\x12\x1f\n" +
@@ -758,7 +778,11 @@ const file_bambuflow_common_v1_types_proto_rawDesc = "" +
 	"\x0eeffective_date\x18\x04 \x01(\tR\reffectiveDate\x12L\n" +
 	"\x0fvalidity_status\x18\x05 \x01(\x0e2#.bambuflow.common.v1.ValidityStatusR\x0evalidityStatus\x12\x18\n" +
 	"\amissing\x18\x06 \x03(\tR\amissing\x12-\n" +
-	"\x12vocabulary_version\x18\a \x01(\tR\x11vocabularyVersion\";\n" +
+	"\x12vocabulary_version\x18\a \x01(\tR\x11vocabularyVersion\x12#\n" +
+	"\rsuperseded_by\x18\b \x01(\tR\fsupersededBy\x12\x1e\n" +
+	"\n" +
+	"supersedes\x18\t \x03(\tR\n" +
+	"supersedes\";\n" +
 	"\vDegradation\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason*\xa8\x01\n" +
@@ -797,9 +821,9 @@ const file_bambuflow_common_v1_types_proto_rawDesc = "" +
 	"\x18RELATION_TYPE_BELONGS_TO\x10\x02\x12!\n" +
 	"\x1dRELATION_TYPE_RESPONSIBLE_FOR\x10\x03\x12\x17\n" +
 	"\x13RELATION_TYPE_CITES\x10\x04\x12\x1c\n" +
-	"\x18RELATION_TYPE_APPLIES_TO\x10\x05B\xe0\x01\n" +
+	"\x18RELATION_TYPE_APPLIES_TO\x10\x05B\xdc\x01\n" +
 	"\x17com.bambuflow.common.v1B\n" +
-	"TypesProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1;commonv1\xa2\x02\x03BCX\xaa\x02\x13Bambuflow.Common.V1\xca\x02\x13Bambuflow\\Common\\V1\xe2\x02\x1fBambuflow\\Common\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Common::V1b\x06proto3"
+	"TypesProtoP\x01ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1;commonv1\xa2\x02\x03BCX\xaa\x02\x13Bambuflow.Common.V1\xca\x02\x13Bambuflow\\Common\\V1\xe2\x02\x1fBambuflow\\Common\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Common::V1b\x06proto3"
 
 var (
 	file_bambuflow_common_v1_types_proto_rawDescOnce sync.Once

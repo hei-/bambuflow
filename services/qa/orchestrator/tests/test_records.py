@@ -32,6 +32,7 @@ def _resp(classification: types_pb2.Classification) -> answer_pb2.AnswerResponse
     )
     a.audit.shown_chunk_ids.append("c1")
     a.why.index_version = "v1"
+    a.confidence.coverage = 0.9
     rnd = a.why.agent_rounds.add(round=1)
     rnd.calls.add(sub_question="客户 13812345678 的额度")
     a.why.graph_path.add(ref_id=1, chunk_id="c1")
@@ -68,6 +69,8 @@ def test_restricted_body_withheld(listed: bool) -> None:
     a = rec.answer
     assert a.answer == "" and not a.sentences and not a.blocks and not a.why.graph_path
     assert a.why.index_version == "v1" and a.why.agent_rounds[0].calls[0].sub_question == ""
+    # 置信度只有数值，灰度观察要用覆盖率
+    assert a.confidence.coverage == 0.9
     assert (
         a.citations[0].chunk_id == "c1"
         and a.citations[0].title == ""

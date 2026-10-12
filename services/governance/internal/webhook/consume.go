@@ -9,8 +9,9 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	eventsv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/events/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/outbox"
+	eventsv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/events/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/outbox"
+	"github.com/hei-/bambuflow/libs/platform-go/streams"
 )
 
 // Group 是 governance 在平台事件流上的消费组。
@@ -21,7 +22,8 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, evt *eventsv1.PlatformEvent) (int64, error)
 }
 
-// Consumer 从平台事件流读取事件并登记投递。先处理本消费者名下未确认的消息（上次退出时没做完的），再读新消息。
+// Consumer 从平台事件流读取事件并登记投递。先处理本消费者名下未确认的消息（上次退出时没做完的），再读新消息；
+// 启动时与之后每分钟认领空闲超过 10 分钟的挂起消息（换了主机名的旧 Pod 没做完的，streams.ClaimIdle）。
 type Consumer struct {
 	Redis *redis.Client
 	Store Enqueuer
@@ -37,7 +39,17 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}
 	// "0" 读本消费者未确认的消息，读空后切到 ">" 读新消息；登记失败时切回 "0" 重读
 	start := "0"
+	var nextClaim time.Time
 	for ctx.Err() == nil {
+		if now := time.Now(); now.After(nextClaim) {
+			nextClaim = now.Add(time.Minute)
+			if n, err := streams.ClaimIdle(ctx, c.Redis, outbox.Stream, Group, c.Name, 10*time.Minute); err != nil {
+				c.Log.WarnContext(ctx, "认领挂起消息失败", slog.Any("err", err))
+			} else if n > 0 {
+				c.Log.InfoContext(ctx, "认领了别的消费者没做完的消息", slog.Int("count", n))
+				start = "0"
+			}
+		}
 		res, err := c.Redis.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group: Group, Consumer: c.Name, Streams: []string{outbox.Stream, start}, Count: 50, Block: 5 * time.Second,
 		}).Result()

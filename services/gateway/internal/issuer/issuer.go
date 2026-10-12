@@ -13,49 +13,85 @@ import (
 	"encoding/pem"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
 )
 
 // MaxInlineGroups：群组超过这个数时 Principal 只放引用，由 retrieval 从平台身份库另取（K14）。
 const MaxInlineGroups = 200
 
-type Issuer struct {
-	key *ecdsa.PrivateKey
-	kid string
-	now func() time.Time
+// signingKey 是一把签名密钥；kid 取公钥摘要，轮换时新旧密钥自然区分。
+type signingKey struct {
+	priv *ecdsa.PrivateKey
+	kid  string
 }
 
-// FromPEM 用 PKCS#8 PEM 格式的 P-256 私钥创建签发器；kid 取公钥摘要，轮换时新旧密钥自然区分。
-func FromPEM(pemKey string) (*Issuer, error) {
+// keySet 是签发器当前装载的密钥：signing 用来签名，all 在 JWKS 里发布、也用来校验批量任务的委托（含 signing）。
+type keySet struct {
+	signing signingKey
+	all     []signingKey
+}
+
+type Issuer struct {
+	keys atomic.Pointer[keySet]
+	now  func() time.Time
+}
+
+// Empty 创建还没有密钥的签发器，由 Rotator.Sync 从 Vault 装载；装载成功之前不能签发。
+func Empty() *Issuer { return &Issuer{now: time.Now} }
+
+// New 用一把 P-256 私钥创建签发器（测试用；部署时密钥由 Rotator 从 Vault 装载并轮换）。
+func New(key *ecdsa.PrivateKey) (*Issuer, error) {
+	k, err := newSigningKey(key)
+	if err != nil {
+		return nil, err
+	}
+	i := &Issuer{now: time.Now}
+	i.keys.Store(&keySet{signing: k, all: []signingKey{k}})
+	return i, nil
+}
+
+func newSigningKey(key *ecdsa.PrivateKey) (signingKey, error) {
+	pub, err := key.PublicKey.Bytes()
+	if err != nil {
+		return signingKey{}, err
+	}
+	sum := sha256.Sum256(pub)
+	return signingKey{priv: key, kid: hex.EncodeToString(sum[:8])}, nil
+}
+
+// parsePEM 解析 PKCS#8 PEM 格式的 P-256 私钥。
+func parsePEM(pemKey string) (signingKey, error) {
 	block, _ := pem.Decode([]byte(pemKey))
 	if block == nil {
-		return nil, errors.New("签名密钥不是 PEM 格式")
+		return signingKey{}, errors.New("签名密钥不是 PEM 格式")
 	}
 	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, err
+		return signingKey{}, err
 	}
 	ec, ok := k.(*ecdsa.PrivateKey)
 	if !ok || ec.Curve != elliptic.P256() {
-		return nil, errors.New("签名密钥必须是 P-256")
+		return signingKey{}, errors.New("签名密钥必须是 P-256")
 	}
-	return New(ec)
+	return newSigningKey(ec)
 }
 
-func New(key *ecdsa.PrivateKey) (*Issuer, error) {
-	pub, err := key.PublicKey.Bytes()
-	if err != nil {
-		return nil, err
+// publicKey 返回已发布的 kid 对应的公钥。
+func (i *Issuer) publicKey(kid string) (*ecdsa.PublicKey, bool) {
+	for _, k := range i.keys.Load().all {
+		if k.kid == kid {
+			return &k.priv.PublicKey, true
+		}
 	}
-	sum := sha256.Sum256(pub)
-	return &Issuer{key: key, kid: hex.EncodeToString(sum[:8]), now: time.Now}, nil
+	return nil, false
 }
 
 // Subject 是签发 Principal 所需的全部输入，都来自平台身份库与已校验的平台令牌。
@@ -117,25 +153,33 @@ func (i *Issuer) sign(p *identityv1.Principal) (string, string, error) {
 	// protojson 把 int64 编成字符串，JWT 的时间声明必须是数字
 	claims["iat"], claims["exp"], claims["auth_time"] = p.Iat, p.Exp, p.AuthTime
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
-	tok.Header["kid"] = i.kid
-	signed, err := tok.SignedString(i.key)
+	k := i.keys.Load().signing
+	tok.Header["kid"] = k.kid
+	signed, err := tok.SignedString(k.priv)
 	return signed, p.Jti, err
 }
 
 // JWKS 发布验签公钥，供下游服务（libs/platform-go/principal.JWKS）获取。只在内部端口提供。
+// 轮换期间新旧密钥同时发布：下一把在启用前已经发布，上一把留到下一次轮换。
 func (i *Issuer) JWKS(w http.ResponseWriter, _ *http.Request) {
-	pub, err := i.key.PublicKey.Bytes()
-	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
-		return
+	all := i.keys.Load().all
+	keys := make([]map[string]string, 0, len(all))
+	for _, k := range all {
+		pub, err := k.priv.PublicKey.Bytes()
+		if err != nil {
+			http.Error(w, "内部错误", http.StatusInternalServerError)
+			return
+		}
+		keys = append(keys, map[string]string{
+			"kty": "EC", "crv": "P-256", "use": "sig", "alg": "ES256", "kid": k.kid,
+			"x": base64.RawURLEncoding.EncodeToString(pub[1:33]),
+			"y": base64.RawURLEncoding.EncodeToString(pub[33:]),
+		})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "max-age=60")
-	_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
-		"kty": "EC", "crv": "P-256", "use": "sig", "alg": "ES256", "kid": i.kid,
-		"x": base64.RawURLEncoding.EncodeToString(pub[1:33]),
-		"y": base64.RawURLEncoding.EncodeToString(pub[33:]),
-	}}})
+	_ = json.NewEncoder(w).Encode(map[string]any{"keys": keys})
 }
 
-func (i *Issuer) KID() string { return i.kid }
+// KID 是当前签名密钥的 kid。
+func (i *Issuer) KID() string { return i.keys.Load().signing.kid }

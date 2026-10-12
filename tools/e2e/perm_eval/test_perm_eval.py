@@ -3,14 +3,14 @@
 由 make eval-perm 运行（先写入合成文档、再 make ingest 发布）。预期结果不调用任何被测代码：
 直接读权限表（idx.doc_acl）、紧急拒绝名单（idx.deny_list、idx.deny_scopes）、
 governance 的租户授权（governance.source_grants，只算已审批、未撤销的数据源）
-和租户策略（tools/test-upstream/policy/data.json 的 denied_sources），
+和租户策略（tools/test-upstream/policies 的租户层里的 deny_sources），
 按“数据源授权给租户且未被策略禁止、未打删除标记、未被紧急拒绝、密级不超、token 有交集”暴力计算，
 与 retrieval 的 Search、CheckAccess、CheckDocumentAccess、GetExcerpt、ListDocuments、
 CountDocuments 逐条比对。
 """
 
-import json
 import os
+import re
 import time
 from collections import Counter
 from collections.abc import Iterator
@@ -27,12 +27,23 @@ from bambuflow.retrieval.v1 import retrieval_pb2, retrieval_pb2_grpc
 
 from .principals import TEMPLATES, Signer, Template
 
-TENANTS = Path(__file__).resolve().parents[2] / "test-upstream" / "policy" / "data.json"
+POLICIES = Path(__file__).resolve().parents[2] / "test-upstream" / "policies"
 # 最后一题能链接到图谱实体（seed 里的“清算核心服务”），三路召回都参与
 GRAPH_QUESTION = "清算核心服务依赖哪些系统？"
 QUESTIONS = ("授信额度怎么计算？", "风险限额由谁审批？", "员工请假需要哪些手续？", GRAPH_QUESTION)
 TOP_K = 50
 PER_DOC_CAP = 3  # retrieval 详设 7.3：同一文档最多保留 3 块
+
+
+def denied_sources(tenant: str) -> set[str]:
+    """租户层种子（tools/test-upstream/policies/tenant.<租户>.rego）里禁止的数据源。
+    预期结果不经被测代码计算，所以直接读种子：
+    测试数据只用 deny_sources := {"…"} 或 set() 这一种写法。"""
+    path = POLICIES / f"tenant.{tenant}.rego"
+    if not path.exists():
+        return set()
+    m = re.search(r"^deny_sources := (?:set\(\)|\{(.*)\})$", path.read_text(), re.M)
+    return set(re.findall(r'"([^"]+)"', m.group(1) or "")) if m else set()
 
 
 @dataclass(frozen=True)
@@ -83,7 +94,6 @@ def granted_sources(db: psycopg.Connection[Any], tenant: str) -> set[str]:
 
     租户被紧急拒绝时为空。
     """
-    policy = json.loads(TENANTS.read_text())["tenants"].get(tenant, {})
     rows = db.execute(
         """SELECT g.source_id FROM governance.source_grants g
            JOIN governance.sources s USING (source_id)
@@ -94,7 +104,7 @@ def granted_sources(db: psycopg.Connection[Any], tenant: str) -> set[str]:
                              WHERE d.kind = 'tenant' AND d.value = g.tenant)""",
         (tenant,),
     ).fetchall()
-    return {r[0] for r in rows} - set(policy.get("denied_sources", []))
+    return {r[0] for r in rows} - denied_sources(tenant)
 
 
 def denied_docs(db: psycopg.Connection[Any]) -> set[str]:

@@ -10,11 +10,11 @@ import (
 	"slices"
 	"strings"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
 )
 
 // MCP 端点（gateway 详设第 7 节、技术设计文档 13.6）：外部 agent 经 Streamable HTTP 调用平台的只读工具。
@@ -434,7 +434,7 @@ func (s *Server) toolSearch(c *call, principal string, args json.RawMessage) (an
 	if err := validQuestion(a.Question); err != nil || topK < 1 || topK > 50 || (a.Filters != nil && filters == nil) {
 		return nil, problemInvalid
 	}
-	res, err := s.runSearch(c, principal, "mcp", a.Question, filters, topK)
+	res, err := s.runSearch(c, principal, "mcp", a.Question, filters, topK, false)
 	if err != nil {
 		return nil, err
 	}
@@ -528,6 +528,7 @@ func (s *Server) toolList(c *call, principal string, args json.RawMessage) (any,
 		}), enumName(d.GetSourceType()), enumName(d.GetClassification())}
 		out.Documents = append(out.Documents, doc)
 		audit.ListedDocIds = append(audit.ListedDocIds, d.GetDocId())
+		c.restrictedDoc(d.GetClassification(), d.GetDocId())
 		fmt.Fprintf(&lines, "- doc_id=%s 标题=%s 生效日期=%s source_uri=%s\n", doc.DocID, doc.Title, doc.EffectiveDate, doc.SourceURI)
 	}
 	c.blocks = audit
@@ -657,6 +658,7 @@ func (s *Server) toolExcerpt(c *call, principal string, args json.RawMessage) (a
 		return nil, fromGRPC(err)
 	}
 	c.blocks = &answerv1.AuditBlocks{ShownChunkIds: []string{e.GetChunkId()}}
+	c.restrictedChunk(e.GetClassification(), e.GetChunkId())
 	out := mcpExcerptResult{
 		TraceID: c.traceID, IndexVersion: e.GetIndexVersion(), ChunkID: e.GetChunkId(), DocID: e.GetDocId(), DocVersion: e.GetDocVersion(),
 		Title: e.GetTitle(), Text: e.GetText(), Span: spanOf(e.GetSpan()), HeadingPath: nonNil(e.GetHeadingPath()), SourceURI: e.GetSourceUri(),

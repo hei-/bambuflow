@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 func TestUnaryServerForOnlyChecksListedServices(t *testing.T) {
@@ -32,6 +32,14 @@ func TestUnaryServerForOnlyChecksListedServices(t *testing.T) {
 	out, err := icpt(withP, nil, &grpc.UnaryServerInfo{FullMethod: "/bambuflow.admin.v1.SourceAdminService/RegisterSource"}, ok)
 	if err != nil || out != "alice" || TraceID(withP) != "t-1" {
 		t.Fatalf("应通过: %v %v", out, err)
+	}
+	// 只列一个方法：同一服务的其他方法放行
+	one := UnaryServerFor([]string{"bambuflow.config.v1.ConfigService/GetCandidate"}, fakeVerifier{}, logging.New(&bytes.Buffer{}, "t", slog.LevelInfo))
+	if _, err := one(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/bambuflow.config.v1.ConfigService/GetCandidate"}, ok); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("列出的方法应要求 Principal，得到 %v", err)
+	}
+	if _, err := one(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/bambuflow.config.v1.ConfigService/GetSnapshot"}, ok); err != nil {
+		t.Fatalf("同一服务的其他方法应放行: %v", err)
 	}
 }
 

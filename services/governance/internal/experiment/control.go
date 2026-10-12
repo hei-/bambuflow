@@ -8,8 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
-	"github.com/bambu-ai/bambuflow/services/governance/internal/changeaudit"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/changeaudit"
 )
 
 // GuardrailActor 是护栏触发停止实验时记下的停止人。

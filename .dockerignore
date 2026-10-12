@@ -10,3 +10,5 @@ docs/design
 bin
 # 本机配置，含外部 LLM 密钥，不能进入任何镜像
 .env.local
+**/node_modules
+services/console/dist

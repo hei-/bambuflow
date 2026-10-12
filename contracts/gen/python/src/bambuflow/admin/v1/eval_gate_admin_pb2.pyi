@@ -26,7 +26,7 @@ class GateConfigVersion(_message.Message):
     def __init__(self, name: _Optional[str] = ..., values: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Gate(_message.Message):
-    __slots__ = ("gate_id", "trigger", "golden_set", "golden_version", "tenants", "conclusion", "reasons", "unstable", "metrics", "config", "repeats", "created_at")
+    __slots__ = ("gate_id", "trigger", "golden_set", "golden_version", "tenants", "conclusion", "reasons", "unstable", "metrics", "config", "repeats", "created_at", "readiness")
     GATE_ID_FIELD_NUMBER: _ClassVar[int]
     TRIGGER_FIELD_NUMBER: _ClassVar[int]
     GOLDEN_SET_FIELD_NUMBER: _ClassVar[int]
@@ -39,6 +39,7 @@ class Gate(_message.Message):
     CONFIG_FIELD_NUMBER: _ClassVar[int]
     REPEATS_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    READINESS_FIELD_NUMBER: _ClassVar[int]
     gate_id: str
     trigger: str
     golden_set: str
@@ -51,7 +52,28 @@ class Gate(_message.Message):
     config: _containers.RepeatedCompositeFieldContainer[GateConfigVersion]
     repeats: int
     created_at: _timestamp_pb2.Timestamp
-    def __init__(self, gate_id: _Optional[str] = ..., trigger: _Optional[str] = ..., golden_set: _Optional[str] = ..., golden_version: _Optional[str] = ..., tenants: _Optional[_Iterable[str]] = ..., conclusion: _Optional[str] = ..., reasons: _Optional[_Iterable[str]] = ..., unstable: _Optional[_Iterable[str]] = ..., metrics: _Optional[_Iterable[_Union[GateMetric, _Mapping]]] = ..., config: _Optional[_Iterable[_Union[GateConfigVersion, _Mapping]]] = ..., repeats: _Optional[int] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    readiness: _containers.RepeatedCompositeFieldContainer[TenantReadiness]
+    def __init__(self, gate_id: _Optional[str] = ..., trigger: _Optional[str] = ..., golden_set: _Optional[str] = ..., golden_version: _Optional[str] = ..., tenants: _Optional[_Iterable[str]] = ..., conclusion: _Optional[str] = ..., reasons: _Optional[_Iterable[str]] = ..., unstable: _Optional[_Iterable[str]] = ..., metrics: _Optional[_Iterable[_Union[GateMetric, _Mapping]]] = ..., config: _Optional[_Iterable[_Union[GateConfigVersion, _Mapping]]] = ..., repeats: _Optional[int] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., readiness: _Optional[_Iterable[_Union[TenantReadiness, _Mapping]]] = ...) -> None: ...
+
+class TenantReadiness(_message.Message):
+    __slots__ = ("tenant", "stage", "counted", "unreviewed", "refuse_share", "synthetic_share", "double_reviewed", "gaps")
+    TENANT_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    COUNTED_FIELD_NUMBER: _ClassVar[int]
+    UNREVIEWED_FIELD_NUMBER: _ClassVar[int]
+    REFUSE_SHARE_FIELD_NUMBER: _ClassVar[int]
+    SYNTHETIC_SHARE_FIELD_NUMBER: _ClassVar[int]
+    DOUBLE_REVIEWED_FIELD_NUMBER: _ClassVar[int]
+    GAPS_FIELD_NUMBER: _ClassVar[int]
+    tenant: str
+    stage: str
+    counted: int
+    unreviewed: int
+    refuse_share: float
+    synthetic_share: float
+    double_reviewed: int
+    gaps: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, tenant: _Optional[str] = ..., stage: _Optional[str] = ..., counted: _Optional[int] = ..., unreviewed: _Optional[int] = ..., refuse_share: _Optional[float] = ..., synthetic_share: _Optional[float] = ..., double_reviewed: _Optional[int] = ..., gaps: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class ListGatesRequest(_message.Message):
     __slots__ = ("tenant", "trigger", "page_size", "page_token")

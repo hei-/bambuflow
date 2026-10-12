@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -15,11 +16,11 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 var quiet = logging.New(&bytes.Buffer{}, "t", slog.LevelInfo)
@@ -211,7 +212,7 @@ func TestRampOnlyUpwardAndStopIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := resp.GetExperiment()
-	_, before, _ := s.Snapshot(ctx)
+	_, before, _ := s.Snapshot(ctx, "orchestrator")
 	if _, err := s.RampExperiment(ctx, &adminv1.RampExperimentRequest{ExpId: e.GetExpId(), TrafficPercent: 30}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("30%% 不是灰度台阶：%v", err)
 	}
@@ -222,7 +223,7 @@ func TestRampOnlyUpwardAndStopIsIdempotent(t *testing.T) {
 	if _, err := s.RampExperiment(ctx, &adminv1.RampExperimentRequest{ExpId: e.GetExpId(), TrafficPercent: 20}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("不能往回调：%v", err)
 	}
-	running, after, _ := s.Snapshot(ctx)
+	running, after, _ := s.Snapshot(ctx, "orchestrator")
 	if before == after || len(running) != 1 || running[0].GetTrafficPercent() != 50 || running[0].GetSupportThreshold() != 0.4 {
 		t.Fatalf("快照 %v，摘要 %s → %s", running, before, after)
 	}
@@ -235,7 +236,7 @@ func TestRampOnlyUpwardAndStopIsIdempotent(t *testing.T) {
 	if err != nil || again.GetExperiment().GetStopReason() != "护栏：误拒率上升" {
 		t.Fatalf("已停止的再停应原样返回：%v %v", again, err)
 	}
-	if running, _, _ := s.Snapshot(ctx); len(running) != 0 {
+	if running, _, _ := s.Snapshot(ctx, "orchestrator"); len(running) != 0 {
 		t.Fatal("停止后不应再下发")
 	}
 	if got := au.actions; len(got) != 3 || got[0] != "experiment.create" || got[1] != "experiment.ramp" || got[2] != "experiment.stop" {
@@ -302,5 +303,60 @@ func TestControlServiceForEvaluation(t *testing.T) {
 	}
 	if au.actions[len(au.actions)-1] != "experiment.stop" {
 		t.Fatalf("审计 %v", au.actions)
+	}
+}
+
+func TestVariantsMustPassGateAndReachEachService(t *testing.T) {
+	s, _, _ := newServer()
+	pipeline := &configv1.Canary{Object: "pipeline", Scope: "credit", VersionId: "cfv_000000000000000000000001",
+		Candidate: &configv1.Canary_Pipeline{Pipeline: &configv1.PipelineConfig{Tenant: "credit", VersionId: "cfv_000000000000000000000001"}}}
+	prompt := &configv1.Canary{Object: "prompt", Scope: "answer", VersionId: "cfv_000000000000000000000002",
+		Candidate: &configv1.Canary_Prompt{Prompt: &configv1.PromptTemplate{Scope: "answer", VersionId: "cfv_000000000000000000000002"}}}
+	var checked []bool
+	s.Variants = func(_ context.Context, tenant string, ids []string, check bool) ([]*configv1.Canary, error) {
+		checked = append(checked, check)
+		if slices.Contains(ids, "cfv_00000000000000000000000f") {
+			return nil, grpcmw.Reason(codes.FailedPrecondition, "gate_failed", "没有门禁已通过的发布")
+		}
+		return []*configv1.Canary{pipeline, prompt}, nil
+	}
+	ctx := as(t, "paul", RolePlatformAdmin)
+	r := create("credit")
+	r.Overrides = &adminv1.ExperimentOverrides{ConfigVersions: []string{"cfv_00000000000000000000000f"}}
+	if _, err := s.CreateExperiment(ctx, r); grpcmw.ReasonOf(err) != "gate_failed" {
+		t.Fatalf("没过门禁的版本不能做实验：%v", err)
+	}
+	r.Overrides.ConfigVersions = []string{"cfv_1", "cfv_2", "cfv_3", "cfv_4", "cfv_5"}
+	if _, err := s.CreateExperiment(ctx, r); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("最多 4 个版本：%v", err)
+	}
+	// 只替换配置版本、不改阈值也可以
+	r.Overrides.ConfigVersions = []string{pipeline.GetVersionId(), prompt.GetVersionId()}
+	resp, err := s.CreateExperiment(ctx, r)
+	if err != nil || len(resp.GetExperiment().GetOverrides().GetConfigVersions()) != 2 {
+		t.Fatalf("得到 %v %v", resp, err)
+	}
+	orch, _, err := s.Snapshot(ctx, "orchestrator")
+	if err != nil || len(orch) != 1 || orch[0].GetPipeline().GetVersionId() != pipeline.GetVersionId() ||
+		len(orch[0].GetPrompts()) != 1 || orch[0].GetTrafficPercent() != 5 {
+		t.Fatalf("orchestrator 应拿到完整的变体：%v %v", orch, err)
+	}
+	ret, _, err := s.Snapshot(ctx, "retrieval")
+	if err != nil || len(ret) != 1 || ret[0].GetPipeline() == nil || len(ret[0].GetPrompts()) != 0 || ret[0].GetTrafficPercent() != 0 {
+		t.Fatalf("retrieval 只拿检索计划：%v %v", ret, err)
+	}
+	// 立项时核对门禁，下发时不再核对
+	if !slices.Equal(checked, []bool{true, true, false, false}) {
+		t.Fatalf("核对 %v", checked)
+	}
+	// 没有 pipeline 变体的实验不下发给 retrieval
+	if _, err := s.StopExperiment(ctx, &adminv1.StopExperimentRequest{ExpId: resp.GetExperiment().GetExpId(), Reason: "换个实验"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateExperiment(ctx, create("credit")); err != nil {
+		t.Fatal(err)
+	}
+	if ret, _, _ := s.Snapshot(ctx, "retrieval"); len(ret) != 0 {
+		t.Fatalf("只改阈值的实验不应给 retrieval：%v", ret)
 	}
 }

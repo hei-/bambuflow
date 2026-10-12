@@ -40,6 +40,25 @@ message Gate {
   repeated GateConfigVersion config = 10;
   int32 repeats = 11;
   google.protobuf.Timestamp created_at = 12;
+  // 门禁覆盖的各租户的评测集是否满足分阶段接入的要求（evaluation 详设 3.1）：切到全量时 governance 要求阶段为 general
+  repeated TenantReadiness readiness = 13;
+}
+
+// TenantReadiness 是一个租户的评测集对照试点（≥ 100 题）与全量（≥ 300 题、双人标注 ≥ 150）要求的情况。
+// 只计已审核的题；应拒答占比至少 15%，合成题占比至多 50%。
+message TenantReadiness {
+  string tenant = 1;
+  // none、pilot、general：满足的最高阶段
+  string stage = 2;
+  // 计入的已审核题数
+  int32 counted = 3;
+  // 没有审核人、不计入的题数
+  int32 unreviewed = 4;
+  double refuse_share = 5;
+  double synthetic_share = 6;
+  int32 double_reviewed = 7;
+  // 达到下一阶段还差什么
+  repeated string gaps = 8;
 }
 
 message ListGatesRequest {

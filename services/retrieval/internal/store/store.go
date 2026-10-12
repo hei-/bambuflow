@@ -16,8 +16,8 @@ import (
 	"github.com/pgvector/pgvector-go"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	"github.com/bambu-ai/bambuflow/services/retrieval/internal/search"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	"github.com/hei-/bambuflow/services/retrieval/internal/search"
 )
 
 // PG 实现 search.Store。
@@ -92,7 +92,8 @@ const (
 func (s *PG) Dense(ctx context.Context, version string, f search.Filter, vec []float32, k int) ([]search.Candidate, error) {
 	meta, metaArgs := metaWhere(f.Meta, 7)
 	rows, err := s.pool.Query(ctx, `
-		SELECT `+candidateCols+` FROM `+candidateFrom+`
+		SELECT `+candidateCols+`, greatest(0, least(1, 1 - (c.embedding <=> $5)))::float8
+		FROM `+candidateFrom+`
 		WHERE `+mandatory+recallOnly+meta+`
 		ORDER BY c.embedding <=> $5, c.chunk_id
 		LIMIT $6`,
@@ -103,17 +104,83 @@ func (s *PG) Dense(ctx context.Context, version string, f search.Filter, vec []f
 	return collect(rows)
 }
 
+// Chunks 按块 ID 取块（检索结果缓存命中时用），带全部必含条件：现在已不可见的块不返回。
+func (s *PG) Chunks(ctx context.Context, version string, f search.Filter, chunkIDs []string) (map[string]search.Candidate, error) {
+	meta, metaArgs := metaWhere(f.Meta, 6)
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+candidateCols+`, 0::float8 FROM `+candidateFrom+`
+		WHERE `+mandatory+recallOnly+` AND c.chunk_id = ANY($5::text[])`+meta,
+		append([]any{version, f.MaxClassification, f.Tokens, f.Sources, chunkIDs}, metaArgs...)...)
+	if err != nil {
+		return nil, err
+	}
+	cands, err := collect(rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]search.Candidate, len(cands))
+	for _, c := range cands {
+		out[c.ChunkID] = c
+	}
+	return out, nil
+}
+
+// Sparse 按学习型稀疏向量的内积召回（<#> 是负内积），没有稀疏向量的块不参与；分数是内积 p 归一化成 p / (p + 1)。
+func (s *PG) Sparse(ctx context.Context, version string, f search.Filter, vec map[uint32]float32, k int) ([]search.Candidate, error) {
+	el := make(map[int32]float32, len(vec))
+	for id, w := range vec {
+		if id >= sparseDim {
+			continue
+		}
+		el[int32(id)] = w
+	}
+	meta, metaArgs := metaWhere(f.Meta, 7)
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+candidateCols+`, greatest(0, -(c.sparse <#> $5)) / (greatest(0, -(c.sparse <#> $5)) + 1)
+		FROM `+candidateFrom+`
+		WHERE `+mandatory+recallOnly+` AND c.sparse IS NOT NULL`+meta+`
+		ORDER BY c.sparse <#> $5, c.chunk_id
+		LIMIT $6`,
+		append([]any{version, f.MaxClassification, f.Tokens, f.Sources, pgvector.NewSparseVectorFromMap(el, sparseDim), k}, metaArgs...)...)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows)
+}
+
+// sparseDim 与 indexing 的 idx.chunks.sparse 列定义一致（bge-m3 的词表大小）
+const sparseDim = 250002
+
 // Keyword 按 PostgreSQL 全文检索召回：含任一词即命中，按 ts_rank_cd 排序（标题、标题路径、正文已分权重）。
 // 词逐个用 quote_literal 转成 tsquery 的带引号词项，调用方的文本不会被当作 tsquery 语法解析。
 func (s *PG) Keyword(ctx context.Context, version string, f search.Filter, terms []string, k int) ([]search.Candidate, error) {
 	meta, metaArgs := metaWhere(f.Meta, 7)
 	rows, err := s.pool.Query(ctx, `
 		WITH q AS (SELECT to_tsquery('simple', string_agg(quote_literal(t), ' | ')) AS q FROM unnest($5::text[]) t)
-		SELECT `+candidateCols+` FROM q, `+candidateFrom+`
+		SELECT `+candidateCols+`, (ts_rank_cd(c.tsv, q.q) / (ts_rank_cd(c.tsv, q.q) + 1))::float8
+		FROM q, `+candidateFrom+`
 		WHERE `+mandatory+recallOnly+` AND c.tsv @@ q.q`+meta+`
 		ORDER BY ts_rank_cd(c.tsv, q.q) DESC, c.chunk_id
 		LIMIT $6`,
 		append([]any{version, f.MaxClassification, f.Tokens, f.Sources, terms, k}, metaArgs...)...)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows)
+}
+
+// Identifier 按标识符原样匹配正文与标题（不区分大小写）。strpos 不解析通配符，调用方的文本不会被当作模式。
+// 开发测试后端逐块比较；数据量上来后由候选后端的精确词项字段承担（技术设计文档 12.7）。
+func (s *PG) Identifier(ctx context.Context, version string, f search.Filter, ids []string, k int) ([]search.Candidate, error) {
+	meta, metaArgs := metaWhere(f.Meta, 7)
+	rows, err := s.pool.Query(ctx, `
+		WITH ids AS (SELECT upper(i) AS i FROM unnest($5::text[]) i)
+		SELECT `+candidateCols+`, 1::float8 FROM `+candidateFrom+`
+		WHERE `+mandatory+recallOnly+meta+`
+		  AND EXISTS (SELECT 1 FROM ids WHERE strpos(upper(c.text), ids.i) > 0 OR strpos(upper(d.title), ids.i) > 0)
+		ORDER BY (SELECT bool_or(strpos(upper(d.title), ids.i) > 0) FROM ids) DESC, c.chunk_id
+		LIMIT $6`,
+		append([]any{version, f.MaxClassification, f.Tokens, f.Sources, ids, k}, metaArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +257,7 @@ func (s *PG) Edges(ctx context.Context, version string, f search.Filter, entityI
 // Excerpt 与召回共用选择列和必含条件，只按 chunk_id 与 doc_id 定位：权限在读正文的同一条查询里生效。
 func (s *PG) Excerpt(ctx context.Context, version string, f search.Filter, docID, chunkID string) (search.Candidate, bool, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT `+candidateCols+` FROM `+candidateFrom+`
+		SELECT `+candidateCols+`, 0::float8 FROM `+candidateFrom+`
 		WHERE `+mandatory+` AND vd.doc_id = $5 AND c.chunk_id = $6`,
 		version, f.MaxClassification, f.Tokens, f.Sources, docID, chunkID)
 	if err != nil {
@@ -227,7 +294,7 @@ func (s *PG) ListDocs(ctx context.Context, version string, f search.Filter, byDa
 	rows, err := s.pool.Query(ctx, `
 		SELECT vd.doc_id, vd.doc_version, d.title, a.source_id, d.source_uri, d.source_type, a.classification,
 			d.doc_type, d.dept, d.topic_codes, COALESCE(to_char(d.effective_date, 'YYYY-MM-DD'), ''), d.validity_status,
-			d.metadata_missing, d.vocabulary_version,
+			d.metadata_missing, d.vocabulary_version, d.superseded_by,
 			COALESCE((SELECT c.chunk_id FROM idx.chunks c
 				WHERE c.doc_id = vd.doc_id AND c.doc_version = vd.doc_version AND c.kind = 'summary'), '')
 		FROM `+docFrom+` WHERE `+mandatory+meta+`
@@ -243,7 +310,7 @@ func (s *PG) ListDocs(ctx context.Context, version string, f search.Filter, byDa
 		md := &commonv1.DocMetadata{}
 		err := r.Scan(&d.DocID, &d.DocVersion, &d.Title, &d.SourceID, &d.SourceURI, &sourceType, &classification,
 			&md.DocType, &md.Dept, &md.TopicCodes, &md.EffectiveDate, &validity, &md.Missing, &md.VocabularyVersion,
-			&d.SummaryChunkID)
+			&md.SupersededBy, &d.SummaryChunkID)
 		d.SourceType = commonv1.SourceType(sourceType)
 		d.Classification = commonv1.Classification(classification)
 		md.ValidityStatus = commonv1.ValidityStatus(validity)
@@ -312,6 +379,7 @@ func metaWhere(m search.MetaFilter, start int) (string, []any) {
 	return sql.String(), args
 }
 
+// collect 读 candidateCols 加最后一列这一路的归一化分数（Candidate.RouteScore）。
 func collect(rows pgx.Rows) ([]search.Candidate, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (search.Candidate, error) {
 		var c search.Candidate
@@ -319,7 +387,7 @@ func collect(rows pgx.Rows) ([]search.Candidate, error) {
 		var sourceType, classification int16
 		err := r.Scan(&c.ChunkID, &c.DocID, &c.DocVersion, &c.ParentChunkID, &c.HeadingPath, &c.Text, &span,
 			&c.Title, &c.SourceURI, &sourceType, &c.Owner, &classification, &c.SourceID, &c.InjectionFlag,
-			&c.PII.Ciphertext, &c.PII.WrappedKey, &c.PII.KeyID)
+			&c.PII.Ciphertext, &c.PII.WrappedKey, &c.PII.KeyID, &c.RouteScore)
 		if err != nil {
 			return c, err
 		}
@@ -344,16 +412,26 @@ func (s *PG) TenantDenied(ctx context.Context, tenant string) (bool, error) {
 	return denied, err
 }
 
+// PartitionTokens 按主体 token 展开可见的分区 token（idx.partition_grants，由 indexing 的快速通道写入）。
+func (s *PG) PartitionTokens(ctx context.Context, tokens []string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT 'part:' || source_id || '/' || partition FROM idx.partition_grants
+		WHERE grantee = ANY($1::text[]) ORDER BY 1`, tokens)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
 func (s *PG) DocACL(ctx context.Context, docIDs []string) (map[string]search.ACL, error) {
 	return s.acl(ctx, `
-		SELECT doc_id, source_id, acl_tokens, classification, state = 'active', `+denied+`
+		SELECT doc_id, doc_id, source_id, acl_tokens, classification, state = 'active', `+denied+`
 		FROM idx.doc_acl a WHERE doc_id = ANY($1::text[])`, docIDs)
 }
 
 func (s *PG) ChunkACL(ctx context.Context, chunkIDs []string) (map[string]search.ACL, error) {
 	// 同一 chunk_id 可能有多个 doc_version，它们属于同一份文档，权限相同
 	return s.acl(ctx, `
-		SELECT DISTINCT ON (c.chunk_id) c.chunk_id, a.source_id, a.acl_tokens, a.classification, a.state = 'active', `+denied+`
+		SELECT DISTINCT ON (c.chunk_id) c.chunk_id, a.doc_id, a.source_id, a.acl_tokens, a.classification, a.state = 'active', `+denied+`
 		FROM idx.chunks c JOIN idx.doc_acl a USING (doc_id)
 		WHERE c.chunk_id = ANY($1::text[])`, chunkIDs)
 }
@@ -369,7 +447,7 @@ func (s *PG) acl(ctx context.Context, sql string, ids []string) (map[string]sear
 		var key string
 		var a search.ACL
 		var classification int16
-		if err := rows.Scan(&key, &a.SourceID, &a.Tokens, &classification, &a.Active, &a.Denied); err != nil {
+		if err := rows.Scan(&key, &a.DocID, &a.SourceID, &a.Tokens, &classification, &a.Active, &a.Denied); err != nil {
 			rows.Close()
 			return nil, err
 		}

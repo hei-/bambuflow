@@ -25,30 +25,40 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n%bambuflow/admin/v1/golden_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x01\n\x0eGoldenExpected\x12\x16\n\x06status\x18\x01 \x01(\tR\x06status\x12\x1d\n\nkey_points\x18\x02 \x03(\tR\tkeyPoints\x12\x1b\n\tmust_cite\x18\x03 \x03(\tR\x08mustCite\x12\"\n\rmust_not_cite\x18\x04 \x03(\tR\x0bmustNotCite\"\xe7\x03\n\x0eGoldenQuestion\x12\x1f\n\x0bquestion_id\x18\x01 \x01(\tR\nquestionId\x12\x1d\n\ngolden_set\x18\x02 \x01(\tR\tgoldenSet\x12\x16\n\x06\x62ucket\x18\x03 \x01(\tR\x06\x62ucket\x12\x14\n\x05\x61sker\x18\x04 \x01(\tR\x05\x61sker\x12\x1a\n\x08question\x18\x05 \x01(\tR\x08question\x12>\n\x08\x65xpected\x18\x06 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenExpectedR\x08\x65xpected\x12\x16\n\x06status\x18\x07 \x01(\tR\x06status\x12\x16\n\x06origin\x18\x08 \x01(\tR\x06origin\x12!\n\x0csubmitted_by\x18\t \x01(\tR\x0bsubmittedBy\x12=\n\x0csubmitted_at\x18\n \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0bsubmittedAt\x12\'\n\x0f\x65xpert_reviewer\x18\x0b \x01(\tR\x0e\x65xpertReviewer\x12+\n\x11platform_reviewer\x18\x0c \x01(\tR\x10platformReviewer\x12#\n\rreject_reason\x18\r \x01(\tR\x0crejectReason\"]\n\x14ListQuestionsRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12-\n\x12include_candidates\x18\x02 \x01(\x08R\x11includeCandidates\"\x82\x01\n\x15ListQuestionsResponse\x12@\n\tquestions\x18\x01 \x03(\x0b\x32\".bambuflow.admin.v1.GoldenQuestionR\tquestions\x12\'\n\x0fgolden_versions\x18\x02 \x03(\tR\x0egoldenVersions\"\xf1\x01\n\x16SubmitCandidateRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1d\n\ngolden_set\x18\x02 \x01(\tR\tgoldenSet\x12\x16\n\x06\x62ucket\x18\x03 \x01(\tR\x06\x62ucket\x12\x14\n\x05\x61sker\x18\x04 \x01(\tR\x05\x61sker\x12\x1a\n\x08question\x18\x05 \x01(\tR\x08question\x12>\n\x08\x65xpected\x18\x06 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenExpectedR\x08\x65xpected\x12\x16\n\x06origin\x18\x07 \x01(\tR\x06origin\"Y\n\x17SubmitCandidateResponse\x12>\n\x08question\x18\x01 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenQuestionR\x08question\"\x85\x01\n\x16ReviewCandidateRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1f\n\x0bquestion_id\x18\x02 \x01(\tR\nquestionId\x12\x1a\n\x08\x61pproved\x18\x03 \x01(\x08R\x08\x61pproved\x12\x16\n\x06reason\x18\x04 \x01(\tR\x06reason\"Y\n\x17ReviewCandidateResponse\x12>\n\x08question\x18\x01 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenQuestionR\x08question2\xd5\x02\n\x15GoldenSetAdminService\x12\x64\n\rListQuestions\x12(.bambuflow.admin.v1.ListQuestionsRequest\x1a).bambuflow.admin.v1.ListQuestionsResponse\x12j\n\x0fSubmitCandidate\x12*.bambuflow.admin.v1.SubmitCandidateRequest\x1a+.bambuflow.admin.v1.SubmitCandidateResponse\x12j\n\x0fReviewCandidate\x12*.bambuflow.admin.v1.ReviewCandidateRequest\x1a+.bambuflow.admin.v1.ReviewCandidateResponseB\xdf\x01\n\x16\x63om.bambuflow.admin.v1B\x10GoldenAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n%bambuflow/admin/v1/golden_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xea\x03\n\x0c\x46\x65\x65\x64\x62\x61\x63kCase\x12\x1b\n\tanswer_id\x18\x01 \x01(\tR\x08\x61nswerId\x12\x16\n\x06tenant\x18\x02 \x01(\tR\x06tenant\x12;\n\x0b\x61nswered_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nansweredAt\x12\'\n\x0fmasked_question\x18\x04 \x01(\tR\x0emaskedQuestion\x12#\n\ranswer_status\x18\x05 \x01(\tR\x0c\x61nswerStatus\x12\x18\n\x07ratings\x18\x06 \x03(\tR\x07ratings\x12\x1a\n\x08\x63omments\x18\x07 \x03(\tR\x08\x63omments\x12\"\n\rcited_doc_ids\x18\x08 \x03(\tR\x0b\x63itedDocIds\x12!\n\x0c\x63ited_titles\x18\t \x03(\tR\x0b\x63itedTitles\x12\x16\n\x06status\x18\n \x01(\tR\x06status\x12\x1f\n\x0bresolved_by\x18\x0b \x01(\tR\nresolvedBy\x12\'\n\x0fresolution_note\x18\x0c \x01(\tR\x0eresolutionNote\x12;\n\x0bresolved_at\x18\r \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nresolvedAt\"J\n\x18ListFeedbackCasesRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x16\n\x06status\x18\x02 \x01(\tR\x06status\"S\n\x19ListFeedbackCasesResponse\x12\x36\n\x05\x63\x61ses\x18\x01 \x03(\x0b\x32 .bambuflow.admin.v1.FeedbackCaseR\x05\x63\x61ses\"\x85\x01\n\x1aResolveFeedbackCaseRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1b\n\tanswer_id\x18\x02 \x01(\tR\x08\x61nswerId\x12\x1e\n\nresolution\x18\x03 \x01(\tR\nresolution\x12\x12\n\x04note\x18\x04 \x01(\tR\x04note\"S\n\x1bResolveFeedbackCaseResponse\x12\x34\n\x04\x63\x61se\x18\x01 \x01(\x0b\x32 .bambuflow.admin.v1.FeedbackCaseR\x04\x63\x61se\"\x88\x01\n\x0eGoldenExpected\x12\x16\n\x06status\x18\x01 \x01(\tR\x06status\x12\x1d\n\nkey_points\x18\x02 \x03(\tR\tkeyPoints\x12\x1b\n\tmust_cite\x18\x03 \x03(\tR\x08mustCite\x12\"\n\rmust_not_cite\x18\x04 \x03(\tR\x0bmustNotCite\"\xe7\x03\n\x0eGoldenQuestion\x12\x1f\n\x0bquestion_id\x18\x01 \x01(\tR\nquestionId\x12\x1d\n\ngolden_set\x18\x02 \x01(\tR\tgoldenSet\x12\x16\n\x06\x62ucket\x18\x03 \x01(\tR\x06\x62ucket\x12\x14\n\x05\x61sker\x18\x04 \x01(\tR\x05\x61sker\x12\x1a\n\x08question\x18\x05 \x01(\tR\x08question\x12>\n\x08\x65xpected\x18\x06 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenExpectedR\x08\x65xpected\x12\x16\n\x06status\x18\x07 \x01(\tR\x06status\x12\x16\n\x06origin\x18\x08 \x01(\tR\x06origin\x12!\n\x0csubmitted_by\x18\t \x01(\tR\x0bsubmittedBy\x12=\n\x0csubmitted_at\x18\n \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0bsubmittedAt\x12\'\n\x0f\x65xpert_reviewer\x18\x0b \x01(\tR\x0e\x65xpertReviewer\x12+\n\x11platform_reviewer\x18\x0c \x01(\tR\x10platformReviewer\x12#\n\rreject_reason\x18\r \x01(\tR\x0crejectReason\"]\n\x14ListQuestionsRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12-\n\x12include_candidates\x18\x02 \x01(\x08R\x11includeCandidates\"\x82\x01\n\x15ListQuestionsResponse\x12@\n\tquestions\x18\x01 \x03(\x0b\x32\".bambuflow.admin.v1.GoldenQuestionR\tquestions\x12\'\n\x0fgolden_versions\x18\x02 \x03(\tR\x0egoldenVersions\"\xf1\x01\n\x16SubmitCandidateRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1d\n\ngolden_set\x18\x02 \x01(\tR\tgoldenSet\x12\x16\n\x06\x62ucket\x18\x03 \x01(\tR\x06\x62ucket\x12\x14\n\x05\x61sker\x18\x04 \x01(\tR\x05\x61sker\x12\x1a\n\x08question\x18\x05 \x01(\tR\x08question\x12>\n\x08\x65xpected\x18\x06 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenExpectedR\x08\x65xpected\x12\x16\n\x06origin\x18\x07 \x01(\tR\x06origin\"Y\n\x17SubmitCandidateResponse\x12>\n\x08question\x18\x01 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenQuestionR\x08question\"\x85\x01\n\x16ReviewCandidateRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1f\n\x0bquestion_id\x18\x02 \x01(\tR\nquestionId\x12\x1a\n\x08\x61pproved\x18\x03 \x01(\x08R\x08\x61pproved\x12\x16\n\x06reason\x18\x04 \x01(\tR\x06reason\"Y\n\x17ReviewCandidateResponse\x12>\n\x08question\x18\x01 \x01(\x0b\x32\".bambuflow.admin.v1.GoldenQuestionR\x08question2\xbf\x04\n\x15GoldenSetAdminService\x12\x64\n\rListQuestions\x12(.bambuflow.admin.v1.ListQuestionsRequest\x1a).bambuflow.admin.v1.ListQuestionsResponse\x12j\n\x0fSubmitCandidate\x12*.bambuflow.admin.v1.SubmitCandidateRequest\x1a+.bambuflow.admin.v1.SubmitCandidateResponse\x12j\n\x0fReviewCandidate\x12*.bambuflow.admin.v1.ReviewCandidateRequest\x1a+.bambuflow.admin.v1.ReviewCandidateResponse\x12p\n\x11ListFeedbackCases\x12,.bambuflow.admin.v1.ListFeedbackCasesRequest\x1a-.bambuflow.admin.v1.ListFeedbackCasesResponse\x12v\n\x13ResolveFeedbackCase\x12..bambuflow.admin.v1.ResolveFeedbackCaseRequest\x1a/.bambuflow.admin.v1.ResolveFeedbackCaseResponseB\xdb\x01\n\x16\x63om.bambuflow.admin.v1B\x10GoldenAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.admin.v1.golden_admin_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\026com.bambuflow.admin.v1B\020GoldenAdminProtoP\001ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\242\002\003BAX\252\002\022Bambuflow.Admin.V1\312\002\022Bambuflow\\Admin\\V1\342\002\036Bambuflow\\Admin\\V1\\GPBMetadata\352\002\024Bambuflow::Admin::V1'
-  _globals['_GOLDENEXPECTED']._serialized_start=95
-  _globals['_GOLDENEXPECTED']._serialized_end=231
-  _globals['_GOLDENQUESTION']._serialized_start=234
-  _globals['_GOLDENQUESTION']._serialized_end=721
-  _globals['_LISTQUESTIONSREQUEST']._serialized_start=723
-  _globals['_LISTQUESTIONSREQUEST']._serialized_end=816
-  _globals['_LISTQUESTIONSRESPONSE']._serialized_start=819
-  _globals['_LISTQUESTIONSRESPONSE']._serialized_end=949
-  _globals['_SUBMITCANDIDATEREQUEST']._serialized_start=952
-  _globals['_SUBMITCANDIDATEREQUEST']._serialized_end=1193
-  _globals['_SUBMITCANDIDATERESPONSE']._serialized_start=1195
-  _globals['_SUBMITCANDIDATERESPONSE']._serialized_end=1284
-  _globals['_REVIEWCANDIDATEREQUEST']._serialized_start=1287
-  _globals['_REVIEWCANDIDATEREQUEST']._serialized_end=1420
-  _globals['_REVIEWCANDIDATERESPONSE']._serialized_start=1422
-  _globals['_REVIEWCANDIDATERESPONSE']._serialized_end=1511
-  _globals['_GOLDENSETADMINSERVICE']._serialized_start=1514
-  _globals['_GOLDENSETADMINSERVICE']._serialized_end=1855
+  _globals['DESCRIPTOR']._serialized_options = b'\n\026com.bambuflow.admin.v1B\020GoldenAdminProtoP\001ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\242\002\003BAX\252\002\022Bambuflow.Admin.V1\312\002\022Bambuflow\\Admin\\V1\342\002\036Bambuflow\\Admin\\V1\\GPBMetadata\352\002\024Bambuflow::Admin::V1'
+  _globals['_FEEDBACKCASE']._serialized_start=95
+  _globals['_FEEDBACKCASE']._serialized_end=585
+  _globals['_LISTFEEDBACKCASESREQUEST']._serialized_start=587
+  _globals['_LISTFEEDBACKCASESREQUEST']._serialized_end=661
+  _globals['_LISTFEEDBACKCASESRESPONSE']._serialized_start=663
+  _globals['_LISTFEEDBACKCASESRESPONSE']._serialized_end=746
+  _globals['_RESOLVEFEEDBACKCASEREQUEST']._serialized_start=749
+  _globals['_RESOLVEFEEDBACKCASEREQUEST']._serialized_end=882
+  _globals['_RESOLVEFEEDBACKCASERESPONSE']._serialized_start=884
+  _globals['_RESOLVEFEEDBACKCASERESPONSE']._serialized_end=967
+  _globals['_GOLDENEXPECTED']._serialized_start=970
+  _globals['_GOLDENEXPECTED']._serialized_end=1106
+  _globals['_GOLDENQUESTION']._serialized_start=1109
+  _globals['_GOLDENQUESTION']._serialized_end=1596
+  _globals['_LISTQUESTIONSREQUEST']._serialized_start=1598
+  _globals['_LISTQUESTIONSREQUEST']._serialized_end=1691
+  _globals['_LISTQUESTIONSRESPONSE']._serialized_start=1694
+  _globals['_LISTQUESTIONSRESPONSE']._serialized_end=1824
+  _globals['_SUBMITCANDIDATEREQUEST']._serialized_start=1827
+  _globals['_SUBMITCANDIDATEREQUEST']._serialized_end=2068
+  _globals['_SUBMITCANDIDATERESPONSE']._serialized_start=2070
+  _globals['_SUBMITCANDIDATERESPONSE']._serialized_end=2159
+  _globals['_REVIEWCANDIDATEREQUEST']._serialized_start=2162
+  _globals['_REVIEWCANDIDATEREQUEST']._serialized_end=2295
+  _globals['_REVIEWCANDIDATERESPONSE']._serialized_start=2297
+  _globals['_REVIEWCANDIDATERESPONSE']._serialized_end=2386
+  _globals['_GOLDENSETADMINSERVICE']._serialized_start=2389
+  _globals['_GOLDENSETADMINSERVICE']._serialized_end=2964
 # @@protoc_insertion_point(module_scope)

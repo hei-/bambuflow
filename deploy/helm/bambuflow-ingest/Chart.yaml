@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bambuflow-ingest
+description: 企业级 RAG 平台的离线入库平面：indexing、processing、connectors 与各定时任务（与在线平面的 chart 分开部署）
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -11,7 +11,10 @@ import "google/protobuf/timestamp.proto";
 service SourceAdminService {
   // 注册数据源（平台管理员），状态为待审批；数据源 ID（src_）由 governance 生成。
   rpc RegisterSource(RegisterSourceRequest) returns (RegisterSourceResponse);
-  // 数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。
+  // 列出数据源：平台管理员、平台运维、信息安全看全部，数据属主只看本部门，租户负责人只看已生效的（申请授权时选）。
+  rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
+  // 审批：本部门的数据属主审批；受限级数据源另需信息安全审批（governance 详设 6.2），两项都批过才生效。
+  // 注册人不能自批，同一人不能既做属主审批又做信息安全审批；记录审批人、时间与依据。
   rpc ApproveSource(ApproveSourceRequest) returns (ApproveSourceResponse);
   // 撤销（只有本部门的数据属主）：先写按数据源的紧急拒绝规则，在线立即不可见，再发出 source.revoked 事件。
   rpc RevokeSource(RevokeSourceRequest) returns (RevokeSourceResponse);
@@ -20,11 +23,19 @@ service SourceAdminService {
   rpc CreateGrant(CreateGrantRequest) returns (CreateGrantResponse);
   // 取消授权（本部门的数据属主），1 分钟内在检索生效。
   rpc DeleteGrant(DeleteGrantRequest) returns (DeleteGrantResponse);
+  // 授权申请（governance 详设 6.2、9.1）：租户负责人为自己负责的租户申请某个数据源，数据源所属部门的数据属主审批，
+  // 审批通过即写入授权；申请人不能审批自己的申请。同一数据源与租户同时只有一个待审批的申请，7 天未审批自动过期。
+  rpc ApplyGrant(ApplyGrantRequest) returns (ApplyGrantResponse);
+  // 租户负责人看自己负责的租户的申请，数据属主看本部门数据源收到的申请。
+  rpc ListGrantApplications(ListGrantApplicationsRequest) returns (ListGrantApplicationsResponse);
+  rpc ApproveGrantApplication(ApproveGrantApplicationRequest) returns (ApproveGrantApplicationResponse);
+  // 驳回（本部门的数据属主）或撤回（申请人本人）。
+  rpc RejectGrantApplication(RejectGrantApplicationRequest) returns (RejectGrantApplicationResponse);
 }
 
 enum SourceStatus {
   SOURCE_STATUS_UNSPECIFIED = 0;
-  // 已注册，待数据属主审批
+  // 已注册，待数据属主审批（受限级还待信息安全审批）
   SOURCE_STATUS_PENDING = 1;
   SOURCE_STATUS_ACTIVE = 2;
   // 已撤销，不再恢复
@@ -51,6 +62,42 @@ message Source {
   string revoked_by = 12;
   google.protobuf.Timestamp revoked_at = 13;
   string revoke_reason = 14;
+  // 信息安全的审批记录，只有受限级数据源有；待审批时为空
+  string security_approved_by = 15;
+  google.protobuf.Timestamp security_approved_at = 16;
+  string security_approval_basis = 17;
+  // 推送入库的客户端（入库管道详设 14.5）：业务系统经推送入库 API 写这个数据源时用的服务账号客户端 ID；
+  // 注册时登记，随数据源一起审批。为空表示不接受推送
+  string push_client = 18;
+  PermissionModel permission_model = 19;
+}
+
+// 数据源的权限模型（总体设计 ADR-14）：注册时声明、随数据源审批；未声明按文档级。
+enum PermissionModel {
+  PERMISSION_MODEL_UNSPECIFIED = 0;
+  // 文档级：每份文档带自己的 ACL（邮件、Wiki 页面限制、有限发放的文件）
+  PERMISSION_MODEL_DOCUMENT = 1;
+  // 分区级：按知识库或目录授权，文档只带分区 token，分区授权单独同步
+  PERMISSION_MODEL_PARTITION = 2;
+}
+
+message ListSourcesRequest {
+  // 不填为全部状态
+  SourceStatus status = 1;
+}
+
+message ListSourcesResponse {
+  // 新注册的在前
+  repeated Source sources = 1;
+}
+
+// 审批人以哪种身份审批
+enum ApprovalCapacity {
+  // 按数据属主处理
+  APPROVAL_CAPACITY_UNSPECIFIED = 0;
+  APPROVAL_CAPACITY_DATA_OWNER = 1;
+  // 信息安全，只用于受限级数据源
+  APPROVAL_CAPACITY_INFOSEC = 2;
 }
 
 message RegisterSourceRequest {
@@ -59,6 +106,10 @@ message RegisterSourceRequest {
   bambuflow.common.v1.Classification default_classification = 3;
   // 用途与负责人，便于审批
   string description = 4;
+  // 可选：接受推送入库时的推送客户端，见 Source.push_client
+  string push_client = 5;
+  // 不填按文档级
+  PermissionModel permission_model = 6;
 }
 
 message RegisterSourceResponse {
@@ -69,6 +120,7 @@ message ApproveSourceRequest {
   string source_id = 1;
   // 审批依据，必填
   string basis = 2;
+  ApprovalCapacity capacity = 3;
 }
 
 message ApproveSourceResponse {
@@ -91,6 +143,8 @@ message Grant {
   string tenant = 2;
   string granted_by = 3;
   google.protobuf.Timestamp granted_at = 4;
+  // 经授权申请审批的授权：申请 ID（gra_）；数据属主直接授权的为空
+  string application_id = 5;
 }
 
 message ListGrantsRequest {
@@ -118,3 +172,71 @@ message DeleteGrantRequest {
 }
 
 message DeleteGrantResponse {}
+
+enum GrantApplicationStatus {
+  GRANT_APPLICATION_STATUS_UNSPECIFIED = 0;
+  GRANT_APPLICATION_STATUS_PENDING = 1;
+  // 已审批，授权已写入
+  GRANT_APPLICATION_STATUS_APPROVED = 2;
+  GRANT_APPLICATION_STATUS_REJECTED = 3;
+  // 申请人撤回
+  GRANT_APPLICATION_STATUS_WITHDRAWN = 4;
+  // 7 天未审批
+  GRANT_APPLICATION_STATUS_EXPIRED = 5;
+}
+
+message GrantApplication {
+  // gra_ 前缀
+  string application_id = 1;
+  string source_id = 2;
+  string tenant = 3;
+  // 申请理由（用途），供属主判断
+  string reason = 4;
+  GrantApplicationStatus status = 5;
+  string applied_by = 6;
+  google.protobuf.Timestamp applied_at = 7;
+  // 审批、驳回或撤回的人、时间与依据（审批时的依据，如内部工单号；驳回、撤回时的理由）；待审批时为空
+  string decided_by = 8;
+  google.protobuf.Timestamp decided_at = 9;
+  string decision_note = 10;
+}
+
+message ApplyGrantRequest {
+  string source_id = 1;
+  string tenant = 2;
+  string reason = 3;
+}
+
+message ApplyGrantResponse {
+  GrantApplication application = 1;
+}
+
+message ListGrantApplicationsRequest {
+  // 不填为全部状态
+  GrantApplicationStatus status = 1;
+}
+
+message ListGrantApplicationsResponse {
+  // 新申请的在前，最多 200 条
+  repeated GrantApplication applications = 1;
+}
+
+message ApproveGrantApplicationRequest {
+  string application_id = 1;
+  // 审批依据，必填
+  string basis = 2;
+}
+
+message ApproveGrantApplicationResponse {
+  GrantApplication application = 1;
+  Grant grant = 2;
+}
+
+message RejectGrantApplicationRequest {
+  string application_id = 1;
+  string reason = 2;
+}
+
+message RejectGrantApplicationResponse {
+  GrantApplication application = 1;
+}

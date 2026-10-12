@@ -1,6 +1,6 @@
 import datetime as dt
 
-from bambuflow_processing.metadata import extract
+from bambuflow_processing.metadata import Guess, extract, fill_missing, title_key
 from bambuflow_vocabulary import Term, Vocabularies, Vocabulary
 
 from bambuflow.common.v1 import types_pb2
@@ -84,3 +84,48 @@ def test_unknown_fields_are_missing_not_guessed() -> None:
 def test_deprecated_code_is_replaced_and_repealed_title() -> None:
     md = extract("关于信贷业务的旧规定（已废止）", "", {"doc_type": "旧规定"}, VOCAB, TODAY)
     assert md.doc_type == "DT-POLICY" and md.validity_status == types_pb2.VALIDITY_STATUS_REPEALED
+
+
+def test_supersedes_from_source_and_body() -> None:
+    body = (
+        "第三十条 本办法自 2025 年 4 月 1 日起施行，《个人消费贷款管理办法（2020 版）》"
+        "和《信用卡分期管理规定》同时废止。参照《授信管理办法》执行。"
+    )
+    md = extract(
+        "个人消费贷款管理办法（2025 版）", body, {"supersedes": ["consumer-2018"]}, VOCAB, TODAY
+    )
+    assert list(md.supersedes) == [
+        "doc:consumer-2018",
+        "title:个人消费贷款管理办法",
+        "title:信用卡分期管理规定",
+    ]
+    # 只是引用的书名不算替代
+    assert "title:授信管理办法" not in md.supersedes
+    assert title_key(" 授信管理办法（2025 年修订） ") == "授信管理办法"
+
+
+def test_model_guess_only_fills_missing_confident_fields() -> None:
+    md = extract("关于开展反洗钱培训的说明", "培训安排如下。", None, VOCAB, TODAY)
+    assert "doc_type" in md.missing and "dept" in md.missing
+    g = Guess(
+        doc_type="管理办法",
+        dept="信贷部",
+        topics=("反洗钱", "不存在的主题"),
+        effective_date="2025-13-01",
+        validity_status="effective",
+        confidence={
+            "doc_type": 0.95,
+            "dept": 0.6,
+            "topic_codes": 0.9,
+            "effective_date": 0.9,
+            "validity_status": 0.85,
+        },
+    )
+    out = fill_missing(md, g, VOCAB)
+    assert out.doc_type == "DT-POLICY"
+    # 置信度不足的不用；日期不合法的留空
+    assert out.dept == "" and out.effective_date == ""
+    assert out.validity_status == types_pb2.VALIDITY_STATUS_EFFECTIVE
+    assert list(out.missing) == ["dept", "effective_date"]
+    # 规则已经取到的字段，模型说了也不覆盖
+    assert "TOPIC-AML" in out.topic_codes and len(out.topic_codes) == len(set(out.topic_codes))

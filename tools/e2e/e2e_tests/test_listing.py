@@ -4,8 +4,8 @@
 测试目录（tools/test-upstream 的 LDAP 数据，与评测集的提问身份 credit_l2 一致）。
 """
 
-import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,20 +15,30 @@ from .test_answers import ask
 
 ALICE_TOKENS = ["user:alice", "dept:信贷部", "group:credit-l2", "group:all-staff"]
 ALICE_CLEARANCE = 2
-TENANTS = Path(__file__).resolve().parents[2] / "test-upstream" / "policy" / "data.json"
+POLICIES = Path(__file__).resolve().parents[2] / "test-upstream" / "policies"
+
+
+def denied_sources(tenant: str) -> set[str]:
+    """租户层种子（tools/test-upstream/policies/tenant.<租户>.rego）里禁止的数据源。
+    预期结果不经被测代码计算，所以直接读种子：
+    测试数据只用 deny_sources := {"…"} 或 set() 这一种写法。"""
+    path = POLICIES / f"tenant.{tenant}.rego"
+    if not path.exists():
+        return set()
+    m = re.search(r"^deny_sources := (?:set\(\)|\{(.*)\})$", path.read_text(), re.M)
+    return set(re.findall(r'"([^"]+)"', m.group(1) or "")) if m else set()
 
 
 def visible(filters: dict[str, Any]) -> set[str]:
     """alice 在 credit 租户下可见、且满足 why.inferred_filters 的文档（直接查库，不经被测代码）。"""
     # 租户授权以 governance 为准（P3-M5），租户策略里禁止的数据源再减掉
-    policy = json.loads(TENANTS.read_text())["tenants"]["credit"]
     with psycopg.connect(os.environ["BF_PG_DSN"]) as conn:
         rows = conn.execute(
             """SELECT g.source_id FROM governance.source_grants g
                JOIN governance.sources s USING (source_id)
                WHERE g.tenant = 'credit' AND s.status = 'active'"""
         ).fetchall()
-    sources = sorted({r[0] for r in rows} - set(policy.get("denied_sources", [])))
+    sources = sorted({r[0] for r in rows} - denied_sources("credit"))
     sql = """SELECT d.doc_id FROM idx.aliases al
              JOIN idx.version_docs vd ON vd.version = al.version
              JOIN idx.documents d ON d.doc_id = vd.doc_id

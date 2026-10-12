@@ -1,0 +1,62 @@
+{{- /*
+Vault 注入（部署配置清单）：Vault Secrets Operator 把 <kvMount>/bambuflow/<名称> 同步为 Secret <release>-<名称>：
+- indexing：BF_PG_DSN、BF_REDIS_PASSWORD、BF_AUDIT_S3_ACCESS_KEY、BF_AUDIT_S3_SECRET_KEY（审计桶）；
+- processing：BF_REDIS_URL（含口令）、BF_S3_ACCESS_KEY、BF_S3_SECRET_KEY；
+- connectors：BF_REDIS_PASSWORD、BF_S3_ACCESS_KEY、BF_S3_SECRET_KEY、BF_AUDIT_S3_ACCESS_KEY、BF_AUDIT_S3_SECRET_KEY（审计桶）；
+- connectors-<数据源>：这个数据源自己的密钥（可选，如表结构源的 BF_DBSCHEMA_DSN）。
+密钥轮换后 Operator 在 refreshAfter 内更新 Secret 并滚动重启常驻服务；定时任务下一次运行时读到新值。
+*/ -}}
+{{- $v := .Values -}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-vault-sync
+automountServiceAccountToken: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  address: {{ $v.vault.addr | quote }}
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  vaultConnectionRef: {{ .Release.Name }}
+  method: kubernetes
+  mount: {{ $v.vault.authMount | quote }}
+  kubernetes:
+    role: {{ $v.vault.role | quote }}
+    serviceAccount: {{ .Release.Name }}-vault-sync
+{{- $secrets := dict "indexing" "indexing" "processing" "processing-admin" "connectors" "connectors-admin" -}}
+{{- range $v.connectors.sources }}
+{{- $_ := set $secrets (printf "connectors-%s" (.id | replace "_" "-")) "" -}}
+{{- end }}
+{{- range $name, $restart := $secrets }}
+{{- $ctx := dict "root" $ "component" $name }}
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  vaultAuthRef: {{ $.Release.Name }}
+  type: kv-v2
+  mount: {{ $v.vault.kvMount | quote }}
+  path: bambuflow/{{ $name }}
+  refreshAfter: 1h
+  destination:
+    name: {{ include "bambuflow.name" $ctx }}
+    create: true
+  {{- with $restart }}
+  rolloutRestartTargets:
+    - kind: Deployment
+      name: {{ include "bambuflow.name" (dict "root" $ "component" .) }}
+  {{- end }}
+{{- end }}

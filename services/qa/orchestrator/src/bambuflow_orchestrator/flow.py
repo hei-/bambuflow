@@ -2,7 +2,8 @@
 
 流式与非流式共用同一个处理过程（Answer）：模型每输出一行就切句校验，通过的句子按生成顺序
 先发它首次用到的 citation、再发 sentence；非流式把同样的事件收拢成完整的回答契约（详设 9.5）。
-未通过校验的句子两种方式下都不出现。单跳不做查询改写（问题原样作为唯一子查询）。
+未通过校验的句子两种方式下都不出现。
+单跳的查询理解（追问改写、同义扩展、时间与效力条件推断）见 understand.py。
 agent 路径（agent.py）只替换取证据与提示词两步，生成与逐句校验沿用这里的实现。
 下游通过参数传入的接口访问，便于单元测试和回放。
 """
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Protocol
@@ -26,9 +27,9 @@ from bambuflow_grounding import (
     GroundingUnavailableError,
     Verdict,
 )
-from bambuflow_orchestrator import confidence, context, prompt, redact
+from bambuflow_orchestrator import confidence, context, plans, prompt, redact, understand
 from bambuflow_orchestrator.experiments import Assignment
-from bambuflow_orchestrator.llm import CircuitOpenError, LLMUnavailableError
+from bambuflow_orchestrator.llm import CircuitOpenError, LLMUnavailableError, ModelNotAllowedError
 from bambuflow_orchestrator.parse import Parser
 
 _log = logging.getLogger(__name__)
@@ -51,6 +52,8 @@ LAYOUT_ONLY = frozenset({"heading"})
 # “多少”“几”只在后面跟量词时算问集合（“多少份制度”），“额度是多少”问的是一个值
 ENUMERATION = re.compile(r"哪些|所有|全部|列出|清单|(?:多少|几)(?:份|个|项|篇|种|家|条)")
 SCOPE_NOTE = "以上根据检索到的相关文档作答，未能完整统计符合条件的全部文档，可能有遗漏。"
+# 证据之间有未解决的冲突（技术设计文档 7.8、K8 详设 4.2 第 4 步）：列出矛盾的来源，请用户核实
+CONFLICT_NOTE = "另有来源与上文的说法不一致，请核实原文。"
 
 BLOCK_TYPES = {
     "heading": answer_pb2.BLOCK_TYPE_HEADING,
@@ -71,7 +74,7 @@ CLAIM_TYPES = {
 
 class Retrieval(Protocol):
     async def search(
-        self, question: str, filters: types_pb2.Filters | None
+        self, question: str, filters: types_pb2.Filters | None, variants: Sequence[str] = ()
     ) -> retrieval_pb2.SearchResponse:
         """权限、参数类错误以 grpc.aio.AioRpcError 原样抛出，由服务入口映射。"""
         ...
@@ -89,7 +92,23 @@ class Generation(Protocol):
 
 
 class LLM(Protocol):
-    def generate(self, system: str, user: str) -> Generation: ...
+    def generate(
+        self,
+        system: str,
+        user: str,
+        *,
+        level: int = types_pb2.CLASSIFICATION_INTERNAL,
+        model: str = "",
+    ) -> Generation:
+        """level 是输入里的最高密级，按它选允许的模型（总体设计 8.6）；model 是 routing 指定的
+        生成模型（空为默认模型）。没有允许的模型时，读取返回的生成即抛 ModelNotAllowedError
+        （LLMUnavailableError 的子类）。"""
+        ...
+
+
+def level_of(hits: Sequence[retrieval_pb2.Hit]) -> int:
+    """一组证据的最高密级；没有证据时按内部级。"""
+    return max((h.classification for h in hits), default=types_pb2.CLASSIFICATION_INTERNAL)
 
 
 @dataclass(frozen=True)
@@ -101,6 +120,18 @@ class Request:
     degraded: tuple[types_pb2.Degradation, ...] = ()
     # 提问人在租户运行中实验里的分组（详设 12.3）；没有实验时为 None
     experiment: Assignment | None = None
+    # 租户 pipeline 与全局 routing 给出的阈值、开关与置信度权重（plans.Settings）
+    settings: plans.Settings = plans.DEFAULT
+    # 分到实验组时实验组的配置（详设 12.3）；对照组与没有实验时为 None
+    variant: plans.Settings | None = None
+    # 会话摘要（提示词第 3 区）；首轮或受限级会话为空
+    summary: str = ""
+
+
+# 单跳的 LLM 重排（llm_rerank.rerank 的包装）：输入问题与候选，返回重排后的候选、版本与降级原因
+Rerank = Callable[
+    [str, Sequence[retrieval_pb2.Hit]], Awaitable[tuple[list[retrieval_pb2.Hit], str, str]]
+]
 
 
 def _masked(h: retrieval_pb2.Hit) -> retrieval_pb2.Hit:
@@ -118,7 +149,10 @@ def _masked(h: retrieval_pb2.Hit) -> retrieval_pb2.Hit:
 
 
 def unavailable_reason(e: LLMUnavailableError) -> str:
-    """LLM 调用失败的降级原因：熔断打开为 circuit_open，其余为 unavailable。"""
+    """LLM 调用失败的降级原因：熔断打开为 circuit_open，没有允许处理该密级内容的模型为
+    model_not_allowed（总体设计 8.6），其余为 unavailable。"""
+    if isinstance(e, ModelNotAllowedError):
+        return "model_not_allowed"
     return "circuit_open" if isinstance(e, CircuitOpenError) else "unavailable"
 
 
@@ -153,10 +187,28 @@ class Answer:
     子类可以替换取证据（_gather）、提示词（_render）与回答末尾程序写的说明（_notes）。
     """
 
-    prompt_version = prompt.PROMPT_VERSION
+    # 回答模板：租户没有发布的模板（governance 配置对象 prompt）时用内置的
+    template_scope = "answer"
+    builtin = prompt.ANSWER
 
-    def __init__(self, req: Request, retrieval: Retrieval, llm: LLM, grounder: Grounder) -> None:
+    def __init__(
+        self,
+        req: Request,
+        retrieval: Retrieval,
+        llm: LLM,
+        grounder: Grounder,
+        understander: understand.Understander | None = None,
+        rerank: Rerank | None = None,
+    ) -> None:
         self._req, self._retrieval, self._llm, self._grounder = req, retrieval, llm, grounder
+        # 本次用的配置：实验组从一开始就用变体（检索计划、agent 预算在取证据时已经用上），
+        # 上下文里有受限级内容时生成一侧再退回基线（_apply_experiment）
+        self._settings = req.variant or req.settings
+        self._prompt_suffix = ""
+        self._use_template()
+        self._understander = understander
+        # 只对开启了单跳 LLM 重排的租户（pipeline）传入
+        self._rerank = rerank
         self.status: answer_pb2.Status = answer_pb2.STATUS_UNSPECIFIED
         self.why = answer_pb2.Why()
         self.evidence: list[tuple[int, retrieval_pb2.Hit]] = []
@@ -169,14 +221,50 @@ class Answer:
         self._candidates: list[str] = []
         # 回答整体的置信度（详设 7.8）：有陈述经过校验、回答为 answered 或证据不足时才给
         self.confidence: answer_pb2.Confidence | None = None
+        # 查询理解改写后的问题；没有改写时为空。会话里存改写后的版本（详设 10.1）
+        self.rewritten = ""
+
+    def _use_template(self) -> None:
+        self._template = self._settings.templates.get(self.template_scope, self.builtin)
+        self.prompt_version = self._template.version + self._prompt_suffix
 
     async def _gather(self) -> retrieval_pb2.SearchResponse:
-        """取证据：单跳是一次检索。"""
-        return await self._retrieval.search(self._req.question, self._req.filters)
+        """取证据：单跳是一次检索（查询理解之后）。
+        推断出的条件让检索没有结果时，去掉它再检索一次（详设 5.2）。"""
+        req = self._req
+        if self._understander is None:
+            return await self._retrieval.search(req.question, req.filters)
+        u = await self._understander.run(req.question)
+        query, variants = u.queries[0], u.queries[1:]
+        if u.rewritten:
+            self.rewritten = query
+        if u.inferred is None:
+            return await self._retrieval.search(query, req.filters, variants)
+        found = await self._retrieval.search(
+            query, understand.merge(req.filters, u.inferred), variants
+        )
+        if found.hits:
+            self.why.inferred_filters.CopyFrom(u.inferred)
+            return found
+        self.why.degraded.append(
+            types_pb2.Degradation(stage="inferred_filters", reason="dropped_no_result")
+        )
+        return await self._retrieval.search(query, req.filters, variants)
 
     def _render(self, evidence: list[tuple[int, retrieval_pb2.Hit]]) -> tuple[str, str]:
         """系统提示词与用户消息。"""
-        return prompt.SYSTEM, prompt.render(self._req.question, evidence)
+        return self._fill({"evidence": prompt.render_evidence(evidence)})
+
+    def _fill(self, zones: dict[str, str]) -> tuple[str, str]:
+        """按回答模板的五个区拼接（技术设计文档 7.7）：
+        摘要与问题对所有路径都一样，其他区由调用方给。"""
+        req = self._req
+        zones = {
+            "summary": prompt.render_summary(req.summary),
+            **zones,
+            "question": prompt.render_question(req.question),
+        }
+        return prompt.fill(self._template, self._settings.tenant_rules, zones)
 
     def _notes(self) -> list[tuple[str, answer_pb2.BlockType, str]]:
         """回答末尾程序写的固定说明（块 ID、块类型、文字）。只在有通过校验的句子时调用。"""
@@ -197,17 +285,28 @@ class Answer:
         why.policy_version = found.policy_version
         why.embedding_model = found.embedding_model
         why.prompt_version = self.prompt_version
+        why.pipeline_version = self._settings.pipeline_version
+        why.routing_version = self._settings.routing_version
         why.degraded.extend(found.degraded)
         why.degraded.extend(req.degraded)
+        if found.plan_version != self._settings.pipeline_version:
+            # retrieval 与 orchestrator 的快照刚好在切换（含实验刚停止）：两边用了不同版本的
+            # pipeline，回放时据此看出来
+            _degrade(why, "pipeline_version", found.plan_version or "none")
         if not found.hits:
             # 没有证据就不调用模型（orchestrator 详设 7.5）
             self.status = answer_pb2.STATUS_INSUFFICIENT_EVIDENCE
             yield self._final()
             return
 
+        hits: Sequence[retrieval_pb2.Hit] = found.hits
+        if self._rerank is not None and len(hits) > req.max_citations:
+            hits, why.llm_rerank, reason = await self._rerank(req.question, hits)
+            if reason:
+                _degrade(why, "llm_rerank", reason)
         floor = MIN_RERANK_SCORE if found.rerank_model else None
         self.evidence = [
-            (ref, _masked(h)) for ref, h in context.build(found.hits, req.max_citations, floor)
+            (ref, _masked(h)) for ref, h in context.build(hits, req.max_citations, floor)
         ]
         if not self.evidence:
             # 精排后没有一块够相关：不调用模型，按证据不足返回（详设 7.5）
@@ -217,17 +316,25 @@ class Answer:
         self._hits = dict(self.evidence)
         min_coverage = self._apply_experiment()
         by_ref = {
-            ref: Evidence(ref, h.chunk_id, h.text, h.injection_flag) for ref, h in self.evidence
+            ref: Evidence(ref, h.chunk_id, h.text, h.injection_flag, h.doc_id)
+            for ref, h in self.evidence
         }
         # 置信度的特征：最高精排分（没有精排时为 None）与每句的支持度
         top_rerank = max(h.score for _, h in self.evidence) if found.rerank_model else None
         supports: list[float] = []
         parser = Parser()
         passed = 0
+        accepted: list[Verdict] = []
+        # 综合句因与某条引文矛盾被丢掉时，矛盾的证据编号
+        noted: set[int] = set()
         dropped: list[str] = []
         received = False
         failure: tuple[str, str] | None = None
-        generation = self._llm.generate(*self._render(self.evidence))
+        generation = self._llm.generate(
+            *self._render(self.evidence),
+            level=level_of([h for _, h in self.evidence]),
+            model=self._settings.generation_model,
+        )
         try:
             # 读取与校验交替进行；校验期间模型在网关一侧继续生成（详设 9.3 第 3 步），
             # 句子按读到的顺序处理，天然保序。提前结束时 aclosing 关掉与网关的连接
@@ -250,8 +357,10 @@ class Answer:
                         supports.append(v.support)
                         if not v.passed:
                             dropped.append(v.reason)
+                            noted.update(v.conflicts)
                             continue
                         passed += 1
+                        accepted.append(v)
                         for event in self._accept(v):
                             yield event
         except LLMUnavailableError as e:
@@ -282,27 +391,59 @@ class Answer:
             if passed and coverage >= min_coverage
             else answer_pb2.STATUS_INSUFFICIENT_EVIDENCE
         )
+        conflicts = await self._conflicts(accepted, by_ref, noted)
         if supports:
             cited = {c.doc_id for c in self.citations.values()}
-            self.confidence = confidence.compute(passed, supports, top_rerank, len(cited))
+            self.confidence = confidence.compute(
+                passed,
+                supports,
+                top_rerank,
+                len(cited),
+                conflict=bool(conflicts),
+                w=self._settings.weights,
+            )
         if passed:
+            if conflicts:
+                for event in self._conflict_note(conflicts):
+                    yield event
             for block_id, block_type, text in self._notes():
                 yield self._note(block_id, block_type, text)
         yield self._final()
 
-    def _apply_experiment(self) -> float:
-        """上下文构建之后应用实验组的阈值，返回本次的覆盖率门槛（详设 12.3）。
+    async def _conflicts(
+        self, accepted: list[Verdict], by_ref: dict[int, Evidence], noted: set[int]
+    ) -> tuple[int, ...]:
+        """未解决的证据冲突。检查不可用时不影响已发送的句子：记为降级，置信度按没有冲突算。"""
+        if not accepted:
+            return ()
+        try:
+            return await self._grounder.conflicts(accepted, by_ref, sorted(noted))
+        except GroundingUnavailableError as e:
+            _log.warning("证据冲突检查不可用", extra={"err": str(e)})
+            _degrade(self.why, "conflict_check", "unavailable")
+            return ()
 
-        受限级内容不进实验：已分到实验组的请求退回基线，分组记为 excluded，不计入 A/B 分析。"""
-        exp = self._req.experiment
-        if exp is None or not exp.treatment:
-            return MIN_COVERAGE
-        if any(h.classification == types_pb2.CLASSIFICATION_RESTRICTED for _, h in self.evidence):
+    def _apply_experiment(self) -> float:
+        """上下文构建之后定下生成与校验用的配置，返回本次的覆盖率门槛（没有设置时用默认值）。
+
+        受限级内容不进实验（详设 12.3）：已分到实验组的请求，生成一侧（阈值、回答模板、模型、
+        置信度权重）退回基线，分组记为 excluded，不计入 A/B 分析。检索计划与 agent 预算在取证据时
+        已经用过，why.pipeline_version 仍记实验组的版本；实际用的支持度门槛见
+        why.support_threshold。"""
+        req = self._req
+        restricted = any(
+            h.classification == types_pb2.CLASSIFICATION_RESTRICTED for _, h in self.evidence
+        )
+        if req.variant is not None and restricted:
             self.why.experiment_arm = answer_pb2.EXPERIMENT_ARM_EXCLUDED
-            return MIN_COVERAGE
-        if exp.support_threshold is not None:
-            self._grounder.use_threshold(exp.support_threshold)
-        return exp.min_coverage if exp.min_coverage is not None else MIN_COVERAGE
+            self._settings = req.settings
+            self._use_template()
+            self.why.prompt_version = self.prompt_version
+            self.why.routing_version = req.settings.routing_version
+        s = self._settings
+        if s.support_threshold is not None:
+            self._grounder.use_threshold(s.support_threshold)
+        return s.min_coverage if s.min_coverage is not None else MIN_COVERAGE
 
     def _accept(self, v: Verdict) -> list[Event]:
         """记下一句通过校验的陈述，返回要发送的事件：先是它首次用到的 citation，再是 sentence。"""
@@ -343,9 +484,28 @@ class Answer:
         )
         return events
 
-    def _note(self, block_id: str, block_type: answer_pb2.BlockType, text: str) -> Event:
-        """程序写的固定说明（如统计口径），不是模型的陈述：
-        不带引用、不做 NLI（K2 详设第 7、8 节）。"""
+    def _conflict_note(self, refs: Sequence[int]) -> list[Event]:
+        """冲突说明：固定措辞加矛盾来源的引用。来源在回答里还没出现过时补发 citation，
+        引文取块正文开头（与 evidence_only 一致）。"""
+        events: list[Event] = []
+        for ref in refs:
+            if ref not in self.citations:
+                h = self._hits[ref]
+                self.citations[ref] = citation(ref, h, h.text[:QUOTE_CHARS])
+                events.append(Event(citation=self.citations[ref]))
+        text = CONFLICT_NOTE + "".join(f"[S{r}]" for r in refs)
+        events.append(self._note("conflict", answer_pb2.BLOCK_TYPE_NOTE, text, refs))
+        return events
+
+    def _note(
+        self,
+        block_id: str,
+        block_type: answer_pb2.BlockType,
+        text: str,
+        refs: Sequence[int] = (),
+    ) -> Event:
+        """程序写的固定说明（如统计口径、冲突说明），不是模型的陈述：
+        不做 NLI（K2 详设第 7、8 节）；冲突说明带矛盾来源的引用。"""
         block = answer_pb2.Block(block_id=block_id, block_type=block_type, order=len(self.blocks))
         self.blocks[block.block_id] = block
         block.sentence_indexes.append(len(self.sentences))
@@ -357,6 +517,7 @@ class Answer:
             start=start,
             end=len(self.text),
             claim_type=answer_pb2.CLAIM_TYPE_NONE,
+            ref_ids=refs,
             block_id=block.block_id,
         )
         self.sentences.append(sentence)
@@ -375,6 +536,31 @@ class Answer:
                 events.append(Event(citation=self.citations[ref]))
         events.append(self._final())
         return events
+
+    def _evidence_scores(self) -> None:
+        """被引用证据的召回解释（retrieval 详设 7.5）：
+        命中它的召回路与名次、各路分数，按 ref_id 排序。"""
+        del self.why.evidence_scores[:]
+        for ref in sorted(self.citations):
+            h = self._hits.get(ref)
+            if h is None or not (h.matched_by or h.HasField("score_details")):
+                continue
+            e = answer_pb2.EvidenceScore(
+                ref_id=ref,
+                chunk_id=h.chunk_id,
+                matched_by=[
+                    answer_pb2.EvidenceMatch(route=m.route, query_id=m.query_id, rank=m.rank)
+                    for m in h.matched_by
+                ],
+            )
+            if h.HasField("score_details"):
+                d = h.score_details
+                out = e.score_details
+                out.rrf = d.rrf
+                for name in ("keyword", "dense", "graph", "identifier", "rerank", "sparse"):
+                    if d.HasField(name):
+                        setattr(out, name, getattr(d, name))
+            self.why.evidence_scores.append(e)
 
     def _graph_paths(self) -> None:
         """被引用的块由图召回找到时，把遍历路径写进 why（技术设计文档 6.3），按 ref_id 排序。"""
@@ -402,6 +588,7 @@ class Answer:
     def _final(self) -> Event:
         # 非流式的 response() 也读 self.why：final 总在它之前产生
         self._graph_paths()
+        self._evidence_scores()
         final = answer_pb2.AnswerFinal(
             status=self.status,
             why=self.why,

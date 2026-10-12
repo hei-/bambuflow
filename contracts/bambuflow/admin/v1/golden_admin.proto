@@ -14,6 +14,57 @@ service GoldenSetAdminService {
   rpc ListQuestions(ListQuestionsRequest) returns (ListQuestionsResponse);
   rpc SubmitCandidate(SubmitCandidateRequest) returns (SubmitCandidateResponse);
   rpc ReviewCandidate(ReviewCandidateRequest) returns (ReviewCandidateResponse);
+  // 负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：用户标为“有误”或“引用不对”的回答，每天由在线抽样任务登记，
+  // 只有掩码后的问题、反馈与当时引用的文档，不含用户身份。业务专家据此出候选题（origin=feedback）后标为已转题，或驳回
+  rpc ListFeedbackCases(ListFeedbackCasesRequest) returns (ListFeedbackCasesResponse);
+  rpc ResolveFeedbackCase(ResolveFeedbackCaseRequest) returns (ResolveFeedbackCaseResponse);
+}
+
+message FeedbackCase {
+  string answer_id = 1;
+  string tenant = 2;
+  // 回答的时间
+  google.protobuf.Timestamp answered_at = 3;
+  // 掩码后的问题（与回答记录里存的相同）
+  string masked_question = 4;
+  // 回答的状态：answered、evidence_only、insufficient_evidence、refused
+  string answer_status = 5;
+  // wrong、bad_citation，可能有多条
+  repeated string ratings = 6;
+  // 提问人的说明（保存前已做 PII 掩码）
+  repeated string comments = 7;
+  // 当时引用的文档：doc_id 与标题
+  repeated string cited_doc_ids = 8;
+  repeated string cited_titles = 9;
+  // open（待处理）、converted（已转为候选题）、dismissed（驳回）
+  string status = 10;
+  string resolved_by = 11;
+  string resolution_note = 12;
+  google.protobuf.Timestamp resolved_at = 13;
+}
+
+message ListFeedbackCasesRequest {
+  string tenant = 1;
+  // 为空时只列 open
+  string status = 2;
+}
+
+message ListFeedbackCasesResponse {
+  // 最新的在前，至多 200 条
+  repeated FeedbackCase cases = 1;
+}
+
+message ResolveFeedbackCaseRequest {
+  string tenant = 1;
+  string answer_id = 2;
+  // converted 或 dismissed
+  string resolution = 3;
+  // 必填，最多 500 字：转题时写候选题 ID，驳回时写原因
+  string note = 4;
+}
+
+message ResolveFeedbackCaseResponse {
+  FeedbackCase case = 1;
 }
 
 message GoldenExpected {

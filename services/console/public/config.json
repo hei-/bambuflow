@@ -1,0 +1,19 @@
+{
+  "authority": "http://keycloak:8080/realms/bambuflow",
+  "clientId": "console",
+  "idpHint": "corp-idp",
+  "tenants": [
+    {
+      "id": "credit",
+      "name": "信贷"
+    },
+    {
+      "id": "risk",
+      "name": "风险管理"
+    },
+    {
+      "id": "ops",
+      "name": "运维"
+    }
+  ]
+}

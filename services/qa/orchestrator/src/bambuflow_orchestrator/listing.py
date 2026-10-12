@@ -318,6 +318,7 @@ def listed_document(doc: retrieval_pb2.DocumentSummary) -> answer_pb2.ListedDocu
         title=doc.title,
         source_uri=doc.source_uri,
         metadata=doc.metadata,
+        classification=doc.classification,
     )
 
 
@@ -328,6 +329,9 @@ def item_text(d: retrieval_pb2.DocumentSummary) -> str:
         extras.append(f"{d.metadata.effective_date} 起生效")
     if status := _VALIDITY_TEXT.get(d.metadata.validity_status):
         extras.append(status)
+    if d.metadata.superseded_by:
+        # 替代关系（入库管道详设第 7 节）：只说已被替代，新版本身是否在列表里由权限与筛选条件决定
+        extras.append("已被新版替代")
     return f"《{d.title}》" + (f"（{'，'.join(extras)}）" if extras else "")
 
 

@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package bambuflow.config.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// RolloutControlService 是 governance 给 evaluation 的服务间接口（governance 详设 4.1 第 ⑨ 步）：evaluation 定时读灰度中的发布，
+// 按回答记录（why.canary_releases 分出候选组）比较候选组与对照组的引用覆盖率、拒答率、越权拦截数与 p95 耗时，
+// 把结论报回来；超阈值时 governance 终止灰度，观察期满且没有超阈值时全量。不带用户 Principal，靠服务网格的 mTLS 与网络策略只放行 evaluation（技术设计文档 12.6）。
+service RolloutControlService {
+  rpc ListRollouts(ListRolloutsRequest) returns (ListRolloutsResponse);
+  // 操作人记为 evaluation，写变更审计。发布已不在灰度中、或灰度的候选版本不是 version_id 时返回 FAILED_PRECONDITION
+  rpc ReportObservation(ReportObservationRequest) returns (ReportObservationResponse);
+}
+
+message ListRolloutsRequest {}
+
+message ListRolloutsResponse {
+  repeated ActiveRollout rollouts = 1;
+}
+
+message ActiveRollout {
+  string release_id = 1;
+  // pipeline、routing、policy、prompt
+  string object = 2;
+  string scope = 3;
+  // 候选版本，cfv_ 前缀
+  string version_id = 4;
+  // 灰度的租户与按用户分流的比例（1–100）；100 时整个租户都用候选版本，对照组取灰度开始前的回答
+  string tenant = 5;
+  int32 percent = 6;
+  google.protobuf.Timestamp started_at = 7;
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED = 0;
+  // 样本还不够或观察期未满：只记下观察结果
+  VERDICT_CONTINUE = 1;
+  // 观察期满、没有超阈值：全量
+  VERDICT_PROMOTE = 2;
+  // 超阈值：终止灰度，候选版本不再生效
+  VERDICT_ABORT = 3;
+}
+
+message ReportObservationRequest {
+  string release_id = 1;
+  string version_id = 2;
+  Verdict verdict = 3;
+  // 两组的样本数与各项指标，console 灰度列表展示，终止时写进原因；最多 500 字
+  string summary = 4;
+}
+
+message ReportObservationResponse {}

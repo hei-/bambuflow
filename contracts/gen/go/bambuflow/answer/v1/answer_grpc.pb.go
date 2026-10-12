@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AnswerService_Answer_FullMethodName         = "/bambuflow.answer.v1.AnswerService/Answer"
-	AnswerService_StreamAnswer_FullMethodName   = "/bambuflow.answer.v1.AnswerService/StreamAnswer"
-	AnswerService_GetAnswer_FullMethodName      = "/bambuflow.answer.v1.AnswerService/GetAnswer"
-	AnswerService_CreateFeedback_FullMethodName = "/bambuflow.answer.v1.AnswerService/CreateFeedback"
+	AnswerService_Answer_FullMethodName             = "/bambuflow.answer.v1.AnswerService/Answer"
+	AnswerService_StreamAnswer_FullMethodName       = "/bambuflow.answer.v1.AnswerService/StreamAnswer"
+	AnswerService_GetAnswer_FullMethodName          = "/bambuflow.answer.v1.AnswerService/GetAnswer"
+	AnswerService_CreateFeedback_FullMethodName     = "/bambuflow.answer.v1.AnswerService/CreateFeedback"
+	AnswerService_DeleteConversation_FullMethodName = "/bambuflow.answer.v1.AnswerService/DeleteConversation"
 )
 
 // AnswerServiceClient is the client API for AnswerService service.
@@ -43,6 +44,9 @@ type AnswerServiceClient interface {
 	// 反馈（技术设计文档 F8、13.1）：有用 / 有误 / 引用不对，挂在对应回答下。只有提问人本人可提交，其他人一律 NOT_FOUND；
 	// 同一提交人重复使用同一幂等键时返回已有反馈，内容不同时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
 	CreateFeedback(ctx context.Context, in *CreateFeedbackRequest, opts ...grpc.CallOption) (*CreateFeedbackResponse, error)
+	// 删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）：只删会话存储里的摘要、问题与上轮引用，
+	// 审计记录与回答记录不受影响。会话不存在、已过期或不属于调用者时同样成功返回，不让调用方据此判断别人的会话是否存在。
+	DeleteConversation(ctx context.Context, in *DeleteConversationRequest, opts ...grpc.CallOption) (*DeleteConversationResponse, error)
 }
 
 type answerServiceClient struct {
@@ -102,6 +106,16 @@ func (c *answerServiceClient) CreateFeedback(ctx context.Context, in *CreateFeed
 	return out, nil
 }
 
+func (c *answerServiceClient) DeleteConversation(ctx context.Context, in *DeleteConversationRequest, opts ...grpc.CallOption) (*DeleteConversationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteConversationResponse)
+	err := c.cc.Invoke(ctx, AnswerService_DeleteConversation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AnswerServiceServer is the server API for AnswerService service.
 // All implementations must embed UnimplementedAnswerServiceServer
 // for forward compatibility.
@@ -120,6 +134,9 @@ type AnswerServiceServer interface {
 	// 反馈（技术设计文档 F8、13.1）：有用 / 有误 / 引用不对，挂在对应回答下。只有提问人本人可提交，其他人一律 NOT_FOUND；
 	// 同一提交人重复使用同一幂等键时返回已有反馈，内容不同时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
 	CreateFeedback(context.Context, *CreateFeedbackRequest) (*CreateFeedbackResponse, error)
+	// 删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）：只删会话存储里的摘要、问题与上轮引用，
+	// 审计记录与回答记录不受影响。会话不存在、已过期或不属于调用者时同样成功返回，不让调用方据此判断别人的会话是否存在。
+	DeleteConversation(context.Context, *DeleteConversationRequest) (*DeleteConversationResponse, error)
 	mustEmbedUnimplementedAnswerServiceServer()
 }
 
@@ -141,6 +158,9 @@ func (UnimplementedAnswerServiceServer) GetAnswer(context.Context, *GetAnswerReq
 }
 func (UnimplementedAnswerServiceServer) CreateFeedback(context.Context, *CreateFeedbackRequest) (*CreateFeedbackResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateFeedback not implemented")
+}
+func (UnimplementedAnswerServiceServer) DeleteConversation(context.Context, *DeleteConversationRequest) (*DeleteConversationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteConversation not implemented")
 }
 func (UnimplementedAnswerServiceServer) mustEmbedUnimplementedAnswerServiceServer() {}
 func (UnimplementedAnswerServiceServer) testEmbeddedByValue()                       {}
@@ -228,6 +248,24 @@ func _AnswerService_CreateFeedback_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AnswerService_DeleteConversation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteConversationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnswerServiceServer).DeleteConversation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnswerService_DeleteConversation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnswerServiceServer).DeleteConversation(ctx, req.(*DeleteConversationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AnswerService_ServiceDesc is the grpc.ServiceDesc for AnswerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -246,6 +284,10 @@ var AnswerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateFeedback",
 			Handler:    _AnswerService_CreateFeedback_Handler,
+		},
+		{
+			MethodName: "DeleteConversation",
+			Handler:    _AnswerService_DeleteConversation_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

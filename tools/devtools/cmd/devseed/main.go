@@ -27,6 +27,33 @@ func main() {
 }
 
 // vaultClient 只做一件事：在 KV v2 中“不存在才写入”。地址与令牌来自部署环境。
+// newSigningKey 生成一把 P-256 私钥（PKCS#8 PEM）。
+func newSigningKey() (string, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return "", err
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return "", err
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})), nil
+}
+
+// publicPEM 取私钥对应的公钥（PKIX PEM）。
+func publicPEM(privatePEM string) (string, error) {
+	block, _ := pem.Decode([]byte(privatePEM))
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return "", err
+	}
+	der, err := x509.MarshalPKIXPublicKey(&key.(*ecdsa.PrivateKey).PublicKey)
+	if err != nil {
+		return "", err
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})), nil
+}
+
 type vaultClient struct {
 	addr, token string
 	http        *http.Client
@@ -37,17 +64,14 @@ func run() error {
 	if addr == "" || token == "" {
 		return fmt.Errorf("需要 VAULT_ADDR 与 VAULT_TOKEN")
 	}
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pemKey, err := newSigningKey()
 	if err != nil {
 		return err
 	}
-	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return err
-	}
-	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 	c := &vaultClient{addr: addr, token: token, http: &http.Client{Timeout: 10 * time.Second}}
-	created, err := c.createIfAbsent("secret", "gateway/principal-signing", map[string]string{"private_key": pemKey})
+	// 字段与轮换见 services/gateway/internal/issuer/rotate.go：gateway 到期后自己生成下一把写回
+	created, err := c.createIfAbsent("secret", "gateway/principal-signing",
+		map[string]string{"private_key": pemKey, "created_at": time.Now().UTC().Format(time.RFC3339)})
 	if err != nil {
 		return err
 	}
@@ -57,16 +81,32 @@ func run() error {
 		fmt.Println("devseed: 签名密钥已存在，保持不变")
 	}
 	// governance 的快照签名私钥（governance 详设 9.2）：与 Principal 签名密钥分开，泄露一个不影响另一个
-	snapKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	snapPEM, err := newSigningKey()
 	if err != nil {
 		return err
 	}
-	snapDER, err := x509.MarshalPKCS8PrivateKey(snapKey)
-	if err != nil {
-		return err
-	}
-	snapPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: snapDER}))
 	if _, err := c.createIfAbsent("secret", "governance/snapshot-signing", map[string]string{"private_key": snapPEM}); err != nil {
+		return err
+	}
+	// evaluation 签发评测身份的私钥（evaluation 详设 4.2）：只有评测副本信任，线上实例不认
+	evalPEM, err := newSigningKey()
+	if err != nil {
+		return err
+	}
+	if _, err := c.createIfAbsent("secret", "evaluation/principal-signing", map[string]string{"private_key": evalPEM}); err != nil {
+		return err
+	}
+	// 紧急拒绝规则备用通道的签名密钥（governance 详设 8.2）：governance 与信息安全签名，retrieval 只读公钥
+	denyPEM, err := newSigningKey()
+	if err != nil {
+		return err
+	}
+	denyPub, err := publicPEM(denyPEM)
+	if err != nil {
+		return err
+	}
+	if _, err := c.createIfAbsent("secret", "governance/emergency-signing",
+		map[string]string{"private_key": denyPEM, "public_key": denyPub}); err != nil {
 		return err
 	}
 	// PII 原值的信封加密：transit 引擎按需生成数据密钥并包裹，主密钥不离开 Vault。已存在时 Vault 返回 400，视为已就绪

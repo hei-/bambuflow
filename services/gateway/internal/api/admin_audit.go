@@ -2,16 +2,19 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
-// 审计查询（技术设计文档 13.2，governance 详设 7.2）：GET /v1/admin/audit?sub=&doc_id=&from=&to=，由 governance 实现。
+// 审计查询（技术设计文档 13.2，governance 详设 7.2）：GET /v1/admin/audit?sub=&doc_id=&from=&to=&kind=，由 governance 实现。
 
 type auditRecordJSON struct {
+	Kind              string   `json:"kind"`
+	Source            string   `json:"source"`
 	Time              string   `json:"time"`
 	TraceID           string   `json:"trace_id"`
 	AnswerID          string   `json:"answer_id,omitempty"`
@@ -31,11 +34,57 @@ type auditRecordJSON struct {
 	MatchedIn   []string `json:"matched_in,omitempty"`
 	AdminMethod string   `json:"admin_method,omitempty"`
 	AdminPath   string   `json:"admin_path,omitempty"`
+	// 问答与检索用到的版本、问答状态与回答摘要（技术设计文档 8.3）
+	Versions     *auditVersionsJSON `json:"versions,omitempty"`
+	AnswerStatus string             `json:"answer_status,omitempty"`
+	AnswerSHA256 string             `json:"answer_sha256,omitempty"`
+	// 变更审计才有
+	Roles    []string        `json:"roles,omitempty"`
+	Action   string          `json:"action,omitempty"`
+	ObjectID string          `json:"object_id,omitempty"`
+	Detail   json.RawMessage `json:"detail,omitempty"`
+	// 评测回放才有
+	GateID string `json:"gate_id,omitempty"`
+}
+
+type auditVersionsJSON struct {
+	IndexVersion      string   `json:"index_version,omitempty"`
+	PolicyVersion     string   `json:"policy_version,omitempty"`
+	EmbeddingModel    string   `json:"embedding_model,omitempty"`
+	RerankModel       string   `json:"rerank_model,omitempty"`
+	GenerationModel   string   `json:"generation_model,omitempty"`
+	PromptVersion     string   `json:"prompt_version,omitempty"`
+	NLIModel          string   `json:"nli_model,omitempty"`
+	CalculatorVersion string   `json:"calculator_version,omitempty"`
+	ExperimentID      string   `json:"experiment_id,omitempty"`
+	ExperimentArm     string   `json:"experiment_arm,omitempty"`
+	PipelineVersion   string   `json:"pipeline_version,omitempty"`
+	RoutingVersion    string   `json:"routing_version,omitempty"`
+	Degraded          []string `json:"degraded,omitempty"`
+}
+
+func auditVersionsOf(v *adminv1.AuditVersions) *auditVersionsJSON {
+	if v == nil {
+		return nil
+	}
+	return &auditVersionsJSON{IndexVersion: v.GetIndexVersion(), PolicyVersion: v.GetPolicyVersion(), EmbeddingModel: v.GetEmbeddingModel(),
+		RerankModel: v.GetRerankModel(), GenerationModel: v.GetGenerationModel(), PromptVersion: v.GetPromptVersion(),
+		NLIModel: v.GetNliModel(), CalculatorVersion: v.GetCalculatorVersion(), ExperimentID: v.GetExperimentId(),
+		ExperimentArm: v.GetExperimentArm(), PipelineVersion: v.GetPipelineVersion(), RoutingVersion: v.GetRoutingVersion(),
+		Degraded: v.GetDegraded()}
 }
 
 type auditListJSON struct {
 	Records       []auditRecordJSON `json:"records"`
 	NextPageToken string            `json:"next_page_token,omitempty"`
+}
+
+// detailOf 原样转出变更审计的依据；governance 给的不是合法 JSON 时不输出（不把坏数据拼进响应）。
+func detailOf(s string) json.RawMessage {
+	if s == "" || !json.Valid([]byte(s)) {
+		return nil
+	}
+	return json.RawMessage(s)
 }
 
 func (s *Server) queryAudit(ctx context.Context, in *adminInput) (adminOutput, error) {
@@ -50,7 +99,7 @@ func (s *Server) queryAudit(ctx context.Context, in *adminInput) (adminOutput, e
 	}
 	resp, err := s.AuditQuery.QueryAudit(ctx, &adminv1.QueryAuditRequest{
 		Sub: in.query.Get("sub"), DocId: in.query.Get("doc_id"), From: timestamppb.New(from), To: timestamppb.New(to),
-		PageSize: size, PageToken: in.query.Get("page_token"),
+		PageSize: size, PageToken: in.query.Get("page_token"), Kinds: in.query["kind"],
 	})
 	if err != nil {
 		return adminOutput{}, err
@@ -64,6 +113,9 @@ func (s *Server) queryAudit(ctx context.Context, in *adminInput) (adminOutput, e
 			CandidateChunkIDs: nonNil(r.GetCandidateChunkIds()), ContextChunkIDs: nonNil(r.GetContextChunkIds()),
 			ShownChunkIDs: nonNil(r.GetShownChunkIds()), ListedDocIDs: nonNil(r.GetListedDocIds()), MatchedIn: r.GetMatchedIn(),
 			AdminMethod: r.GetAdminMethod(), AdminPath: r.GetAdminPath(),
+			Versions: auditVersionsOf(r.GetVersions()), AnswerStatus: r.GetAnswerStatus(), AnswerSHA256: r.GetAnswerSha256(),
+			Kind: r.GetKind(), Source: r.GetSource(), Roles: r.GetRoles(), Action: r.GetAction(), ObjectID: r.GetObjectId(),
+			GateID: r.GetGateId(), Detail: detailOf(r.GetDetailJson()),
 		})
 	}
 	return adminOutput{body: out}, nil

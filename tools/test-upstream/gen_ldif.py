@@ -18,6 +18,8 @@ USERS = [
     # uid, 姓, 名, 部门, 岗位, 密级等级, 地域
     ("alice", "王", "丽", "信贷部", "客户经理", "C2", "华东"),
     ("bob", "李", "博", "风险管理部", "风险经理", "C3", "华北"),
+    # 风险管理部的另一名员工，不在 risk 租户的试点群组里：试点阶段只能检索、不能问答
+    ("ruth", "容", "露", "风险管理部", "风险分析员", "C2", "华北"),
     # credit-l2 的第二个成员：groupOfNames 至少要有一个成员，端到端测试移出 alice 时群组不能变空
     ("carl", "陈", "楷", "信贷部", "客户经理", "C2", "华东"),
     # 属于 250 个群组：验证 Principal 群组超过 200 个时只放引用（gateway 详设 3.2）
@@ -33,14 +35,23 @@ USERS = [
     ("paul", "潘", "鹏", "平台部", "平台管理员", "C2", "华东"),
     ("pete", "裴", "涛", "平台部", "平台管理员", "C2", "华东"),
     ("audra", "敖", "拉", "审计部", "审计员", "C2", "华东"),
+    # 信贷租户的负责人（tenants/credit/tenant.yaml 的 owner_groups）：
+    # 只读本租户的配置、门禁与质量趋势，不是租户成员
+    ("owen", "欧", "文", "信贷部", "业务负责人", "C2", "华东"),
+    # 演示用的全权限账号：全部平台角色，又是 credit 租户的成员与负责人，一个账号能打开所有菜单。
+    # 只在开发与演示的测试目录里有，生产不设这种账号（governance 详设 9.1 职责分离）；
+    # 发起人不能审批自己的操作仍然生效，审批要换另一个账号
+    ("super", "苏", "柏", "信贷部", "演示管理员", "C3", "华东"),
     # 运维值班（P3-I）：只属于 ops 租户。可疑指令、日志、数据库表结构三个测试数据源
     # 只对运维群组可见，评测集与权限评测集的提问身份都不在这些群组里，新增数据不影响它们的结果
     ("sam", "沈", "默", "运维部", "运维工程师", "C2", "华东"),
 ]
 
 GROUPS = {
-    "credit-l2": ["alice", "carl"],
-    "risk-dept": ["bob"],
+    "credit-l2": ["alice", "carl", "super"],
+    "risk-dept": ["bob", "ruth"],
+    # risk 租户（第二个业务系统，试点阶段）的试点群组：问答只对它开放（evaluation 详设 3.1）
+    "risk-pilot": ["bob"],
     # credit 租户的审计岗（tenants/credit/tenant.yaml 的 auditor_groups）：
     # 回放用例以 carl 查看 alice 的回答
     "credit-audit": ["carl"],
@@ -49,11 +60,12 @@ GROUPS = {
     # 日志数据源里 core-batch 服务的归属组（P3-I3）：sam 不在里面；groupOfNames 至少要有一个成员
     "sre-core": ["olga"],
     # 平台角色对应的群组（admin-roles.yaml）；这些账号不属于任何租户，查不了数据
-    "platform-ops": ["olga", "oscar"],
-    "infosec": ["ivan"],
-    "data-owners": ["dana", "rick"],
-    "platform-admins": ["paul", "pete"],
-    "platform-audit": ["audra"],
+    "platform-ops": ["olga", "oscar", "super"],
+    "infosec": ["ivan", "super"],
+    "data-owners": ["dana", "rick", "super"],
+    "platform-admins": ["paul", "pete", "super"],
+    "platform-audit": ["audra", "super"],
+    "credit-owners": ["owen", "super"],
     **{f"project-{i:03d}": ["eve"] for i in range(1, 251)},
 }
 

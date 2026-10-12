@@ -63,8 +63,8 @@ def _ensure_file(root: Path, repo: str, f: dict[str, Any], client: httpx.Client)
 class Served:
     name: str
     version: str
-    # 输入名 → 字符串列表；返回输出张量名与一维或二维浮点结果
-    infer: Callable[[dict[str, list[str]]], tuple[str, list[list[float]] | list[float]]]
+    # 输入名 → 字符串列表；返回各输出张量的名称与一维或二维浮点结果
+    infer: Callable[[dict[str, list[str]]], list[tuple[str, list[list[float]] | list[float]]]]
     lock: threading.Lock
 
 
@@ -81,11 +81,13 @@ def _to_device(model: torch.nn.Module) -> torch.nn.Module:
     return model.to(device=DEVICE, dtype=DTYPE).eval()
 
 
-def _embedding(root: Path) -> Callable[[dict[str, list[str]]], tuple[str, list[list[float]]]]:
+def _embedding(
+    root: Path,
+) -> Callable[[dict[str, list[str]]], list[tuple[str, list[list[float]] | list[float]]]]:
     tok = AutoTokenizer.from_pretrained(root)
     model = _to_device(AutoModel.from_pretrained(root))
 
-    def infer(inputs: dict[str, list[str]]) -> tuple[str, list[list[float]]]:
+    def infer(inputs: dict[str, list[str]]) -> list[tuple[str, list[list[float]] | list[float]]]:
         texts = inputs["text"]
         out: list[list[float]] = []
         with torch.inference_mode():
@@ -100,7 +102,7 @@ def _embedding(root: Path) -> Callable[[dict[str, list[str]]], tuple[str, list[l
                 # bge-m3 的稠密向量取 [CLS] 再归一化（与 FlagEmbedding 的做法一致）
                 cls = model(**enc).last_hidden_state[:, 0]
                 out.extend(torch.nn.functional.normalize(cls.float(), dim=-1).tolist())
-        return "embedding", out
+        return [("embedding", out)]
 
     return infer
 
@@ -109,18 +111,18 @@ def _pair_classifier(
     root: Path,
     first: str,
     second: str,
-    output: str,
-    score: Callable[[torch.Tensor], torch.Tensor],
+    outputs: dict[str, Callable[[torch.Tensor], torch.Tensor]],
     max_tokens: int,
-) -> Callable[[dict[str, list[str]]], tuple[str, list[float]]]:
+) -> Callable[[dict[str, list[str]]], list[tuple[str, list[list[float]] | list[float]]]]:
+    """句对分类：每个输出由同一次前向的 logits 算出（NLI 的蕴含与矛盾概率共用一次推理）。"""
     tok = AutoTokenizer.from_pretrained(root)
     model = _to_device(AutoModelForSequenceClassification.from_pretrained(root))
 
-    def infer(inputs: dict[str, list[str]]) -> tuple[str, list[float]]:
+    def infer(inputs: dict[str, list[str]]) -> list[tuple[str, list[list[float]] | list[float]]]:
         a, b = inputs[first], inputs[second]
         if len(a) != len(b):
             raise ValueError(f"{first} 与 {second} 条数不同")
-        out: list[float] = []
+        out: dict[str, list[float]] = {name: [] for name in outputs}
         with torch.inference_mode():
             for s in _batches(len(a)):
                 enc = tok(
@@ -131,8 +133,10 @@ def _pair_classifier(
                     max_length=max_tokens,
                     return_tensors="pt",
                 ).to(DEVICE)
-                out.extend(score(model(**enc).logits.float()).tolist())
-        return output, out
+                logits = model(**enc).logits.float()
+                for name, score in outputs.items():
+                    out[name].extend(score(logits).tolist())
+        return [(name, out[name]) for name in outputs]
 
     return infer
 
@@ -150,23 +154,36 @@ def load(manifest: dict[str, Any], names: list[str], cache: Path) -> dict[str, S
                 infer: Callable[..., Any] = _embedding(root)
             elif spec["kind"] == "reranker":
                 infer = _pair_classifier(
-                    root, "query", "passage", "score", lambda x: torch.sigmoid(x[:, 0]), MAX_TOKENS
+                    root,
+                    "query",
+                    "passage",
+                    {"score": lambda x: torch.sigmoid(x[:, 0])},
+                    MAX_TOKENS,
                 )
             else:
-                # 支持度 = “蕴含”类的概率；标签编号取自模型自带的 label_mapping.json
-                entail = json.loads((root / "label_mapping.json").read_text(encoding="utf-8"))[
-                    "蕴含"
-                ]
+                # 支持度 = “蕴含”类的概率，矛盾概率 = “矛盾”类的概率；
+                # 标签编号取自模型自带的 label_mapping.json
+                labels = json.loads((root / "label_mapping.json").read_text(encoding="utf-8"))
                 infer = _pair_classifier(
                     root,
                     "premise",
                     "hypothesis",
-                    "support",
-                    lambda x, i=entail: torch.softmax(x, dim=-1)[:, i],
+                    {
+                        "support": lambda x, i=labels["蕴含"]: torch.softmax(x, dim=-1)[:, i],
+                        "contradiction": lambda x, i=labels["矛盾"]: torch.softmax(x, dim=-1)[:, i],
+                    },
                     NLI_MAX_TOKENS,
                 )
             served[name] = Served(name, spec["version"], infer, threading.Lock())
     return served
+
+
+def _tensor(name: str, data: list[list[float]] | list[float]) -> dict[str, Any]:
+    if data and isinstance(data[0], list):
+        rows = [r for r in data if isinstance(r, list)]
+        flat = [x for row in rows for x in row]
+        return {"name": name, "datatype": "FP32", "shape": [len(rows), len(rows[0])], "data": flat}
+    return {"name": name, "datatype": "FP32", "shape": [len(data)], "data": data}
 
 
 def handler(
@@ -217,18 +234,16 @@ def handler(
                     if t["datatype"] == "BYTES"
                 }
                 with m.lock:
-                    name, data = m.infer(inputs)
+                    results = m.infer(inputs)
             except (KeyError, TypeError, ValueError) as e:
                 self._json(400, {"error": str(e)})
                 return
-            flat = [x for row in data for x in row] if data and isinstance(data[0], list) else data
-            shape = [len(data), len(data[0])] if data and isinstance(data[0], list) else [len(data)]
             self._json(
                 200,
                 {
                     "model_name": m.name,
                     "model_version": m.version,
-                    "outputs": [{"name": name, "datatype": "FP32", "shape": shape, "data": flat}],
+                    "outputs": [_tensor(name, data) for name, data in results],
                 },
             )
 

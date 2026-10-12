@@ -1,7 +1,10 @@
 // mock-nli 在没有 GPU 与真实 NLI 模型时顶替 Triton 上的 NLI 模型，只用于开发与 CI（P0 计划第 7 步）。
 //
 // 实现 KServe v2 HTTP 接口的子集，grounding 接真实 Triton 时代码相同，只换地址。支持度用“假设句的字符二元组
-// 有多少出现在前提里”近似：照抄引文得 1，与引文无关的句子接近 0。只够验证校验链路，语义判断以真实模型为准。
+// 有多少出现在前提里”近似：照抄引文得 1，与引文无关的句子接近 0。
+// 矛盾概率只认一种明显的情形：说的是同一件事（二元组重合过半），但假设句里有前提里没有的数字。
+// 不认否定词：一段证据里随处可能有“不”，按否定词判会把大量正常的句子判成矛盾。
+// 只够验证校验链路，语义判断以真实模型为准。
 package main
 
 import (
@@ -9,16 +12,17 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 const (
 	model   = "nli"
-	version = "mock-bigram-1"
+	version = "mock-bigram-2"
 )
 
 // bigrams 只取汉字、字母和数字，忽略标点、空白与引用标记的影响。
@@ -49,6 +53,28 @@ func support(premise, hypothesis string) float32 {
 		}
 	}
 	return float32(hit) / float32(len(h))
+}
+
+var number = regexp.MustCompile(`\d+(?:\.\d+)?`)
+
+func contradiction(premise, hypothesis string) float32 {
+	if support(premise, hypothesis) < 0.5 {
+		return 0.02
+	}
+	pn := number.FindAllString(premise, -1)
+	if len(pn) == 0 {
+		return 0.02
+	}
+	seen := map[string]bool{}
+	for _, n := range pn {
+		seen[n] = true
+	}
+	for _, n := range number.FindAllString(hypothesis, -1) {
+		if !seen[n] {
+			return 0.9
+		}
+	}
+	return 0.02
 }
 
 type tensor struct {
@@ -88,12 +114,18 @@ func main() {
 			return
 		}
 		scores := make([]float32, len(premises))
+		against := make([]float32, len(premises))
 		for i := range premises {
 			scores[i] = support(premises[i], hypotheses[i])
+			against[i] = contradiction(premises[i], hypotheses[i])
 		}
+		shape := []int{len(scores)}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"model_name": model, "model_version": version,
-			"outputs": []map[string]any{{"name": "support", "datatype": "FP32", "shape": []int{len(scores)}, "data": scores}},
+			"outputs": []map[string]any{
+				{"name": "support", "datatype": "FP32", "shape": shape, "data": scores},
+				{"name": "contradiction", "datatype": "FP32", "shape": shape, "data": against},
+			},
 		})
 	})
 	addr := os.Getenv("BF_LISTEN")

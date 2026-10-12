@@ -30,8 +30,10 @@ class ConfigAdminServiceStub:
     """ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
     gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 
-    现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-    每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+    配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+    每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+    Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+    全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
     变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
     已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
     """
@@ -43,20 +45,30 @@ class ConfigAdminServiceStub:
     ListTenants: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.ListTenantsRequest, _config_admin_pb2.ListTenantsResponse]
     ListConfigVersions: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.ListConfigVersionsRequest, _config_admin_pb2.ListConfigVersionsResponse]
     CreateChangeRequest: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.CreateChangeRequestRequest, _config_admin_pb2.CreateChangeRequestResponse]
+    ListChangeRequests: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.ListChangeRequestsRequest, _config_admin_pb2.ListChangeRequestsResponse]
+    """按状态列出变更单（新的在前，最多 100 条），审批人据此找待审批的变更单"""
     ApproveChangeRequest: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.ApproveChangeRequestRequest, _config_admin_pb2.ApproveChangeRequestResponse]
     RejectChangeRequest: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.RejectChangeRequestRequest, _config_admin_pb2.RejectChangeRequestResponse]
     CreateRelease: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.CreateReleaseRequest, _config_admin_pb2.CreateReleaseResponse]
     ApproveRelease: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.ApproveReleaseRequest, _config_admin_pb2.ApproveReleaseResponse]
     GetRelease: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.GetReleaseRequest, _config_admin_pb2.GetReleaseResponse]
+    ListReleases: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.ListReleasesRequest, _config_admin_pb2.ListReleasesResponse]
+    """按状态列出发布（新的在前，最多 100 条）"""
     RollbackRelease: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.RollbackReleaseRequest, _config_admin_pb2.RollbackReleaseResponse]
+    PromoteRelease: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.PromoteReleaseRequest, _config_admin_pb2.PromoteReleaseResponse]
+    """灰度中的发布全量生效（切生效指针）；一人执行"""
+    AbortRollout: _grpc.UnaryUnaryMultiCallable[_config_admin_pb2.AbortRolloutRequest, _config_admin_pb2.AbortRolloutResponse]
+    """终止灰度：候选版本不再生效，发布记为 rolled_back；一人执行（收紧不需要第二个人）"""
 
 @_typing.type_check_only
 class ConfigAdminServiceAsyncStub(ConfigAdminServiceStub):
     """ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
     gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 
-    现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-    每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+    配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+    每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+    Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+    全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
     变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
     已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
     """
@@ -65,19 +77,29 @@ class ConfigAdminServiceAsyncStub(ConfigAdminServiceStub):
     ListTenants: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.ListTenantsRequest, _config_admin_pb2.ListTenantsResponse]  # type: ignore[assignment]
     ListConfigVersions: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.ListConfigVersionsRequest, _config_admin_pb2.ListConfigVersionsResponse]  # type: ignore[assignment]
     CreateChangeRequest: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.CreateChangeRequestRequest, _config_admin_pb2.CreateChangeRequestResponse]  # type: ignore[assignment]
+    ListChangeRequests: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.ListChangeRequestsRequest, _config_admin_pb2.ListChangeRequestsResponse]  # type: ignore[assignment]
+    """按状态列出变更单（新的在前，最多 100 条），审批人据此找待审批的变更单"""
     ApproveChangeRequest: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.ApproveChangeRequestRequest, _config_admin_pb2.ApproveChangeRequestResponse]  # type: ignore[assignment]
     RejectChangeRequest: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.RejectChangeRequestRequest, _config_admin_pb2.RejectChangeRequestResponse]  # type: ignore[assignment]
     CreateRelease: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.CreateReleaseRequest, _config_admin_pb2.CreateReleaseResponse]  # type: ignore[assignment]
     ApproveRelease: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.ApproveReleaseRequest, _config_admin_pb2.ApproveReleaseResponse]  # type: ignore[assignment]
     GetRelease: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.GetReleaseRequest, _config_admin_pb2.GetReleaseResponse]  # type: ignore[assignment]
+    ListReleases: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.ListReleasesRequest, _config_admin_pb2.ListReleasesResponse]  # type: ignore[assignment]
+    """按状态列出发布（新的在前，最多 100 条）"""
     RollbackRelease: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.RollbackReleaseRequest, _config_admin_pb2.RollbackReleaseResponse]  # type: ignore[assignment]
+    PromoteRelease: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.PromoteReleaseRequest, _config_admin_pb2.PromoteReleaseResponse]  # type: ignore[assignment]
+    """灰度中的发布全量生效（切生效指针）；一人执行"""
+    AbortRollout: _aio.UnaryUnaryMultiCallable[_config_admin_pb2.AbortRolloutRequest, _config_admin_pb2.AbortRolloutResponse]  # type: ignore[assignment]
+    """终止灰度：候选版本不再生效，发布记为 rolled_back；一人执行（收紧不需要第二个人）"""
 
 class ConfigAdminServiceServicer(metaclass=_abc_1.ABCMeta):
     """ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
     gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 
-    现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-    每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+    配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+    每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+    Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+    全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
     变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
     已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
     """
@@ -102,6 +124,14 @@ class ConfigAdminServiceServicer(metaclass=_abc_1.ABCMeta):
         request: _config_admin_pb2.CreateChangeRequestRequest,
         context: _ServicerContext,
     ) -> _typing.Union[_config_admin_pb2.CreateChangeRequestResponse, _abc.Awaitable[_config_admin_pb2.CreateChangeRequestResponse]]: ...
+
+    @_abc_1.abstractmethod
+    def ListChangeRequests(
+        self,
+        request: _config_admin_pb2.ListChangeRequestsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_config_admin_pb2.ListChangeRequestsResponse, _abc.Awaitable[_config_admin_pb2.ListChangeRequestsResponse]]:
+        """按状态列出变更单（新的在前，最多 100 条），审批人据此找待审批的变更单"""
 
     @_abc_1.abstractmethod
     def ApproveChangeRequest(
@@ -139,10 +169,34 @@ class ConfigAdminServiceServicer(metaclass=_abc_1.ABCMeta):
     ) -> _typing.Union[_config_admin_pb2.GetReleaseResponse, _abc.Awaitable[_config_admin_pb2.GetReleaseResponse]]: ...
 
     @_abc_1.abstractmethod
+    def ListReleases(
+        self,
+        request: _config_admin_pb2.ListReleasesRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_config_admin_pb2.ListReleasesResponse, _abc.Awaitable[_config_admin_pb2.ListReleasesResponse]]:
+        """按状态列出发布（新的在前，最多 100 条）"""
+
+    @_abc_1.abstractmethod
     def RollbackRelease(
         self,
         request: _config_admin_pb2.RollbackReleaseRequest,
         context: _ServicerContext,
     ) -> _typing.Union[_config_admin_pb2.RollbackReleaseResponse, _abc.Awaitable[_config_admin_pb2.RollbackReleaseResponse]]: ...
+
+    @_abc_1.abstractmethod
+    def PromoteRelease(
+        self,
+        request: _config_admin_pb2.PromoteReleaseRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_config_admin_pb2.PromoteReleaseResponse, _abc.Awaitable[_config_admin_pb2.PromoteReleaseResponse]]:
+        """灰度中的发布全量生效（切生效指针）；一人执行"""
+
+    @_abc_1.abstractmethod
+    def AbortRollout(
+        self,
+        request: _config_admin_pb2.AbortRolloutRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_config_admin_pb2.AbortRolloutResponse, _abc.Awaitable[_config_admin_pb2.AbortRolloutResponse]]:
+        """终止灰度：候选版本不再生效，发布记为 rolled_back；一人执行（收紧不需要第二个人）"""
 
 def add_ConfigAdminServiceServicer_to_server(servicer: ConfigAdminServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

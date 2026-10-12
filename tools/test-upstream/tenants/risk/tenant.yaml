@@ -1,8 +1,9 @@
-# 测试租户（只用于开发与 CI）：风险业务线，处于试点阶段且没有试点群组，问答对所有成员关闭
+# 测试租户（只用于开发与 CI）：风险业务线，第二个接入的业务系统（接入步骤见 docs/onboarding.md）。
+# 处于试点阶段：检索对全部成员开放，问答只对试点群组开放；风险管理系统的客户端 risk-portal 绑定本租户
 tenant: risk
 rollout: pilot
 member_groups: [risk-dept]
-pilot_groups: []
-bound_clients: []
+pilot_groups: [risk-pilot]
+bound_clients: [risk-portal]
 # 开发与 CI 放宽租户限制（并发 1000 路、每日 1 万亿 token），避免 e2e 与评测连续请求被限；生产按租户申请配置
 quota: {max_concurrency: 1000, daily_tokens: 1000000000000}

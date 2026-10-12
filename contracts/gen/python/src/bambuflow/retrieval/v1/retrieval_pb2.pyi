@@ -62,37 +62,43 @@ class SubQuery(_message.Message):
     def __init__(self, id: _Optional[str] = ..., text: _Optional[str] = ...) -> None: ...
 
 class SearchRequest(_message.Message):
-    __slots__ = ("queries", "filters", "top_k", "rerank", "intent")
+    __slots__ = ("queries", "filters", "top_k", "rerank", "intent", "include_score_details", "plan_version")
     QUERIES_FIELD_NUMBER: _ClassVar[int]
     FILTERS_FIELD_NUMBER: _ClassVar[int]
     TOP_K_FIELD_NUMBER: _ClassVar[int]
     RERANK_FIELD_NUMBER: _ClassVar[int]
     INTENT_FIELD_NUMBER: _ClassVar[int]
+    INCLUDE_SCORE_DETAILS_FIELD_NUMBER: _ClassVar[int]
+    PLAN_VERSION_FIELD_NUMBER: _ClassVar[int]
     queries: _containers.RepeatedCompositeFieldContainer[SubQuery]
     filters: _types_pb2.Filters
     top_k: int
     rerank: bool
     intent: SearchIntent
-    def __init__(self, queries: _Optional[_Iterable[_Union[SubQuery, _Mapping]]] = ..., filters: _Optional[_Union[_types_pb2.Filters, _Mapping]] = ..., top_k: _Optional[int] = ..., rerank: _Optional[bool] = ..., intent: _Optional[_Union[SearchIntent, str]] = ...) -> None: ...
+    include_score_details: bool
+    plan_version: str
+    def __init__(self, queries: _Optional[_Iterable[_Union[SubQuery, _Mapping]]] = ..., filters: _Optional[_Union[_types_pb2.Filters, _Mapping]] = ..., top_k: _Optional[int] = ..., rerank: _Optional[bool] = ..., intent: _Optional[_Union[SearchIntent, str]] = ..., include_score_details: _Optional[bool] = ..., plan_version: _Optional[str] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
-    __slots__ = ("hits", "index_version", "policy_version", "degraded", "embedding_model", "rerank_model")
+    __slots__ = ("hits", "index_version", "policy_version", "degraded", "embedding_model", "rerank_model", "plan_version")
     HITS_FIELD_NUMBER: _ClassVar[int]
     INDEX_VERSION_FIELD_NUMBER: _ClassVar[int]
     POLICY_VERSION_FIELD_NUMBER: _ClassVar[int]
     DEGRADED_FIELD_NUMBER: _ClassVar[int]
     EMBEDDING_MODEL_FIELD_NUMBER: _ClassVar[int]
     RERANK_MODEL_FIELD_NUMBER: _ClassVar[int]
+    PLAN_VERSION_FIELD_NUMBER: _ClassVar[int]
     hits: _containers.RepeatedCompositeFieldContainer[Hit]
     index_version: str
     policy_version: str
     degraded: _containers.RepeatedCompositeFieldContainer[_types_pb2.Degradation]
     embedding_model: str
     rerank_model: str
-    def __init__(self, hits: _Optional[_Iterable[_Union[Hit, _Mapping]]] = ..., index_version: _Optional[str] = ..., policy_version: _Optional[str] = ..., degraded: _Optional[_Iterable[_Union[_types_pb2.Degradation, _Mapping]]] = ..., embedding_model: _Optional[str] = ..., rerank_model: _Optional[str] = ...) -> None: ...
+    plan_version: str
+    def __init__(self, hits: _Optional[_Iterable[_Union[Hit, _Mapping]]] = ..., index_version: _Optional[str] = ..., policy_version: _Optional[str] = ..., degraded: _Optional[_Iterable[_Union[_types_pb2.Degradation, _Mapping]]] = ..., embedding_model: _Optional[str] = ..., rerank_model: _Optional[str] = ..., plan_version: _Optional[str] = ...) -> None: ...
 
 class Hit(_message.Message):
-    __slots__ = ("chunk_id", "doc_id", "doc_version", "parent_chunk_id", "text", "span", "title", "heading_path", "source_uri", "source_type", "owner", "classification", "score", "graph_path", "injection_flag")
+    __slots__ = ("chunk_id", "doc_id", "doc_version", "parent_chunk_id", "text", "span", "title", "heading_path", "source_uri", "source_type", "owner", "classification", "score", "graph_path", "injection_flag", "score_details", "matched_by")
     CHUNK_ID_FIELD_NUMBER: _ClassVar[int]
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     DOC_VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -108,6 +114,8 @@ class Hit(_message.Message):
     SCORE_FIELD_NUMBER: _ClassVar[int]
     GRAPH_PATH_FIELD_NUMBER: _ClassVar[int]
     INJECTION_FLAG_FIELD_NUMBER: _ClassVar[int]
+    SCORE_DETAILS_FIELD_NUMBER: _ClassVar[int]
+    MATCHED_BY_FIELD_NUMBER: _ClassVar[int]
     chunk_id: str
     doc_id: str
     doc_version: int
@@ -123,7 +131,37 @@ class Hit(_message.Message):
     score: float
     graph_path: _containers.RepeatedCompositeFieldContainer[GraphEdge]
     injection_flag: bool
-    def __init__(self, chunk_id: _Optional[str] = ..., doc_id: _Optional[str] = ..., doc_version: _Optional[int] = ..., parent_chunk_id: _Optional[str] = ..., text: _Optional[str] = ..., span: _Optional[_Union[_types_pb2.Span, _Mapping]] = ..., title: _Optional[str] = ..., heading_path: _Optional[_Iterable[str]] = ..., source_uri: _Optional[str] = ..., source_type: _Optional[_Union[_types_pb2.SourceType, str]] = ..., owner: _Optional[str] = ..., classification: _Optional[_Union[_types_pb2.Classification, str]] = ..., score: _Optional[float] = ..., graph_path: _Optional[_Iterable[_Union[GraphEdge, _Mapping]]] = ..., injection_flag: _Optional[bool] = ...) -> None: ...
+    score_details: ScoreDetails
+    matched_by: _containers.RepeatedCompositeFieldContainer[RouteMatch]
+    def __init__(self, chunk_id: _Optional[str] = ..., doc_id: _Optional[str] = ..., doc_version: _Optional[int] = ..., parent_chunk_id: _Optional[str] = ..., text: _Optional[str] = ..., span: _Optional[_Union[_types_pb2.Span, _Mapping]] = ..., title: _Optional[str] = ..., heading_path: _Optional[_Iterable[str]] = ..., source_uri: _Optional[str] = ..., source_type: _Optional[_Union[_types_pb2.SourceType, str]] = ..., owner: _Optional[str] = ..., classification: _Optional[_Union[_types_pb2.Classification, str]] = ..., score: _Optional[float] = ..., graph_path: _Optional[_Iterable[_Union[GraphEdge, _Mapping]]] = ..., injection_flag: _Optional[bool] = ..., score_details: _Optional[_Union[ScoreDetails, _Mapping]] = ..., matched_by: _Optional[_Iterable[_Union[RouteMatch, _Mapping]]] = ...) -> None: ...
+
+class ScoreDetails(_message.Message):
+    __slots__ = ("keyword", "dense", "graph", "identifier", "rrf", "rerank", "sparse")
+    KEYWORD_FIELD_NUMBER: _ClassVar[int]
+    DENSE_FIELD_NUMBER: _ClassVar[int]
+    GRAPH_FIELD_NUMBER: _ClassVar[int]
+    IDENTIFIER_FIELD_NUMBER: _ClassVar[int]
+    RRF_FIELD_NUMBER: _ClassVar[int]
+    RERANK_FIELD_NUMBER: _ClassVar[int]
+    SPARSE_FIELD_NUMBER: _ClassVar[int]
+    keyword: float
+    dense: float
+    graph: float
+    identifier: float
+    rrf: float
+    rerank: float
+    sparse: float
+    def __init__(self, keyword: _Optional[float] = ..., dense: _Optional[float] = ..., graph: _Optional[float] = ..., identifier: _Optional[float] = ..., rrf: _Optional[float] = ..., rerank: _Optional[float] = ..., sparse: _Optional[float] = ...) -> None: ...
+
+class RouteMatch(_message.Message):
+    __slots__ = ("route", "query_id", "rank")
+    ROUTE_FIELD_NUMBER: _ClassVar[int]
+    QUERY_ID_FIELD_NUMBER: _ClassVar[int]
+    RANK_FIELD_NUMBER: _ClassVar[int]
+    route: str
+    query_id: str
+    rank: int
+    def __init__(self, route: _Optional[str] = ..., query_id: _Optional[str] = ..., rank: _Optional[int] = ...) -> None: ...
 
 class GraphEdge(_message.Message):
     __slots__ = ("from_entity", "from_type", "relation_type", "to_entity", "to_type")

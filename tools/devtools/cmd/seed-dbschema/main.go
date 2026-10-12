@@ -15,7 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 //go:embed demo.sql

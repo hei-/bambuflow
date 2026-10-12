@@ -17,10 +17,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/services/qa/batch/internal/store"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/services/qa/batch/internal/store"
 )
 
 // Store 是执行所需的条目读写（store.PG）。

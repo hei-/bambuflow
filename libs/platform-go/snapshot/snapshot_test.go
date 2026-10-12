@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
 )
 
 type keys struct {

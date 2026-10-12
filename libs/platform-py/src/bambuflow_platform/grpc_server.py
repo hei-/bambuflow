@@ -36,9 +36,12 @@ def current_principal() -> principal_pb2.Principal | None:
     return c.principal if c else None
 
 
-# 评测指定索引版本的 metadata（evaluation 详设 4.2，与 retrieval 的 search.EvalIndexHeader 相同）：
+# 评测指定索引版本与候选配置版本的 metadata（evaluation 详设 4.2、governance 详设 4.1 第 ③④ 步，
+# 与 retrieval 的 search.EvalIndexHeader、EvalConfigHeader 相同）：
 # 只有评测模式的实例接受（AuthInterceptor 的 eval_mode），并随调用链原样转给下游
 EVAL_INDEX_HEADER = "x-eval-index-version"
+EVAL_CONFIG_HEADER = "x-eval-config-version"
+_EVAL_HEADERS = (EVAL_INDEX_HEADER, EVAL_CONFIG_HEADER)
 
 
 def _metadata(context: Any, key: str) -> str:
@@ -49,7 +52,7 @@ def _metadata(context: Any, key: str) -> str:
 def downstream(
     context: grpc.aio.ServicerContext[Any, Any], budget: float | None = None
 ) -> dict[str, Any]:
-    """调下游 gRPC 时的参数：转发当前 Principal（评测请求另转发指定的索引版本），
+    """调下游 gRPC 时的参数：转发当前 Principal（评测请求另转发指定的索引版本与候选配置），
     超时取“剩余时间”和 budget 中较小的一个。
 
     用法：await stub.Search(request, **downstream(context, budget=1.5))
@@ -60,8 +63,9 @@ def downstream(
     remaining = context.time_remaining()
     timeout = remaining if budget is None or remaining is None else min(remaining, budget)
     md: tuple[tuple[str, str], ...] = (("authorization", "Bearer " + c.raw),)
-    if pin := _metadata(context, EVAL_INDEX_HEADER):
-        md += ((EVAL_INDEX_HEADER, pin),)
+    for h in _EVAL_HEADERS:
+        if pin := _metadata(context, h):
+            md += ((h, pin),)
     return {"metadata": md, "timeout": timeout}
 
 
@@ -87,7 +91,7 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
     ) -> None:
         self._verifier = verifier
         self._internal = internal
-        # 非评测模式的实例收到指定索引版本的请求一律拒绝
+        # 非评测模式的实例收到指定索引版本或候选配置的请求一律拒绝
         # （evaluation 详设 4.2：否则就是绕过发布门禁的后门）
         self._eval_mode = eval_mode
 
@@ -95,9 +99,9 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
         """校验 deadline 与 Principal，不通过时 abort（抛出异常，不会返回）。"""
         if context.time_remaining() is None:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "请求必须带 deadline")
-        if not self._eval_mode and _metadata(context, EVAL_INDEX_HEADER):
+        if not self._eval_mode and any(_metadata(context, h) for h in _EVAL_HEADERS):
             await context.abort(
-                grpc.StatusCode.PERMISSION_DENIED, "只有评测模式的实例接受指定索引版本"
+                grpc.StatusCode.PERMISSION_DENIED, "只有评测模式的实例接受指定索引版本或候选配置"
             )
         raw = _bearer(context)
         if not raw:

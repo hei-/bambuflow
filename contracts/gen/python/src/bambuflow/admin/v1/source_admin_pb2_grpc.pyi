@@ -38,8 +38,12 @@ class SourceAdminServiceStub:
     def __new__(cls, channel: _aio.Channel) -> SourceAdminServiceAsyncStub: ...
     RegisterSource: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.RegisterSourceRequest, _source_admin_pb2.RegisterSourceResponse]
     """注册数据源（平台管理员），状态为待审批；数据源 ID（src_）由 governance 生成。"""
+    ListSources: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.ListSourcesRequest, _source_admin_pb2.ListSourcesResponse]
+    """列出数据源：平台管理员、平台运维、信息安全看全部，数据属主只看本部门，租户负责人只看已生效的（申请授权时选）。"""
     ApproveSource: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.ApproveSourceRequest, _source_admin_pb2.ApproveSourceResponse]
-    """数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。"""
+    """审批：本部门的数据属主审批；受限级数据源另需信息安全审批（governance 详设 6.2），两项都批过才生效。
+    注册人不能自批，同一人不能既做属主审批又做信息安全审批；记录审批人、时间与依据。
+    """
     RevokeSource: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.RevokeSourceRequest, _source_admin_pb2.RevokeSourceResponse]
     """撤销（只有本部门的数据属主）：先写按数据源的紧急拒绝规则，在线立即不可见，再发出 source.revoked 事件。"""
     ListGrants: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.ListGrantsRequest, _source_admin_pb2.ListGrantsResponse]
@@ -47,6 +51,15 @@ class SourceAdminServiceStub:
     """授权给租户（本部门的数据属主），数据源须已审批。"""
     DeleteGrant: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.DeleteGrantRequest, _source_admin_pb2.DeleteGrantResponse]
     """取消授权（本部门的数据属主），1 分钟内在检索生效。"""
+    ApplyGrant: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.ApplyGrantRequest, _source_admin_pb2.ApplyGrantResponse]
+    """授权申请（governance 详设 6.2、9.1）：租户负责人为自己负责的租户申请某个数据源，数据源所属部门的数据属主审批，
+    审批通过即写入授权；申请人不能审批自己的申请。同一数据源与租户同时只有一个待审批的申请，7 天未审批自动过期。
+    """
+    ListGrantApplications: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.ListGrantApplicationsRequest, _source_admin_pb2.ListGrantApplicationsResponse]
+    """租户负责人看自己负责的租户的申请，数据属主看本部门数据源收到的申请。"""
+    ApproveGrantApplication: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.ApproveGrantApplicationRequest, _source_admin_pb2.ApproveGrantApplicationResponse]
+    RejectGrantApplication: _grpc.UnaryUnaryMultiCallable[_source_admin_pb2.RejectGrantApplicationRequest, _source_admin_pb2.RejectGrantApplicationResponse]
+    """驳回（本部门的数据属主）或撤回（申请人本人）。"""
 
 @_typing.type_check_only
 class SourceAdminServiceAsyncStub(SourceAdminServiceStub):
@@ -58,8 +71,12 @@ class SourceAdminServiceAsyncStub(SourceAdminServiceStub):
     def __init__(self, channel: _aio.Channel) -> None: ...
     RegisterSource: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.RegisterSourceRequest, _source_admin_pb2.RegisterSourceResponse]  # type: ignore[assignment]
     """注册数据源（平台管理员），状态为待审批；数据源 ID（src_）由 governance 生成。"""
+    ListSources: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.ListSourcesRequest, _source_admin_pb2.ListSourcesResponse]  # type: ignore[assignment]
+    """列出数据源：平台管理员、平台运维、信息安全看全部，数据属主只看本部门，租户负责人只看已生效的（申请授权时选）。"""
     ApproveSource: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.ApproveSourceRequest, _source_admin_pb2.ApproveSourceResponse]  # type: ignore[assignment]
-    """数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。"""
+    """审批：本部门的数据属主审批；受限级数据源另需信息安全审批（governance 详设 6.2），两项都批过才生效。
+    注册人不能自批，同一人不能既做属主审批又做信息安全审批；记录审批人、时间与依据。
+    """
     RevokeSource: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.RevokeSourceRequest, _source_admin_pb2.RevokeSourceResponse]  # type: ignore[assignment]
     """撤销（只有本部门的数据属主）：先写按数据源的紧急拒绝规则，在线立即不可见，再发出 source.revoked 事件。"""
     ListGrants: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.ListGrantsRequest, _source_admin_pb2.ListGrantsResponse]  # type: ignore[assignment]
@@ -67,6 +84,15 @@ class SourceAdminServiceAsyncStub(SourceAdminServiceStub):
     """授权给租户（本部门的数据属主），数据源须已审批。"""
     DeleteGrant: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.DeleteGrantRequest, _source_admin_pb2.DeleteGrantResponse]  # type: ignore[assignment]
     """取消授权（本部门的数据属主），1 分钟内在检索生效。"""
+    ApplyGrant: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.ApplyGrantRequest, _source_admin_pb2.ApplyGrantResponse]  # type: ignore[assignment]
+    """授权申请（governance 详设 6.2、9.1）：租户负责人为自己负责的租户申请某个数据源，数据源所属部门的数据属主审批，
+    审批通过即写入授权；申请人不能审批自己的申请。同一数据源与租户同时只有一个待审批的申请，7 天未审批自动过期。
+    """
+    ListGrantApplications: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.ListGrantApplicationsRequest, _source_admin_pb2.ListGrantApplicationsResponse]  # type: ignore[assignment]
+    """租户负责人看自己负责的租户的申请，数据属主看本部门数据源收到的申请。"""
+    ApproveGrantApplication: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.ApproveGrantApplicationRequest, _source_admin_pb2.ApproveGrantApplicationResponse]  # type: ignore[assignment]
+    RejectGrantApplication: _aio.UnaryUnaryMultiCallable[_source_admin_pb2.RejectGrantApplicationRequest, _source_admin_pb2.RejectGrantApplicationResponse]  # type: ignore[assignment]
+    """驳回（本部门的数据属主）或撤回（申请人本人）。"""
 
 class SourceAdminServiceServicer(metaclass=_abc_1.ABCMeta):
     """SourceAdminService 是数据源注册、审批、撤销与租户授权（governance 详设 6.2、7.2），由 governance 实现，
@@ -83,12 +109,22 @@ class SourceAdminServiceServicer(metaclass=_abc_1.ABCMeta):
         """注册数据源（平台管理员），状态为待审批；数据源 ID（src_）由 governance 生成。"""
 
     @_abc_1.abstractmethod
+    def ListSources(
+        self,
+        request: _source_admin_pb2.ListSourcesRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_source_admin_pb2.ListSourcesResponse, _abc.Awaitable[_source_admin_pb2.ListSourcesResponse]]:
+        """列出数据源：平台管理员、平台运维、信息安全看全部，数据属主只看本部门，租户负责人只看已生效的（申请授权时选）。"""
+
+    @_abc_1.abstractmethod
     def ApproveSource(
         self,
         request: _source_admin_pb2.ApproveSourceRequest,
         context: _ServicerContext,
     ) -> _typing.Union[_source_admin_pb2.ApproveSourceResponse, _abc.Awaitable[_source_admin_pb2.ApproveSourceResponse]]:
-        """数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。"""
+        """审批：本部门的数据属主审批；受限级数据源另需信息安全审批（governance 详设 6.2），两项都批过才生效。
+        注册人不能自批，同一人不能既做属主审批又做信息安全审批；记录审批人、时间与依据。
+        """
 
     @_abc_1.abstractmethod
     def RevokeSource(
@@ -120,5 +156,38 @@ class SourceAdminServiceServicer(metaclass=_abc_1.ABCMeta):
         context: _ServicerContext,
     ) -> _typing.Union[_source_admin_pb2.DeleteGrantResponse, _abc.Awaitable[_source_admin_pb2.DeleteGrantResponse]]:
         """取消授权（本部门的数据属主），1 分钟内在检索生效。"""
+
+    @_abc_1.abstractmethod
+    def ApplyGrant(
+        self,
+        request: _source_admin_pb2.ApplyGrantRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_source_admin_pb2.ApplyGrantResponse, _abc.Awaitable[_source_admin_pb2.ApplyGrantResponse]]:
+        """授权申请（governance 详设 6.2、9.1）：租户负责人为自己负责的租户申请某个数据源，数据源所属部门的数据属主审批，
+        审批通过即写入授权；申请人不能审批自己的申请。同一数据源与租户同时只有一个待审批的申请，7 天未审批自动过期。
+        """
+
+    @_abc_1.abstractmethod
+    def ListGrantApplications(
+        self,
+        request: _source_admin_pb2.ListGrantApplicationsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_source_admin_pb2.ListGrantApplicationsResponse, _abc.Awaitable[_source_admin_pb2.ListGrantApplicationsResponse]]:
+        """租户负责人看自己负责的租户的申请，数据属主看本部门数据源收到的申请。"""
+
+    @_abc_1.abstractmethod
+    def ApproveGrantApplication(
+        self,
+        request: _source_admin_pb2.ApproveGrantApplicationRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_source_admin_pb2.ApproveGrantApplicationResponse, _abc.Awaitable[_source_admin_pb2.ApproveGrantApplicationResponse]]: ...
+
+    @_abc_1.abstractmethod
+    def RejectGrantApplication(
+        self,
+        request: _source_admin_pb2.RejectGrantApplicationRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_source_admin_pb2.RejectGrantApplicationResponse, _abc.Awaitable[_source_admin_pb2.RejectGrantApplicationResponse]]:
+        """驳回（本部门的数据属主）或撤回（申请人本人）。"""
 
 def add_SourceAdminServiceServicer_to_server(servicer: SourceAdminServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

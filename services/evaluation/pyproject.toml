@@ -15,6 +15,8 @@ dependencies = [
     "pyyaml>=6.0",
     # 在线抽样评审的结果存 evaluation 自有的 schema（evaluation 详设 7.1），与 orchestrator 同一个驱动
     "psycopg[binary]>=3.2",
+    # 在线抽样评审读回答原文前写访问审计（evaluation 详设 7.1），写进开启对象锁的审计桶；与 processing 同一个客户端
+    "minio>=7.2",
 ]
 
 [tool.uv.sources]

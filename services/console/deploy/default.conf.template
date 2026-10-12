@@ -1,0 +1,49 @@
+# 由 nginx 镜像启动时用环境变量渲染（只替换已定义的变量，nginx 自己的 $host 等保持原样）
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    # location 里一旦写了 add_header 就不再继承 server 级的，所以安全头在每个 location 里各写一份
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+
+    # 运行时配置每次都取最新的
+    location = /config.json {
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Referrer-Policy no-referrer always;
+    }
+
+    # 对外接口同源代理到 gateway：浏览器不跨域，令牌只发给同源。流式回答（SSE）不能被缓冲
+    location /v1/ {
+        proxy_pass ${BF_GATEWAY_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+        client_max_body_size 2m;
+    }
+
+    # 前端路由：未知路径都回到 index.html；带哈希的静态资源长期缓存
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Referrer-Policy no-referrer always;
+        try_files $uri =404;
+    }
+    location / {
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Referrer-Policy no-referrer always;
+        try_files $uri /index.html;
+    }
+}

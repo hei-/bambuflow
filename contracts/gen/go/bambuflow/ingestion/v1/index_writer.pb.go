@@ -7,7 +7,7 @@
 package ingestionv1
 
 import (
-	v1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -193,6 +193,270 @@ func (WriteResult) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{2}
 }
 
+type RecordPurgeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 前缀 del_。
+	ReceiptId string `protobuf:"bytes,1,opt,name=receipt_id,json=receiptId,proto3" json:"receipt_id,omitempty"`
+	// object_store
+	Store         string                 `protobuf:"bytes,2,opt,name=store,proto3" json:"store,omitempty"`
+	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordPurgeRequest) Reset() {
+	*x = RecordPurgeRequest{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordPurgeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordPurgeRequest) ProtoMessage() {}
+
+func (x *RecordPurgeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordPurgeRequest.ProtoReflect.Descriptor instead.
+func (*RecordPurgeRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RecordPurgeRequest) GetReceiptId() string {
+	if x != nil {
+		return x.ReceiptId
+	}
+	return ""
+}
+
+func (x *RecordPurgeRequest) GetStore() string {
+	if x != nil {
+		return x.Store
+	}
+	return ""
+}
+
+func (x *RecordPurgeRequest) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+type RecordPurgeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordPurgeResponse) Reset() {
+	*x = RecordPurgeResponse{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordPurgeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordPurgeResponse) ProtoMessage() {}
+
+func (x *RecordPurgeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordPurgeResponse.ProtoReflect.Descriptor instead.
+func (*RecordPurgeResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{1}
+}
+
+type ListSourceDocumentsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSourceDocumentsRequest) Reset() {
+	*x = ListSourceDocumentsRequest{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSourceDocumentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSourceDocumentsRequest) ProtoMessage() {}
+
+func (x *ListSourceDocumentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSourceDocumentsRequest.ProtoReflect.Descriptor instead.
+func (*ListSourceDocumentsRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListSourceDocumentsRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+type IndexedDocument struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	DocId string                 `protobuf:"bytes,1,opt,name=doc_id,json=docId,proto3" json:"doc_id,omitempty"`
+	// 最近写入的内容摘要（与 DocumentChanged.content_hash 相同）
+	ContentHash    string            `protobuf:"bytes,2,opt,name=content_hash,json=contentHash,proto3" json:"content_hash,omitempty"`
+	AclTokens      []string          `protobuf:"bytes,3,rep,name=acl_tokens,json=aclTokens,proto3" json:"acl_tokens,omitempty"`
+	Classification v1.Classification `protobuf:"varint,4,opt,name=classification,proto3,enum=bambuflow.common.v1.Classification" json:"classification,omitempty"`
+	// 已打删除标记（含按保留期到期的）：对账不让它复活
+	Tombstoned    bool `protobuf:"varint,5,opt,name=tombstoned,proto3" json:"tombstoned,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexedDocument) Reset() {
+	*x = IndexedDocument{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexedDocument) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexedDocument) ProtoMessage() {}
+
+func (x *IndexedDocument) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexedDocument.ProtoReflect.Descriptor instead.
+func (*IndexedDocument) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *IndexedDocument) GetDocId() string {
+	if x != nil {
+		return x.DocId
+	}
+	return ""
+}
+
+func (x *IndexedDocument) GetContentHash() string {
+	if x != nil {
+		return x.ContentHash
+	}
+	return ""
+}
+
+func (x *IndexedDocument) GetAclTokens() []string {
+	if x != nil {
+		return x.AclTokens
+	}
+	return nil
+}
+
+func (x *IndexedDocument) GetClassification() v1.Classification {
+	if x != nil {
+		return x.Classification
+	}
+	return v1.Classification(0)
+}
+
+func (x *IndexedDocument) GetTombstoned() bool {
+	if x != nil {
+		return x.Tombstoned
+	}
+	return false
+}
+
+type ListSourceDocumentsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Documents     []*IndexedDocument     `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSourceDocumentsResponse) Reset() {
+	*x = ListSourceDocumentsResponse{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSourceDocumentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSourceDocumentsResponse) ProtoMessage() {}
+
+func (x *ListSourceDocumentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSourceDocumentsResponse.ProtoReflect.Descriptor instead.
+func (*ListSourceDocumentsResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListSourceDocumentsResponse) GetDocuments() []*IndexedDocument {
+	if x != nil {
+		return x.Documents
+	}
+	return nil
+}
+
 type UpdateAclRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	SourceId string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
@@ -208,7 +472,7 @@ type UpdateAclRequest struct {
 
 func (x *UpdateAclRequest) Reset() {
 	*x = UpdateAclRequest{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[0]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -220,7 +484,7 @@ func (x *UpdateAclRequest) String() string {
 func (*UpdateAclRequest) ProtoMessage() {}
 
 func (x *UpdateAclRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[0]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -233,7 +497,7 @@ func (x *UpdateAclRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAclRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAclRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{0}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *UpdateAclRequest) GetSourceId() string {
@@ -280,7 +544,7 @@ type UpdateAclResponse struct {
 
 func (x *UpdateAclResponse) Reset() {
 	*x = UpdateAclResponse{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[1]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -292,7 +556,7 @@ func (x *UpdateAclResponse) String() string {
 func (*UpdateAclResponse) ProtoMessage() {}
 
 func (x *UpdateAclResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[1]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -305,10 +569,280 @@ func (x *UpdateAclResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAclResponse.ProtoReflect.Descriptor instead.
 func (*UpdateAclResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateAclResponse) GetResult() AclResult {
+	if x != nil {
+		return x.Result
+	}
+	return AclResult_ACL_RESULT_UNSPECIFIED
+}
+
+type LookupVectorsRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	EmbeddingModelVersion string                 `protobuf:"bytes,1,opt,name=embedding_model_version,json=embeddingModelVersion,proto3" json:"embedding_model_version,omitempty"`
+	// 最多 1000 个
+	InputHashes   []string `protobuf:"bytes,2,rep,name=input_hashes,json=inputHashes,proto3" json:"input_hashes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupVectorsRequest) Reset() {
+	*x = LookupVectorsRequest{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupVectorsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupVectorsRequest) ProtoMessage() {}
+
+func (x *LookupVectorsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupVectorsRequest.ProtoReflect.Descriptor instead.
+func (*LookupVectorsRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *LookupVectorsRequest) GetEmbeddingModelVersion() string {
+	if x != nil {
+		return x.EmbeddingModelVersion
+	}
+	return ""
+}
+
+func (x *LookupVectorsRequest) GetInputHashes() []string {
+	if x != nil {
+		return x.InputHashes
+	}
+	return nil
+}
+
+type CachedVector struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InputHash     string                 `protobuf:"bytes,1,opt,name=input_hash,json=inputHash,proto3" json:"input_hash,omitempty"`
+	Embedding     []float32              `protobuf:"fixed32,2,rep,packed,name=embedding,proto3" json:"embedding,omitempty"`
+	Sparse        map[uint32]float32     `protobuf:"bytes,3,rep,name=sparse,proto3" json:"sparse,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CachedVector) Reset() {
+	*x = CachedVector{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CachedVector) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CachedVector) ProtoMessage() {}
+
+func (x *CachedVector) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CachedVector.ProtoReflect.Descriptor instead.
+func (*CachedVector) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CachedVector) GetInputHash() string {
+	if x != nil {
+		return x.InputHash
+	}
+	return ""
+}
+
+func (x *CachedVector) GetEmbedding() []float32 {
+	if x != nil {
+		return x.Embedding
+	}
+	return nil
+}
+
+func (x *CachedVector) GetSparse() map[uint32]float32 {
+	if x != nil {
+		return x.Sparse
+	}
+	return nil
+}
+
+type LookupVectorsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Vectors       []*CachedVector        `protobuf:"bytes,1,rep,name=vectors,proto3" json:"vectors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupVectorsResponse) Reset() {
+	*x = LookupVectorsResponse{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupVectorsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupVectorsResponse) ProtoMessage() {}
+
+func (x *LookupVectorsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupVectorsResponse.ProtoReflect.Descriptor instead.
+func (*LookupVectorsResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *LookupVectorsResponse) GetVectors() []*CachedVector {
+	if x != nil {
+		return x.Vectors
+	}
+	return nil
+}
+
+type SetPartitionGrantsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Partition     string                 `protobuf:"bytes,2,opt,name=partition,proto3" json:"partition,omitempty"`
+	Grantees      []string               `protobuf:"bytes,3,rep,name=grantees,proto3" json:"grantees,omitempty"`
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPartitionGrantsRequest) Reset() {
+	*x = SetPartitionGrantsRequest{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPartitionGrantsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPartitionGrantsRequest) ProtoMessage() {}
+
+func (x *SetPartitionGrantsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPartitionGrantsRequest.ProtoReflect.Descriptor instead.
+func (*SetPartitionGrantsRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *SetPartitionGrantsRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *SetPartitionGrantsRequest) GetPartition() string {
+	if x != nil {
+		return x.Partition
+	}
+	return ""
+}
+
+func (x *SetPartitionGrantsRequest) GetGrantees() []string {
+	if x != nil {
+		return x.Grantees
+	}
+	return nil
+}
+
+func (x *SetPartitionGrantsRequest) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
+type SetPartitionGrantsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 与权限更新同一套结果：updated、unchanged、stale（乱序到达的旧事件）
+	Result        AclResult `protobuf:"varint,1,opt,name=result,proto3,enum=bambuflow.ingestion.v1.AclResult" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPartitionGrantsResponse) Reset() {
+	*x = SetPartitionGrantsResponse{}
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPartitionGrantsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPartitionGrantsResponse) ProtoMessage() {}
+
+func (x *SetPartitionGrantsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPartitionGrantsResponse.ProtoReflect.Descriptor instead.
+func (*SetPartitionGrantsResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *SetPartitionGrantsResponse) GetResult() AclResult {
 	if x != nil {
 		return x.Result
 	}
@@ -327,7 +861,7 @@ type TombstoneDocumentRequest struct {
 
 func (x *TombstoneDocumentRequest) Reset() {
 	*x = TombstoneDocumentRequest{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[2]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -339,7 +873,7 @@ func (x *TombstoneDocumentRequest) String() string {
 func (*TombstoneDocumentRequest) ProtoMessage() {}
 
 func (x *TombstoneDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[2]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -352,7 +886,7 @@ func (x *TombstoneDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TombstoneDocumentRequest.ProtoReflect.Descriptor instead.
 func (*TombstoneDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *TombstoneDocumentRequest) GetSourceId() string {
@@ -385,7 +919,7 @@ type TombstoneDocumentResponse struct {
 
 func (x *TombstoneDocumentResponse) Reset() {
 	*x = TombstoneDocumentResponse{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[3]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -397,7 +931,7 @@ func (x *TombstoneDocumentResponse) String() string {
 func (*TombstoneDocumentResponse) ProtoMessage() {}
 
 func (x *TombstoneDocumentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[3]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -410,7 +944,7 @@ func (x *TombstoneDocumentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TombstoneDocumentResponse.ProtoReflect.Descriptor instead.
 func (*TombstoneDocumentResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *TombstoneDocumentResponse) GetResult() TombstoneResult {
@@ -454,7 +988,7 @@ type WriteDocumentRequest struct {
 
 func (x *WriteDocumentRequest) Reset() {
 	*x = WriteDocumentRequest{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[4]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +1000,7 @@ func (x *WriteDocumentRequest) String() string {
 func (*WriteDocumentRequest) ProtoMessage() {}
 
 func (x *WriteDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[4]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +1013,7 @@ func (x *WriteDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteDocumentRequest.ProtoReflect.Descriptor instead.
 func (*WriteDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *WriteDocumentRequest) GetIdempotencyKey() string {
@@ -626,7 +1160,7 @@ type Enrichment struct {
 
 func (x *Enrichment) Reset() {
 	*x = Enrichment{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[5]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -638,7 +1172,7 @@ func (x *Enrichment) String() string {
 func (*Enrichment) ProtoMessage() {}
 
 func (x *Enrichment) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[5]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -651,7 +1185,7 @@ func (x *Enrichment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Enrichment.ProtoReflect.Descriptor instead.
 func (*Enrichment) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Enrichment) GetSummaryChunk() *Chunk {
@@ -695,7 +1229,7 @@ type SectionSummary struct {
 
 func (x *SectionSummary) Reset() {
 	*x = SectionSummary{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[6]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -707,7 +1241,7 @@ func (x *SectionSummary) String() string {
 func (*SectionSummary) ProtoMessage() {}
 
 func (x *SectionSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[6]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -720,7 +1254,7 @@ func (x *SectionSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SectionSummary.ProtoReflect.Descriptor instead.
 func (*SectionSummary) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SectionSummary) GetParentChunkId() string {
@@ -765,7 +1299,7 @@ type Entity struct {
 
 func (x *Entity) Reset() {
 	*x = Entity{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[7]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -777,7 +1311,7 @@ func (x *Entity) String() string {
 func (*Entity) ProtoMessage() {}
 
 func (x *Entity) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[7]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -790,7 +1324,7 @@ func (x *Entity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Entity.ProtoReflect.Descriptor instead.
 func (*Entity) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Entity) GetType() v1.EntityType {
@@ -831,7 +1365,7 @@ type Relation struct {
 
 func (x *Relation) Reset() {
 	*x = Relation{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[8]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -843,7 +1377,7 @@ func (x *Relation) String() string {
 func (*Relation) ProtoMessage() {}
 
 func (x *Relation) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[8]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -856,7 +1390,7 @@ func (x *Relation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Relation.ProtoReflect.Descriptor instead.
 func (*Relation) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{8}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Relation) GetSubject() *Entity {
@@ -916,14 +1450,19 @@ type Chunk struct {
 	InjectionFlag bool `protobuf:"varint,8,opt,name=injection_flag,json=injectionFlag,proto3" json:"injection_flag,omitempty"`
 	// text 里 PII 已做等长掩码（入库管道详设第 6 节：索引只存掩码文本）；原值用信封加密单独保存，
 	// 只有策略允许看 PII 原文的调用者在检索返回时解密还原。没有 PII 的块为空。
-	Pii           *SealedPII `protobuf:"bytes,9,opt,name=pii,proto3" json:"pii,omitempty"`
+	Pii *SealedPII `protobuf:"bytes,9,opt,name=pii,proto3" json:"pii,omitempty"`
+	// 向量化输入（标题路径 + 文本）的 SHA-256：按块的向量缓存（入库管道详设第 8 节）按它与嵌入模型版本查找
+	InputHash string `protobuf:"bytes,10,opt,name=input_hash,json=inputHash,proto3" json:"input_hash,omitempty"`
+	// 学习型稀疏向量（词元 ID → 权重，retrieval 详设 6.2 的 sparse 召回路），与稠密向量出自同一次嵌入调用；
+	// 嵌入模型不给稀疏向量时为空
+	Sparse        map[uint32]float32 `protobuf:"bytes,11,rep,name=sparse,proto3" json:"sparse,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Chunk) Reset() {
 	*x = Chunk{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[9]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -935,7 +1474,7 @@ func (x *Chunk) String() string {
 func (*Chunk) ProtoMessage() {}
 
 func (x *Chunk) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[9]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -948,7 +1487,7 @@ func (x *Chunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Chunk.ProtoReflect.Descriptor instead.
 func (*Chunk) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{9}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Chunk) GetChunkId() string {
@@ -1014,6 +1553,20 @@ func (x *Chunk) GetPii() *SealedPII {
 	return nil
 }
 
+func (x *Chunk) GetInputHash() string {
+	if x != nil {
+		return x.InputHash
+	}
+	return ""
+}
+
+func (x *Chunk) GetSparse() map[uint32]float32 {
+	if x != nil {
+		return x.Sparse
+	}
+	return nil
+}
+
 // 一个块里 PII 原值的密文（技术设计文档 8.6 应用层信封加密）：
 // 明文是 [[start, end, 原值], …] 的 JSON（start、end 为 text 里被掩码片段的 Unicode 字符位置），
 // 用文档级数据密钥 AES-256-GCM 加密，附加数据为 chunk_id；数据密钥由密钥服务（默认 Vault transit）的主密钥包裹。
@@ -1031,7 +1584,7 @@ type SealedPII struct {
 
 func (x *SealedPII) Reset() {
 	*x = SealedPII{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1043,7 +1596,7 @@ func (x *SealedPII) String() string {
 func (*SealedPII) ProtoMessage() {}
 
 func (x *SealedPII) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[10]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1056,7 +1609,7 @@ func (x *SealedPII) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealedPII.ProtoReflect.Descriptor instead.
 func (*SealedPII) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SealedPII) GetCiphertext() []byte {
@@ -1093,7 +1646,7 @@ type WriteDocumentResponse struct {
 
 func (x *WriteDocumentResponse) Reset() {
 	*x = WriteDocumentResponse{}
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[11]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1105,7 +1658,7 @@ func (x *WriteDocumentResponse) String() string {
 func (*WriteDocumentResponse) ProtoMessage() {}
 
 func (x *WriteDocumentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[11]
+	mi := &file_bambuflow_ingestion_v1_index_writer_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1118,7 +1671,7 @@ func (x *WriteDocumentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteDocumentResponse.ProtoReflect.Descriptor instead.
 func (*WriteDocumentResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{11}
+	return file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *WriteDocumentResponse) GetResult() WriteResult {
@@ -1153,7 +1706,26 @@ var File_bambuflow_ingestion_v1_index_writer_proto protoreflect.FileDescriptor
 
 const file_bambuflow_ingestion_v1_index_writer_proto_rawDesc = "" +
 	"\n" +
-	")bambuflow/ingestion/v1/index_writer.proto\x12\x16bambuflow.ingestion.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xef\x01\n" +
+	")bambuflow/ingestion/v1/index_writer.proto\x12\x16bambuflow.ingestion.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x01\n" +
+	"\x12RecordPurgeRequest\x12\x1d\n" +
+	"\n" +
+	"receipt_id\x18\x01 \x01(\tR\treceiptId\x12\x14\n" +
+	"\x05store\x18\x02 \x01(\tR\x05store\x12=\n" +
+	"\fcompleted_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"\x15\n" +
+	"\x13RecordPurgeResponse\"9\n" +
+	"\x1aListSourceDocumentsRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\"\xd7\x01\n" +
+	"\x0fIndexedDocument\x12\x15\n" +
+	"\x06doc_id\x18\x01 \x01(\tR\x05docId\x12!\n" +
+	"\fcontent_hash\x18\x02 \x01(\tR\vcontentHash\x12\x1d\n" +
+	"\n" +
+	"acl_tokens\x18\x03 \x03(\tR\taclTokens\x12K\n" +
+	"\x0eclassification\x18\x04 \x01(\x0e2#.bambuflow.common.v1.ClassificationR\x0eclassification\x12\x1e\n" +
+	"\n" +
+	"tombstoned\x18\x05 \x01(\bR\n" +
+	"tombstoned\"d\n" +
+	"\x1bListSourceDocumentsResponse\x12E\n" +
+	"\tdocuments\x18\x01 \x03(\v2'.bambuflow.ingestion.v1.IndexedDocumentR\tdocuments\"\xef\x01\n" +
 	"\x10UpdateAclRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x15\n" +
 	"\x06doc_id\x18\x02 \x01(\tR\x05docId\x12\x1d\n" +
@@ -1163,6 +1735,27 @@ const file_bambuflow_ingestion_v1_index_writer_proto_rawDesc = "" +
 	"\voccurred_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"occurredAt\"N\n" +
 	"\x11UpdateAclResponse\x129\n" +
+	"\x06result\x18\x01 \x01(\x0e2!.bambuflow.ingestion.v1.AclResultR\x06result\"q\n" +
+	"\x14LookupVectorsRequest\x126\n" +
+	"\x17embedding_model_version\x18\x01 \x01(\tR\x15embeddingModelVersion\x12!\n" +
+	"\finput_hashes\x18\x02 \x03(\tR\vinputHashes\"\xd0\x01\n" +
+	"\fCachedVector\x12\x1d\n" +
+	"\n" +
+	"input_hash\x18\x01 \x01(\tR\tinputHash\x12\x1c\n" +
+	"\tembedding\x18\x02 \x03(\x02R\tembedding\x12H\n" +
+	"\x06sparse\x18\x03 \x03(\v20.bambuflow.ingestion.v1.CachedVector.SparseEntryR\x06sparse\x1a9\n" +
+	"\vSparseEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\rR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x02R\x05value:\x028\x01\"W\n" +
+	"\x15LookupVectorsResponse\x12>\n" +
+	"\avectors\x18\x01 \x03(\v2$.bambuflow.ingestion.v1.CachedVectorR\avectors\"\xaf\x01\n" +
+	"\x19SetPartitionGrantsRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x1c\n" +
+	"\tpartition\x18\x02 \x01(\tR\tpartition\x12\x1a\n" +
+	"\bgrantees\x18\x03 \x03(\tR\bgrantees\x12;\n" +
+	"\voccurred_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\"W\n" +
+	"\x1aSetPartitionGrantsResponse\x129\n" +
 	"\x06result\x18\x01 \x01(\x0e2!.bambuflow.ingestion.v1.AclResultR\x06result\"\x8b\x01\n" +
 	"\x18TombstoneDocumentRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x15\n" +
@@ -1220,7 +1813,7 @@ const file_bambuflow_ingestion_v1_index_writer_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\x05 \x01(\x02R\n" +
 	"confidence\x12+\n" +
-	"\x11extractor_version\x18\x06 \x01(\tR\x10extractorVersion\"\xc7\x02\n" +
+	"\x11extractor_version\x18\x06 \x01(\tR\x10extractorVersion\"\xe4\x03\n" +
 	"\x05Chunk\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12&\n" +
 	"\x0fparent_chunk_id\x18\x02 \x01(\tR\rparentChunkId\x12!\n" +
@@ -1230,7 +1823,14 @@ const file_bambuflow_ingestion_v1_index_writer_proto_rawDesc = "" +
 	"\x04span\x18\x06 \x01(\v2\x19.bambuflow.common.v1.SpanR\x04span\x12\x1c\n" +
 	"\tembedding\x18\a \x03(\x02R\tembedding\x12%\n" +
 	"\x0einjection_flag\x18\b \x01(\bR\rinjectionFlag\x123\n" +
-	"\x03pii\x18\t \x01(\v2!.bambuflow.ingestion.v1.SealedPIIR\x03pii\"c\n" +
+	"\x03pii\x18\t \x01(\v2!.bambuflow.ingestion.v1.SealedPIIR\x03pii\x12\x1d\n" +
+	"\n" +
+	"input_hash\x18\n" +
+	" \x01(\tR\tinputHash\x12A\n" +
+	"\x06sparse\x18\v \x03(\v2).bambuflow.ingestion.v1.Chunk.SparseEntryR\x06sparse\x1a9\n" +
+	"\vSparseEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\rR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x02R\x05value:\x028\x01\"c\n" +
 	"\tSealedPII\x12\x1e\n" +
 	"\n" +
 	"ciphertext\x18\x01 \x01(\fR\n" +
@@ -1261,12 +1861,16 @@ const file_bambuflow_ingestion_v1_index_writer_proto_rawDesc = "" +
 	"\x14WRITE_RESULT_WRITTEN\x10\x01\x12\x1a\n" +
 	"\x16WRITE_RESULT_UNCHANGED\x10\x02\x12\x1e\n" +
 	"\x1aWRITE_RESULT_STALE_VERSION\x10\x03\x12\x1f\n" +
-	"\x1bWRITE_RESULT_MODEL_MISMATCH\x10\x042\xde\x02\n" +
+	"\x1bWRITE_RESULT_MODEL_MISMATCH\x10\x042\xb4\x06\n" +
 	"\x12IndexWriterService\x12l\n" +
 	"\rWriteDocument\x12,.bambuflow.ingestion.v1.WriteDocumentRequest\x1a-.bambuflow.ingestion.v1.WriteDocumentResponse\x12x\n" +
 	"\x11TombstoneDocument\x120.bambuflow.ingestion.v1.TombstoneDocumentRequest\x1a1.bambuflow.ingestion.v1.TombstoneDocumentResponse\x12`\n" +
-	"\tUpdateAcl\x12(.bambuflow.ingestion.v1.UpdateAclRequest\x1a).bambuflow.ingestion.v1.UpdateAclResponseB\xfb\x01\n" +
-	"\x1acom.bambuflow.ingestion.v1B\x10IndexWriterProtoP\x01ZQgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\xa2\x02\x03BIX\xaa\x02\x16Bambuflow.Ingestion.V1\xca\x02\x16Bambuflow\\Ingestion\\V1\xe2\x02\"Bambuflow\\Ingestion\\V1\\GPBMetadata\xea\x02\x18Bambuflow::Ingestion::V1b\x06proto3"
+	"\tUpdateAcl\x12(.bambuflow.ingestion.v1.UpdateAclRequest\x1a).bambuflow.ingestion.v1.UpdateAclResponse\x12l\n" +
+	"\rLookupVectors\x12,.bambuflow.ingestion.v1.LookupVectorsRequest\x1a-.bambuflow.ingestion.v1.LookupVectorsResponse\x12{\n" +
+	"\x12SetPartitionGrants\x121.bambuflow.ingestion.v1.SetPartitionGrantsRequest\x1a2.bambuflow.ingestion.v1.SetPartitionGrantsResponse\x12\x80\x01\n" +
+	"\x13ListSourceDocuments\x122.bambuflow.ingestion.v1.ListSourceDocumentsRequest\x1a3.bambuflow.ingestion.v1.ListSourceDocumentsResponse0\x01\x12f\n" +
+	"\vRecordPurge\x12*.bambuflow.ingestion.v1.RecordPurgeRequest\x1a+.bambuflow.ingestion.v1.RecordPurgeResponseB\xf7\x01\n" +
+	"\x1acom.bambuflow.ingestion.v1B\x10IndexWriterProtoP\x01ZMgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\xa2\x02\x03BIX\xaa\x02\x16Bambuflow.Ingestion.V1\xca\x02\x16Bambuflow\\Ingestion\\V1\xe2\x02\"Bambuflow\\Ingestion\\V1\\GPBMetadata\xea\x02\x18Bambuflow::Ingestion::V1b\x06proto3"
 
 var (
 	file_bambuflow_ingestion_v1_index_writer_proto_rawDescOnce sync.Once
@@ -1281,64 +1885,92 @@ func file_bambuflow_ingestion_v1_index_writer_proto_rawDescGZIP() []byte {
 }
 
 var file_bambuflow_ingestion_v1_index_writer_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_bambuflow_ingestion_v1_index_writer_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_bambuflow_ingestion_v1_index_writer_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_bambuflow_ingestion_v1_index_writer_proto_goTypes = []any{
-	(AclResult)(0),                    // 0: bambuflow.ingestion.v1.AclResult
-	(TombstoneResult)(0),              // 1: bambuflow.ingestion.v1.TombstoneResult
-	(WriteResult)(0),                  // 2: bambuflow.ingestion.v1.WriteResult
-	(*UpdateAclRequest)(nil),          // 3: bambuflow.ingestion.v1.UpdateAclRequest
-	(*UpdateAclResponse)(nil),         // 4: bambuflow.ingestion.v1.UpdateAclResponse
-	(*TombstoneDocumentRequest)(nil),  // 5: bambuflow.ingestion.v1.TombstoneDocumentRequest
-	(*TombstoneDocumentResponse)(nil), // 6: bambuflow.ingestion.v1.TombstoneDocumentResponse
-	(*WriteDocumentRequest)(nil),      // 7: bambuflow.ingestion.v1.WriteDocumentRequest
-	(*Enrichment)(nil),                // 8: bambuflow.ingestion.v1.Enrichment
-	(*SectionSummary)(nil),            // 9: bambuflow.ingestion.v1.SectionSummary
-	(*Entity)(nil),                    // 10: bambuflow.ingestion.v1.Entity
-	(*Relation)(nil),                  // 11: bambuflow.ingestion.v1.Relation
-	(*Chunk)(nil),                     // 12: bambuflow.ingestion.v1.Chunk
-	(*SealedPII)(nil),                 // 13: bambuflow.ingestion.v1.SealedPII
-	(*WriteDocumentResponse)(nil),     // 14: bambuflow.ingestion.v1.WriteDocumentResponse
-	(v1.Classification)(0),            // 15: bambuflow.common.v1.Classification
-	(*timestamppb.Timestamp)(nil),     // 16: google.protobuf.Timestamp
-	(v1.SourceType)(0),                // 17: bambuflow.common.v1.SourceType
-	(*v1.DocMetadata)(nil),            // 18: bambuflow.common.v1.DocMetadata
-	(v1.EntityType)(0),                // 19: bambuflow.common.v1.EntityType
-	(v1.RelationType)(0),              // 20: bambuflow.common.v1.RelationType
-	(*v1.Span)(nil),                   // 21: bambuflow.common.v1.Span
+	(AclResult)(0),                      // 0: bambuflow.ingestion.v1.AclResult
+	(TombstoneResult)(0),                // 1: bambuflow.ingestion.v1.TombstoneResult
+	(WriteResult)(0),                    // 2: bambuflow.ingestion.v1.WriteResult
+	(*RecordPurgeRequest)(nil),          // 3: bambuflow.ingestion.v1.RecordPurgeRequest
+	(*RecordPurgeResponse)(nil),         // 4: bambuflow.ingestion.v1.RecordPurgeResponse
+	(*ListSourceDocumentsRequest)(nil),  // 5: bambuflow.ingestion.v1.ListSourceDocumentsRequest
+	(*IndexedDocument)(nil),             // 6: bambuflow.ingestion.v1.IndexedDocument
+	(*ListSourceDocumentsResponse)(nil), // 7: bambuflow.ingestion.v1.ListSourceDocumentsResponse
+	(*UpdateAclRequest)(nil),            // 8: bambuflow.ingestion.v1.UpdateAclRequest
+	(*UpdateAclResponse)(nil),           // 9: bambuflow.ingestion.v1.UpdateAclResponse
+	(*LookupVectorsRequest)(nil),        // 10: bambuflow.ingestion.v1.LookupVectorsRequest
+	(*CachedVector)(nil),                // 11: bambuflow.ingestion.v1.CachedVector
+	(*LookupVectorsResponse)(nil),       // 12: bambuflow.ingestion.v1.LookupVectorsResponse
+	(*SetPartitionGrantsRequest)(nil),   // 13: bambuflow.ingestion.v1.SetPartitionGrantsRequest
+	(*SetPartitionGrantsResponse)(nil),  // 14: bambuflow.ingestion.v1.SetPartitionGrantsResponse
+	(*TombstoneDocumentRequest)(nil),    // 15: bambuflow.ingestion.v1.TombstoneDocumentRequest
+	(*TombstoneDocumentResponse)(nil),   // 16: bambuflow.ingestion.v1.TombstoneDocumentResponse
+	(*WriteDocumentRequest)(nil),        // 17: bambuflow.ingestion.v1.WriteDocumentRequest
+	(*Enrichment)(nil),                  // 18: bambuflow.ingestion.v1.Enrichment
+	(*SectionSummary)(nil),              // 19: bambuflow.ingestion.v1.SectionSummary
+	(*Entity)(nil),                      // 20: bambuflow.ingestion.v1.Entity
+	(*Relation)(nil),                    // 21: bambuflow.ingestion.v1.Relation
+	(*Chunk)(nil),                       // 22: bambuflow.ingestion.v1.Chunk
+	(*SealedPII)(nil),                   // 23: bambuflow.ingestion.v1.SealedPII
+	(*WriteDocumentResponse)(nil),       // 24: bambuflow.ingestion.v1.WriteDocumentResponse
+	nil,                                 // 25: bambuflow.ingestion.v1.CachedVector.SparseEntry
+	nil,                                 // 26: bambuflow.ingestion.v1.Chunk.SparseEntry
+	(*timestamppb.Timestamp)(nil),       // 27: google.protobuf.Timestamp
+	(v1.Classification)(0),              // 28: bambuflow.common.v1.Classification
+	(v1.SourceType)(0),                  // 29: bambuflow.common.v1.SourceType
+	(*v1.DocMetadata)(nil),              // 30: bambuflow.common.v1.DocMetadata
+	(v1.EntityType)(0),                  // 31: bambuflow.common.v1.EntityType
+	(v1.RelationType)(0),                // 32: bambuflow.common.v1.RelationType
+	(*v1.Span)(nil),                     // 33: bambuflow.common.v1.Span
 }
 var file_bambuflow_ingestion_v1_index_writer_proto_depIdxs = []int32{
-	15, // 0: bambuflow.ingestion.v1.UpdateAclRequest.classification:type_name -> bambuflow.common.v1.Classification
-	16, // 1: bambuflow.ingestion.v1.UpdateAclRequest.occurred_at:type_name -> google.protobuf.Timestamp
-	0,  // 2: bambuflow.ingestion.v1.UpdateAclResponse.result:type_name -> bambuflow.ingestion.v1.AclResult
-	16, // 3: bambuflow.ingestion.v1.TombstoneDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
-	1,  // 4: bambuflow.ingestion.v1.TombstoneDocumentResponse.result:type_name -> bambuflow.ingestion.v1.TombstoneResult
-	16, // 5: bambuflow.ingestion.v1.WriteDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
-	17, // 6: bambuflow.ingestion.v1.WriteDocumentRequest.source_type:type_name -> bambuflow.common.v1.SourceType
-	15, // 7: bambuflow.ingestion.v1.WriteDocumentRequest.classification:type_name -> bambuflow.common.v1.Classification
-	12, // 8: bambuflow.ingestion.v1.WriteDocumentRequest.chunks:type_name -> bambuflow.ingestion.v1.Chunk
-	18, // 9: bambuflow.ingestion.v1.WriteDocumentRequest.metadata:type_name -> bambuflow.common.v1.DocMetadata
-	11, // 10: bambuflow.ingestion.v1.WriteDocumentRequest.relations:type_name -> bambuflow.ingestion.v1.Relation
-	8,  // 11: bambuflow.ingestion.v1.WriteDocumentRequest.enrichment:type_name -> bambuflow.ingestion.v1.Enrichment
-	12, // 12: bambuflow.ingestion.v1.Enrichment.summary_chunk:type_name -> bambuflow.ingestion.v1.Chunk
-	9,  // 13: bambuflow.ingestion.v1.Enrichment.sections:type_name -> bambuflow.ingestion.v1.SectionSummary
-	19, // 14: bambuflow.ingestion.v1.Entity.type:type_name -> bambuflow.common.v1.EntityType
-	10, // 15: bambuflow.ingestion.v1.Relation.subject:type_name -> bambuflow.ingestion.v1.Entity
-	20, // 16: bambuflow.ingestion.v1.Relation.relation_type:type_name -> bambuflow.common.v1.RelationType
-	10, // 17: bambuflow.ingestion.v1.Relation.object:type_name -> bambuflow.ingestion.v1.Entity
-	21, // 18: bambuflow.ingestion.v1.Chunk.span:type_name -> bambuflow.common.v1.Span
-	13, // 19: bambuflow.ingestion.v1.Chunk.pii:type_name -> bambuflow.ingestion.v1.SealedPII
-	2,  // 20: bambuflow.ingestion.v1.WriteDocumentResponse.result:type_name -> bambuflow.ingestion.v1.WriteResult
-	7,  // 21: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:input_type -> bambuflow.ingestion.v1.WriteDocumentRequest
-	5,  // 22: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:input_type -> bambuflow.ingestion.v1.TombstoneDocumentRequest
-	3,  // 23: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:input_type -> bambuflow.ingestion.v1.UpdateAclRequest
-	14, // 24: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:output_type -> bambuflow.ingestion.v1.WriteDocumentResponse
-	6,  // 25: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:output_type -> bambuflow.ingestion.v1.TombstoneDocumentResponse
-	4,  // 26: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:output_type -> bambuflow.ingestion.v1.UpdateAclResponse
-	24, // [24:27] is the sub-list for method output_type
-	21, // [21:24] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	27, // 0: bambuflow.ingestion.v1.RecordPurgeRequest.completed_at:type_name -> google.protobuf.Timestamp
+	28, // 1: bambuflow.ingestion.v1.IndexedDocument.classification:type_name -> bambuflow.common.v1.Classification
+	6,  // 2: bambuflow.ingestion.v1.ListSourceDocumentsResponse.documents:type_name -> bambuflow.ingestion.v1.IndexedDocument
+	28, // 3: bambuflow.ingestion.v1.UpdateAclRequest.classification:type_name -> bambuflow.common.v1.Classification
+	27, // 4: bambuflow.ingestion.v1.UpdateAclRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	0,  // 5: bambuflow.ingestion.v1.UpdateAclResponse.result:type_name -> bambuflow.ingestion.v1.AclResult
+	25, // 6: bambuflow.ingestion.v1.CachedVector.sparse:type_name -> bambuflow.ingestion.v1.CachedVector.SparseEntry
+	11, // 7: bambuflow.ingestion.v1.LookupVectorsResponse.vectors:type_name -> bambuflow.ingestion.v1.CachedVector
+	27, // 8: bambuflow.ingestion.v1.SetPartitionGrantsRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	0,  // 9: bambuflow.ingestion.v1.SetPartitionGrantsResponse.result:type_name -> bambuflow.ingestion.v1.AclResult
+	27, // 10: bambuflow.ingestion.v1.TombstoneDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	1,  // 11: bambuflow.ingestion.v1.TombstoneDocumentResponse.result:type_name -> bambuflow.ingestion.v1.TombstoneResult
+	27, // 12: bambuflow.ingestion.v1.WriteDocumentRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	29, // 13: bambuflow.ingestion.v1.WriteDocumentRequest.source_type:type_name -> bambuflow.common.v1.SourceType
+	28, // 14: bambuflow.ingestion.v1.WriteDocumentRequest.classification:type_name -> bambuflow.common.v1.Classification
+	22, // 15: bambuflow.ingestion.v1.WriteDocumentRequest.chunks:type_name -> bambuflow.ingestion.v1.Chunk
+	30, // 16: bambuflow.ingestion.v1.WriteDocumentRequest.metadata:type_name -> bambuflow.common.v1.DocMetadata
+	21, // 17: bambuflow.ingestion.v1.WriteDocumentRequest.relations:type_name -> bambuflow.ingestion.v1.Relation
+	18, // 18: bambuflow.ingestion.v1.WriteDocumentRequest.enrichment:type_name -> bambuflow.ingestion.v1.Enrichment
+	22, // 19: bambuflow.ingestion.v1.Enrichment.summary_chunk:type_name -> bambuflow.ingestion.v1.Chunk
+	19, // 20: bambuflow.ingestion.v1.Enrichment.sections:type_name -> bambuflow.ingestion.v1.SectionSummary
+	31, // 21: bambuflow.ingestion.v1.Entity.type:type_name -> bambuflow.common.v1.EntityType
+	20, // 22: bambuflow.ingestion.v1.Relation.subject:type_name -> bambuflow.ingestion.v1.Entity
+	32, // 23: bambuflow.ingestion.v1.Relation.relation_type:type_name -> bambuflow.common.v1.RelationType
+	20, // 24: bambuflow.ingestion.v1.Relation.object:type_name -> bambuflow.ingestion.v1.Entity
+	33, // 25: bambuflow.ingestion.v1.Chunk.span:type_name -> bambuflow.common.v1.Span
+	23, // 26: bambuflow.ingestion.v1.Chunk.pii:type_name -> bambuflow.ingestion.v1.SealedPII
+	26, // 27: bambuflow.ingestion.v1.Chunk.sparse:type_name -> bambuflow.ingestion.v1.Chunk.SparseEntry
+	2,  // 28: bambuflow.ingestion.v1.WriteDocumentResponse.result:type_name -> bambuflow.ingestion.v1.WriteResult
+	17, // 29: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:input_type -> bambuflow.ingestion.v1.WriteDocumentRequest
+	15, // 30: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:input_type -> bambuflow.ingestion.v1.TombstoneDocumentRequest
+	8,  // 31: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:input_type -> bambuflow.ingestion.v1.UpdateAclRequest
+	10, // 32: bambuflow.ingestion.v1.IndexWriterService.LookupVectors:input_type -> bambuflow.ingestion.v1.LookupVectorsRequest
+	13, // 33: bambuflow.ingestion.v1.IndexWriterService.SetPartitionGrants:input_type -> bambuflow.ingestion.v1.SetPartitionGrantsRequest
+	5,  // 34: bambuflow.ingestion.v1.IndexWriterService.ListSourceDocuments:input_type -> bambuflow.ingestion.v1.ListSourceDocumentsRequest
+	3,  // 35: bambuflow.ingestion.v1.IndexWriterService.RecordPurge:input_type -> bambuflow.ingestion.v1.RecordPurgeRequest
+	24, // 36: bambuflow.ingestion.v1.IndexWriterService.WriteDocument:output_type -> bambuflow.ingestion.v1.WriteDocumentResponse
+	16, // 37: bambuflow.ingestion.v1.IndexWriterService.TombstoneDocument:output_type -> bambuflow.ingestion.v1.TombstoneDocumentResponse
+	9,  // 38: bambuflow.ingestion.v1.IndexWriterService.UpdateAcl:output_type -> bambuflow.ingestion.v1.UpdateAclResponse
+	12, // 39: bambuflow.ingestion.v1.IndexWriterService.LookupVectors:output_type -> bambuflow.ingestion.v1.LookupVectorsResponse
+	14, // 40: bambuflow.ingestion.v1.IndexWriterService.SetPartitionGrants:output_type -> bambuflow.ingestion.v1.SetPartitionGrantsResponse
+	7,  // 41: bambuflow.ingestion.v1.IndexWriterService.ListSourceDocuments:output_type -> bambuflow.ingestion.v1.ListSourceDocumentsResponse
+	4,  // 42: bambuflow.ingestion.v1.IndexWriterService.RecordPurge:output_type -> bambuflow.ingestion.v1.RecordPurgeResponse
+	36, // [36:43] is the sub-list for method output_type
+	29, // [29:36] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_ingestion_v1_index_writer_proto_init() }
@@ -1352,7 +1984,7 @@ func file_bambuflow_ingestion_v1_index_writer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_ingestion_v1_index_writer_proto_rawDesc), len(file_bambuflow_ingestion_v1_index_writer_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   12,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

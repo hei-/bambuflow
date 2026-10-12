@@ -40,4 +40,14 @@ message DailyQuality {
   // 判定用的 NLI 模型（与线上校验器不同，evaluation 详设 6.1）
   string judge_model = 6;
   google.protobuf.Timestamp computed_at = 7;
+  // 当天全部回答数与收到各类反馈的回答数（技术设计文档 F8：反馈聚合）；一条回答可能有多种反馈
+  int32 answers = 8;
+  int32 feedback_useful = 9;
+  int32 feedback_wrong = 10;
+  int32 feedback_bad_citation = 11;
+  // LLM 评审的 Faithfulness（回答不与引文矛盾的比例，evaluation 详设 7.1）；没配评审模型或没评成时不设
+  optional double faithfulness = 12;
+  // 评审成功的回答数与评审模型（模型 + 提示词版本）
+  int32 faithfulness_judged = 13;
+  string llm_judge = 14;
 }

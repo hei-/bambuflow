@@ -94,6 +94,29 @@ class Vocabulary:
             out = re.sub(re.escape(n), "，", out, flags=re.IGNORECASE)
         return out
 
+    def canonical(self, text: str) -> str:
+        """把文本里的同义词换成词条的规范名称（停用的编码换成替代编码的名称）。
+        从左到右每处取最长的说法，所以“住房贷款”整体算一个词条，不会把其中的“贷款”换掉。
+        用于查询的同义扩展（orchestrator 详设 5.1）：没有可换的说法时原样返回。"""
+        names = {
+            n: self.name(self.resolve(t.code)) for t in self._terms.values() for n in t.names if n
+        }
+        longest = max((len(n) for n in names), default=0)
+        out, i = [], 0
+        while i < len(text):
+            hit = ""
+            for k in range(min(longest, len(text) - i), 0, -1):
+                if text[i : i + k] in names:
+                    hit = text[i : i + k]
+                    break
+            if hit:
+                out.append(names[hit])
+                i += len(hit)
+            else:
+                out.append(text[i])
+                i += 1
+        return "".join(out)
+
     def with_descendants(self, code: str) -> list[str]:
         """编码本身加上全部下级（按上级查询时包含下级）。"""
         out = [code]

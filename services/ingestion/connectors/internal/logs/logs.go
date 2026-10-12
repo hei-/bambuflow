@@ -22,7 +22,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 // Window 是分块的时间窗口（技术设计文档 5.2）。

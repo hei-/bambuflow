@@ -127,7 +127,7 @@ class Filters(_message.Message):
     def __init__(self, source_ids: _Optional[_Iterable[str]] = ..., doc_types: _Optional[_Iterable[str]] = ..., depts: _Optional[_Iterable[str]] = ..., topic_codes: _Optional[_Iterable[str]] = ..., effective_from: _Optional[str] = ..., effective_to: _Optional[str] = ..., validity_statuses: _Optional[_Iterable[_Union[ValidityStatus, str]]] = ...) -> None: ...
 
 class DocMetadata(_message.Message):
-    __slots__ = ("doc_type", "dept", "topic_codes", "effective_date", "validity_status", "missing", "vocabulary_version")
+    __slots__ = ("doc_type", "dept", "topic_codes", "effective_date", "validity_status", "missing", "vocabulary_version", "superseded_by", "supersedes")
     DOC_TYPE_FIELD_NUMBER: _ClassVar[int]
     DEPT_FIELD_NUMBER: _ClassVar[int]
     TOPIC_CODES_FIELD_NUMBER: _ClassVar[int]
@@ -135,6 +135,8 @@ class DocMetadata(_message.Message):
     VALIDITY_STATUS_FIELD_NUMBER: _ClassVar[int]
     MISSING_FIELD_NUMBER: _ClassVar[int]
     VOCABULARY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SUPERSEDED_BY_FIELD_NUMBER: _ClassVar[int]
+    SUPERSEDES_FIELD_NUMBER: _ClassVar[int]
     doc_type: str
     dept: str
     topic_codes: _containers.RepeatedScalarFieldContainer[str]
@@ -142,7 +144,9 @@ class DocMetadata(_message.Message):
     validity_status: ValidityStatus
     missing: _containers.RepeatedScalarFieldContainer[str]
     vocabulary_version: str
-    def __init__(self, doc_type: _Optional[str] = ..., dept: _Optional[str] = ..., topic_codes: _Optional[_Iterable[str]] = ..., effective_date: _Optional[str] = ..., validity_status: _Optional[_Union[ValidityStatus, str]] = ..., missing: _Optional[_Iterable[str]] = ..., vocabulary_version: _Optional[str] = ...) -> None: ...
+    superseded_by: str
+    supersedes: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, doc_type: _Optional[str] = ..., dept: _Optional[str] = ..., topic_codes: _Optional[_Iterable[str]] = ..., effective_date: _Optional[str] = ..., validity_status: _Optional[_Union[ValidityStatus, str]] = ..., missing: _Optional[_Iterable[str]] = ..., vocabulary_version: _Optional[str] = ..., superseded_by: _Optional[str] = ..., supersedes: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Degradation(_message.Message):
     __slots__ = ("stage", "reason")

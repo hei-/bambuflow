@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// SnapshotSyncAdminService 查看配置快照的分发情况（governance 详设 7.1 Ack、8.2），由 governance 实现，
+// gateway 的 /v1/admin/snapshot-sync 调用；平台管理员与平台运维可看。每个服务列出当前应生效的快照版本，
+// 以及最近 24 小时上报过的实例各自加载到哪一版：没跟上的实例在用旧快照，要有人处理（重建实例或查加载失败原因）。
+// 在线服务每次刷新都上报（1 分钟内）；processing 只在启动时加载并上报，词表变更后要滚动重启才跟上。
+// 已下线的实例停止上报，acked_at 停在下线前，超过 24 小时不再列出。
+service SnapshotSyncAdminService {
+  rpc ListSnapshotSync(ListSnapshotSyncRequest) returns (ListSnapshotSyncResponse);
+}
+
+message ListSnapshotSyncRequest {}
+
+message InstanceSync {
+  string instance_id = 1;
+  // 最近一次上报的版本；加载失败时是它没能加载的版本（可能为空，如验签不过）
+  string snapshot_version = 2;
+  bool loaded = 3;
+  // 加载失败的原因（signature_invalid、invalid_config 等）
+  string reason = 4;
+  google.protobuf.Timestamp acked_at = 5;
+  // 已加载当前应生效的版本
+  bool in_sync = 6;
+}
+
+message ServiceSync {
+  // gateway、retrieval、orchestrator、processing
+  string service = 1;
+  // 当前应生效的快照版本；governance 读不到（如元数据库不可用）时为空，各实例的 in_sync 均为 false
+  string current_version = 2;
+  repeated InstanceSync instances = 3;
+}
+
+message ListSnapshotSyncResponse {
+  repeated ServiceSync services = 1;
+}

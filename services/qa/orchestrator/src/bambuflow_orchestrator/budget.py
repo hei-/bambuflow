@@ -10,7 +10,11 @@ import time
 from collections.abc import Callable
 
 SINGLE_HOP_SECONDS = 4.0
+# 书面同意放宽 SLO（全文 ≤ 5 秒，技术设计文档 6.7）、开启单跳 LLM 重排的租户的单跳预算
+RELAXED_SINGLE_HOP_SECONDS = 5.0
 AGENT_SECONDS = 10.0
+# 生成与校验的预留（详设 11.1，评估报告 K10）：剩余时间不超过它就不再开新一轮检索或做 LLM 重排
+GENERATION_RESERVE = 3.0
 
 
 class Deadline:

@@ -19,6 +19,8 @@ from google.protobuf import json_format
 from bambuflow.identity.v1 import principal_pb2
 
 ISSUER = "bambuflow-gateway"
+# evaluation 签发评测身份时使用的签发方：只有评测副本信任它（evaluation 详设 4.2）
+EVAL_ISSUER = "bambuflow-evaluation"
 AUDIENCE = "bambuflow-internal"
 MAX_LIFETIME_SECONDS = 300
 
@@ -98,11 +100,14 @@ class Verifier:
     operator 为 True 时只接受管理 Principal（带平台角色、不带租户，
     gateway 签发给管理接口的实现方）；
     否则只接受数据接口的 Principal（带租户、不带角色）。
-    两类下游各自只接受自己那一类，与 Go 的 principal 包一致。"""
+    两类下游各自只接受自己那一类，与 Go 的 principal 包一致。
+    issuer 默认是 gateway；评测副本只信任 evaluation 签发的评测身份
+    （EVAL_ISSUER，evaluation 详设 4.2）。"""
 
-    def __init__(self, jwks: JWKS, operator: bool = False) -> None:
+    def __init__(self, jwks: JWKS, operator: bool = False, issuer: str = ISSUER) -> None:
         self._jwks = jwks
         self._operator = operator
+        self._issuer = issuer
 
     def verify(self, raw: str) -> principal_pb2.Principal:
         try:
@@ -114,7 +119,7 @@ class Verifier:
                 self._jwks.key(kid),
                 algorithms=["ES256"],
                 audience=AUDIENCE,
-                issuer=ISSUER,
+                issuer=self._issuer,
                 options={"require": ["exp", "iat", "iss", "aud", "sub"]},
             )
         except jwt.PyJWTError as e:

@@ -25,26 +25,26 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"bambuflow/evaluation/v1/gate.proto\x12\x17\x62\x61mbuflow.evaluation.v1\x1a\x1egoogle/protobuf/duration.proto\"\\\n\nEvalConfig\x12#\n\rindex_version\x18\x01 \x01(\tR\x0cindexVersion\x12)\n\x10snapshot_version\x18\x02 \x01(\tR\x0fsnapshotVersion\"\x9a\x02\n\x0eRunGateRequest\x12\x18\n\x07trigger\x18\x01 \x01(\tR\x07trigger\x12\x41\n\tcandidate\x18\x02 \x01(\x0b\x32#.bambuflow.evaluation.v1.EvalConfigR\tcandidate\x12\x18\n\x07tenants\x18\x03 \x03(\tR\x07tenants\x12\x17\n\x07\x64oc_ids\x18\x04 \x03(\tR\x06\x64ocIds\x12\x18\n\x07ruleset\x18\x05 \x01(\tR\x07ruleset\x12\x35\n\x08\x64\x65\x61\x64line\x18\x06 \x01(\x0b\x32\x19.google.protobuf.DurationR\x08\x64\x65\x61\x64line\x12\'\n\x0fidempotency_key\x18\x07 \x01(\tR\x0eidempotencyKey\"*\n\x0fRunGateResponse\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\")\n\x0eGetGateRequest\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\"\xa5\x01\n\x0fGetGateResponse\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\x12:\n\x07verdict\x18\x02 \x01(\x0e\x32 .bambuflow.evaluation.v1.VerdictR\x07verdict\x12\x1d\n\nreport_uri\x18\x03 \x01(\tR\treportUri\x12\x1e\n\nviolations\x18\x04 \x03(\tR\nviolations*z\n\x07Verdict\x12\x17\n\x13VERDICT_UNSPECIFIED\x10\x00\x12\x13\n\x0fVERDICT_RUNNING\x10\x01\x12\x12\n\x0eVERDICT_PASSED\x10\x02\x12\x12\n\x0eVERDICT_FAILED\x10\x03\x12\x19\n\x15VERDICT_INDETERMINATE\x10\x04\x32\xc9\x01\n\x0b\x45valService\x12\\\n\x07RunGate\x12\'.bambuflow.evaluation.v1.RunGateRequest\x1a(.bambuflow.evaluation.v1.RunGateResponse\x12\\\n\x07GetGate\x12\'.bambuflow.evaluation.v1.GetGateRequest\x1a(.bambuflow.evaluation.v1.GetGateResponseB\xfb\x01\n\x1b\x63om.bambuflow.evaluation.v1B\tGateProtoP\x01ZSgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/evaluation/v1;evaluationv1\xa2\x02\x03\x42\x45X\xaa\x02\x17\x42\x61mbuflow.Evaluation.V1\xca\x02\x17\x42\x61mbuflow\\Evaluation\\V1\xe2\x02#Bambuflow\\Evaluation\\V1\\GPBMetadata\xea\x02\x19\x42\x61mbuflow::Evaluation::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"bambuflow/evaluation/v1/gate.proto\x12\x17\x62\x61mbuflow.evaluation.v1\x1a\x1egoogle/protobuf/duration.proto\"\x83\x01\n\nEvalConfig\x12#\n\rindex_version\x18\x01 \x01(\tR\x0cindexVersion\x12)\n\x10snapshot_version\x18\x02 \x01(\tR\x0fsnapshotVersion\x12%\n\x0e\x63onfig_version\x18\x03 \x01(\tR\rconfigVersion\"\xbf\x02\n\x0eRunGateRequest\x12\x18\n\x07trigger\x18\x01 \x01(\tR\x07trigger\x12\x41\n\tcandidate\x18\x02 \x01(\x0b\x32#.bambuflow.evaluation.v1.EvalConfigR\tcandidate\x12\x18\n\x07tenants\x18\x03 \x03(\tR\x07tenants\x12\x17\n\x07\x64oc_ids\x18\x04 \x03(\tR\x06\x64ocIds\x12\x18\n\x07ruleset\x18\x05 \x01(\tR\x07ruleset\x12\x35\n\x08\x64\x65\x61\x64line\x18\x06 \x01(\x0b\x32\x19.google.protobuf.DurationR\x08\x64\x65\x61\x64line\x12\'\n\x0fidempotency_key\x18\x07 \x01(\tR\x0eidempotencyKey\x12#\n\rfirst_release\x18\x08 \x01(\x08R\x0c\x66irstRelease\"*\n\x0fRunGateResponse\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\")\n\x0eGetGateRequest\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\"\xa5\x01\n\x0fGetGateResponse\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\x12:\n\x07verdict\x18\x02 \x01(\x0e\x32 .bambuflow.evaluation.v1.VerdictR\x07verdict\x12\x1d\n\nreport_uri\x18\x03 \x01(\tR\treportUri\x12\x1e\n\nviolations\x18\x04 \x03(\tR\nviolations*z\n\x07Verdict\x12\x17\n\x13VERDICT_UNSPECIFIED\x10\x00\x12\x13\n\x0fVERDICT_RUNNING\x10\x01\x12\x12\n\x0eVERDICT_PASSED\x10\x02\x12\x12\n\x0eVERDICT_FAILED\x10\x03\x12\x19\n\x15VERDICT_INDETERMINATE\x10\x04\x32\xc9\x01\n\x0b\x45valService\x12\\\n\x07RunGate\x12\'.bambuflow.evaluation.v1.RunGateRequest\x1a(.bambuflow.evaluation.v1.RunGateResponse\x12\\\n\x07GetGate\x12\'.bambuflow.evaluation.v1.GetGateRequest\x1a(.bambuflow.evaluation.v1.GetGateResponseB\xf7\x01\n\x1b\x63om.bambuflow.evaluation.v1B\tGateProtoP\x01ZOgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/evaluation/v1;evaluationv1\xa2\x02\x03\x42\x45X\xaa\x02\x17\x42\x61mbuflow.Evaluation.V1\xca\x02\x17\x42\x61mbuflow\\Evaluation\\V1\xe2\x02#Bambuflow\\Evaluation\\V1\\GPBMetadata\xea\x02\x19\x42\x61mbuflow::Evaluation::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.evaluation.v1.gate_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\033com.bambuflow.evaluation.v1B\tGateProtoP\001ZSgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/evaluation/v1;evaluationv1\242\002\003BEX\252\002\027Bambuflow.Evaluation.V1\312\002\027Bambuflow\\Evaluation\\V1\342\002#Bambuflow\\Evaluation\\V1\\GPBMetadata\352\002\031Bambuflow::Evaluation::V1'
-  _globals['_VERDICT']._serialized_start=729
-  _globals['_VERDICT']._serialized_end=851
-  _globals['_EVALCONFIG']._serialized_start=95
-  _globals['_EVALCONFIG']._serialized_end=187
-  _globals['_RUNGATEREQUEST']._serialized_start=190
-  _globals['_RUNGATEREQUEST']._serialized_end=472
-  _globals['_RUNGATERESPONSE']._serialized_start=474
-  _globals['_RUNGATERESPONSE']._serialized_end=516
-  _globals['_GETGATEREQUEST']._serialized_start=518
-  _globals['_GETGATEREQUEST']._serialized_end=559
-  _globals['_GETGATERESPONSE']._serialized_start=562
-  _globals['_GETGATERESPONSE']._serialized_end=727
-  _globals['_EVALSERVICE']._serialized_start=854
-  _globals['_EVALSERVICE']._serialized_end=1055
+  _globals['DESCRIPTOR']._serialized_options = b'\n\033com.bambuflow.evaluation.v1B\tGateProtoP\001ZOgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/evaluation/v1;evaluationv1\242\002\003BEX\252\002\027Bambuflow.Evaluation.V1\312\002\027Bambuflow\\Evaluation\\V1\342\002#Bambuflow\\Evaluation\\V1\\GPBMetadata\352\002\031Bambuflow::Evaluation::V1'
+  _globals['_VERDICT']._serialized_start=806
+  _globals['_VERDICT']._serialized_end=928
+  _globals['_EVALCONFIG']._serialized_start=96
+  _globals['_EVALCONFIG']._serialized_end=227
+  _globals['_RUNGATEREQUEST']._serialized_start=230
+  _globals['_RUNGATEREQUEST']._serialized_end=549
+  _globals['_RUNGATERESPONSE']._serialized_start=551
+  _globals['_RUNGATERESPONSE']._serialized_end=593
+  _globals['_GETGATEREQUEST']._serialized_start=595
+  _globals['_GETGATEREQUEST']._serialized_end=636
+  _globals['_GETGATERESPONSE']._serialized_start=639
+  _globals['_GETGATERESPONSE']._serialized_end=804
+  _globals['_EVALSERVICE']._serialized_start=931
+  _globals['_EVALSERVICE']._serialized_end=1132
 # @@protoc_insertion_point(module_scope)

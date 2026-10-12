@@ -7,8 +7,8 @@
 package batchv1
 
 import (
-	v11 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	v1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	v11 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -1006,9 +1006,9 @@ const file_bambuflow_batch_v1_batch_proto_rawDesc = "" +
 	"\vCreateBatch\x12&.bambuflow.batch.v1.CreateBatchRequest\x1a'.bambuflow.batch.v1.CreateBatchResponse\x12U\n" +
 	"\bGetBatch\x12#.bambuflow.batch.v1.GetBatchRequest\x1a$.bambuflow.batch.v1.GetBatchResponse\x12^\n" +
 	"\vCancelBatch\x12&.bambuflow.batch.v1.CancelBatchRequest\x1a'.bambuflow.batch.v1.CancelBatchResponse\x12^\n" +
-	"\vListResults\x12&.bambuflow.batch.v1.ListResultsRequest\x1a'.bambuflow.batch.v1.ListResultsResponseB\xd9\x01\n" +
+	"\vListResults\x12&.bambuflow.batch.v1.ListResultsRequest\x1a'.bambuflow.batch.v1.ListResultsResponseB\xd5\x01\n" +
 	"\x16com.bambuflow.batch.v1B\n" +
-	"BatchProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1;batchv1\xa2\x02\x03BBX\xaa\x02\x12Bambuflow.Batch.V1\xca\x02\x12Bambuflow\\Batch\\V1\xe2\x02\x1eBambuflow\\Batch\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Batch::V1b\x06proto3"
+	"BatchProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/batch/v1;batchv1\xa2\x02\x03BBX\xaa\x02\x12Bambuflow.Batch.V1\xca\x02\x12Bambuflow\\Batch\\V1\xe2\x02\x1eBambuflow\\Batch\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Batch::V1b\x06proto3"
 
 var (
 	file_bambuflow_batch_v1_batch_proto_rawDescOnce sync.Once

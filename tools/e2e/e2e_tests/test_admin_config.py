@@ -93,3 +93,45 @@ def test_new_tenant_directly_general_needs_gate() -> None:
         {"tenant": name, "content": "tenant: other\nrollout: pilot\n", "reason": "e2e"},
     )
     assert bad.status_code == 400, bad.text
+
+
+def test_switching_to_general_needs_golden_set_ready() -> None:
+    """第二个业务系统（risk，试点阶段）切到全量：门禁通过还不够，
+    门禁里 risk 的评测集要满足全量要求（≥ 300 道已审核题、双人标注 ≥ 150 等，evaluation 详设 3.1）。
+    样例评测集的题都没审核，所以被拒绝并说明差什么。"""
+    gates = call("paul", "GET", "/v1/admin/eval-gates", params={"tenant": "risk", "page_size": 50})
+    assert gates.status_code == 200, gates.text
+    passed = [
+        g for g in gates.json()["gates"] if g["conclusion"] == "passed" and "risk" in g["tenants"]
+    ]
+    assert passed, "make ingest 的发布门禁应已覆盖 risk"
+    ready = {r["tenant"]: r for r in passed[0]["readiness"]}
+    assert ready["risk"]["stage"] == "none" and ready["risk"]["unreviewed"] > 0, ready
+    assert any("至少 100" in g for g in ready["risk"]["gaps"])
+
+    r = call("paul", "GET", "/v1/admin/tenants/risk/config-versions")
+    (cur,) = [v for v in r.json()["versions"] if v["active"]]
+    content = cur["content"].replace("rollout: pilot", "rollout: general")
+    body = {
+        "object": "tenant",
+        "scope": "risk",
+        "base_version_id": cur["version_id"],
+        "content": content,
+        "reason": "e2e 转全量",
+        "gate_id": passed[0]["gate_id"],
+    }
+    created = call("paul", "POST", "/v1/admin/change-requests", body)
+    assert created.status_code == 409 and created.json()["type"] == "gate_failed", created.text
+
+
+def test_tenant_owner_reads_only_own_tenant() -> None:
+    # owen 是 credit 租户的负责人（租户配置的 owner_groups），不是成员，也没有平台角色
+    r = call("owen", "GET", "/v1/admin/tenants")
+    assert r.status_code == 200, r.text
+    assert [t["tenant"] for t in r.json()["tenants"]] == ["credit"]
+    assert call("owen", "GET", "/v1/admin/tenants/credit/config-versions").status_code == 200
+    assert call("owen", "GET", f"/v1/admin/tenants/{TENANT}/config-versions").status_code == 403
+    assert call("owen", "GET", "/v1/admin/eval-gates", params={"tenant": TENANT}).status_code == 403
+    assert call("owen", "GET", "/v1/admin/eval-gates").status_code == 200
+    body = {"object": "tenant", "scope": "credit", "content": "x", "reason": "越权"}
+    assert call("owen", "POST", "/v1/admin/change-requests", body).status_code == 403

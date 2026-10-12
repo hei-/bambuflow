@@ -24,16 +24,20 @@ const (
 
 type QueryAuditRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 按用户（平台账号）筛选；为空不限
+	// 按用户筛选：入口审计与评测回放是提问人（平台账号），变更审计是操作人；为空不限
 	Sub string `protobuf:"bytes,1,opt,name=sub,proto3" json:"sub,omitempty"`
-	// 按文档筛选：文档出现在候选、上下文、展示的块或列出的文档里；为空不限
+	// 按文档筛选：文档出现在上下文、展示的块或列出的文档里，或是变更审计的对象；为空不限。
+	// 只出现在候选里的不进索引（技术设计文档 8.3），查不出来；返回的记录里 matched_in 会把候选一并列出
 	DocId string `protobuf:"bytes,2,opt,name=doc_id,json=docId,proto3" json:"doc_id,omitempty"`
-	// 时间范围（含两端），必填，跨度不超过 31 天
+	// 时间范围（含两端），必填，跨度不限
 	From *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
 	To   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
 	// 1–200，0 时取 50
-	PageSize      int32  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	PageSize  int32  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// 记录类别：access、change、eval、restricted（受限级内容的单独访问记录）；为空时为 access 与 change
+	// （评测回放不混进线上访问，受限级访问另有同一请求的 access 记录，要查时显式指定）
+	Kinds         []string `protobuf:"bytes,7,rep,name=kinds,proto3" json:"kinds,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -110,6 +114,13 @@ func (x *QueryAuditRequest) GetPageToken() string {
 	return ""
 }
 
+func (x *QueryAuditRequest) GetKinds() []string {
+	if x != nil {
+		return x.Kinds
+	}
+	return nil
+}
+
 type QueryAuditResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 按时间先后
@@ -164,7 +175,8 @@ func (x *QueryAuditResponse) GetNextPageToken() string {
 	return ""
 }
 
-// AuditRecord 是一条入口审计（gateway 详设 8.1、8.2）。
+// AuditRecord 是一条审计记录：入口审计（gateway 详设 8.1、8.2）、评测回放（字段与入口审计相同），或变更审计
+// （governance 详设 9.3：sub 为操作人，另有 roles、action、object_id、detail_json）。
 type AuditRecord struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Time     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=time,proto3" json:"time,omitempty"`
@@ -185,11 +197,28 @@ type AuditRecord struct {
 	ContextChunkIds   []string `protobuf:"bytes,13,rep,name=context_chunk_ids,json=contextChunkIds,proto3" json:"context_chunk_ids,omitempty"`
 	ShownChunkIds     []string `protobuf:"bytes,14,rep,name=shown_chunk_ids,json=shownChunkIds,proto3" json:"shown_chunk_ids,omitempty"`
 	ListedDocIds      []string `protobuf:"bytes,15,rep,name=listed_doc_ids,json=listedDocIds,proto3" json:"listed_doc_ids,omitempty"`
-	// 按文档查询时，文档出现在哪几类里：candidate、context、shown、listed
+	// 按文档查询时，文档出现在哪几类里：candidate、context、shown、listed，变更审计为 object
 	MatchedIn []string `protobuf:"bytes,16,rep,name=matched_in,json=matchedIn,proto3" json:"matched_in,omitempty"`
 	// 管理接口才有：方法与路径
-	AdminMethod   string `protobuf:"bytes,17,opt,name=admin_method,json=adminMethod,proto3" json:"admin_method,omitempty"`
-	AdminPath     string `protobuf:"bytes,18,opt,name=admin_path,json=adminPath,proto3" json:"admin_path,omitempty"`
+	AdminMethod string `protobuf:"bytes,17,opt,name=admin_method,json=adminMethod,proto3" json:"admin_method,omitempty"`
+	AdminPath   string `protobuf:"bytes,18,opt,name=admin_path,json=adminPath,proto3" json:"admin_path,omitempty"`
+	// 问答与检索用到的版本（技术设计文档 8.3）：回答记录按保留期销毁后仍能据此追溯
+	Versions *AuditVersions `protobuf:"bytes,19,opt,name=versions,proto3" json:"versions,omitempty"`
+	// 问答的结果状态（answered、insufficient_evidence、refused 等）
+	AnswerStatus string `protobuf:"bytes,20,opt,name=answer_status,json=answerStatus,proto3" json:"answer_status,omitempty"`
+	// 已推送句子按顺序连接后的 SHA-256；审计不存回答原文
+	AnswerSha256 string `protobuf:"bytes,21,opt,name=answer_sha256,json=answerSha256,proto3" json:"answer_sha256,omitempty"`
+	// access、change、eval 或 restricted
+	Kind string `protobuf:"bytes,22,opt,name=kind,proto3" json:"kind,omitempty"`
+	// 写这条记录的服务：gateway、governance、indexing、connectors、evaluation
+	Source string `protobuf:"bytes,23,opt,name=source,proto3" json:"source,omitempty"`
+	// 变更审计才有：操作人的平台角色、动作（如 source.approve）、对象 ID 与动作的参数和依据（JSON）
+	Roles      []string `protobuf:"bytes,24,rep,name=roles,proto3" json:"roles,omitempty"`
+	Action     string   `protobuf:"bytes,25,opt,name=action,proto3" json:"action,omitempty"`
+	ObjectId   string   `protobuf:"bytes,26,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
+	DetailJson string   `protobuf:"bytes,27,opt,name=detail_json,json=detailJson,proto3" json:"detail_json,omitempty"`
+	// 评测回放才有：所属的门禁
+	GateId        string `protobuf:"bytes,28,opt,name=gate_id,json=gateId,proto3" json:"gate_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -350,11 +379,223 @@ func (x *AuditRecord) GetAdminPath() string {
 	return ""
 }
 
+func (x *AuditRecord) GetVersions() *AuditVersions {
+	if x != nil {
+		return x.Versions
+	}
+	return nil
+}
+
+func (x *AuditRecord) GetAnswerStatus() string {
+	if x != nil {
+		return x.AnswerStatus
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetAnswerSha256() string {
+	if x != nil {
+		return x.AnswerSha256
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetRoles() []string {
+	if x != nil {
+		return x.Roles
+	}
+	return nil
+}
+
+func (x *AuditRecord) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetObjectId() string {
+	if x != nil {
+		return x.ObjectId
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetDetailJson() string {
+	if x != nil {
+		return x.DetailJson
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetGateId() string {
+	if x != nil {
+		return x.GateId
+	}
+	return ""
+}
+
+type AuditVersions struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	IndexVersion      string                 `protobuf:"bytes,1,opt,name=index_version,json=indexVersion,proto3" json:"index_version,omitempty"`
+	PolicyVersion     string                 `protobuf:"bytes,2,opt,name=policy_version,json=policyVersion,proto3" json:"policy_version,omitempty"`
+	EmbeddingModel    string                 `protobuf:"bytes,3,opt,name=embedding_model,json=embeddingModel,proto3" json:"embedding_model,omitempty"`
+	RerankModel       string                 `protobuf:"bytes,4,opt,name=rerank_model,json=rerankModel,proto3" json:"rerank_model,omitempty"`
+	GenerationModel   string                 `protobuf:"bytes,5,opt,name=generation_model,json=generationModel,proto3" json:"generation_model,omitempty"`
+	PromptVersion     string                 `protobuf:"bytes,6,opt,name=prompt_version,json=promptVersion,proto3" json:"prompt_version,omitempty"`
+	NliModel          string                 `protobuf:"bytes,7,opt,name=nli_model,json=nliModel,proto3" json:"nli_model,omitempty"`
+	CalculatorVersion string                 `protobuf:"bytes,8,opt,name=calculator_version,json=calculatorVersion,proto3" json:"calculator_version,omitempty"`
+	ExperimentId      string                 `protobuf:"bytes,9,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
+	ExperimentArm     string                 `protobuf:"bytes,10,opt,name=experiment_arm,json=experimentArm,proto3" json:"experiment_arm,omitempty"`
+	// 降级与拒答原因，格式为“阶段:原因”
+	Degraded []string `protobuf:"bytes,11,rep,name=degraded,proto3" json:"degraded,omitempty"`
+	// 租户 pipeline 与全局 routing 的配置版本（cfv_ 前缀）
+	PipelineVersion string `protobuf:"bytes,12,opt,name=pipeline_version,json=pipelineVersion,proto3" json:"pipeline_version,omitempty"`
+	RoutingVersion  string `protobuf:"bytes,13,opt,name=routing_version,json=routingVersion,proto3" json:"routing_version,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AuditVersions) Reset() {
+	*x = AuditVersions{}
+	mi := &file_bambuflow_admin_v1_audit_admin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditVersions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditVersions) ProtoMessage() {}
+
+func (x *AuditVersions) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_audit_admin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditVersions.ProtoReflect.Descriptor instead.
+func (*AuditVersions) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_audit_admin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AuditVersions) GetIndexVersion() string {
+	if x != nil {
+		return x.IndexVersion
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetPolicyVersion() string {
+	if x != nil {
+		return x.PolicyVersion
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetEmbeddingModel() string {
+	if x != nil {
+		return x.EmbeddingModel
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetRerankModel() string {
+	if x != nil {
+		return x.RerankModel
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetGenerationModel() string {
+	if x != nil {
+		return x.GenerationModel
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetPromptVersion() string {
+	if x != nil {
+		return x.PromptVersion
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetNliModel() string {
+	if x != nil {
+		return x.NliModel
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetCalculatorVersion() string {
+	if x != nil {
+		return x.CalculatorVersion
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetExperimentId() string {
+	if x != nil {
+		return x.ExperimentId
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetExperimentArm() string {
+	if x != nil {
+		return x.ExperimentArm
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetDegraded() []string {
+	if x != nil {
+		return x.Degraded
+	}
+	return nil
+}
+
+func (x *AuditVersions) GetPipelineVersion() string {
+	if x != nil {
+		return x.PipelineVersion
+	}
+	return ""
+}
+
+func (x *AuditVersions) GetRoutingVersion() string {
+	if x != nil {
+		return x.RoutingVersion
+	}
+	return ""
+}
+
 var File_bambuflow_admin_v1_audit_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_audit_admin_proto_rawDesc = "" +
 	"\n" +
-	"$bambuflow/admin/v1/audit_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd4\x01\n" +
+	"$bambuflow/admin/v1/audit_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xea\x01\n" +
 	"\x11QueryAuditRequest\x12\x10\n" +
 	"\x03sub\x18\x01 \x01(\tR\x03sub\x12\x15\n" +
 	"\x06doc_id\x18\x02 \x01(\tR\x05docId\x12.\n" +
@@ -362,10 +603,11 @@ const file_bambuflow_admin_v1_audit_admin_proto_rawDesc = "" +
 	"\x02to\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12\x1b\n" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x06 \x01(\tR\tpageToken\"w\n" +
+	"page_token\x18\x06 \x01(\tR\tpageToken\x12\x14\n" +
+	"\x05kinds\x18\a \x03(\tR\x05kinds\"w\n" +
 	"\x12QueryAuditResponse\x129\n" +
 	"\arecords\x18\x01 \x03(\v2\x1f.bambuflow.admin.v1.AuditRecordR\arecords\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xc6\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x80\a\n" +
 	"\vAuditRecord\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x19\n" +
 	"\btrace_id\x18\x02 \x01(\tR\atraceId\x12\x1b\n" +
@@ -388,11 +630,37 @@ const file_bambuflow_admin_v1_audit_admin_proto_rawDesc = "" +
 	"matched_in\x18\x10 \x03(\tR\tmatchedIn\x12!\n" +
 	"\fadmin_method\x18\x11 \x01(\tR\vadminMethod\x12\x1d\n" +
 	"\n" +
-	"admin_path\x18\x12 \x01(\tR\tadminPath2p\n" +
+	"admin_path\x18\x12 \x01(\tR\tadminPath\x12=\n" +
+	"\bversions\x18\x13 \x01(\v2!.bambuflow.admin.v1.AuditVersionsR\bversions\x12#\n" +
+	"\ranswer_status\x18\x14 \x01(\tR\fanswerStatus\x12#\n" +
+	"\ranswer_sha256\x18\x15 \x01(\tR\fanswerSha256\x12\x12\n" +
+	"\x04kind\x18\x16 \x01(\tR\x04kind\x12\x16\n" +
+	"\x06source\x18\x17 \x01(\tR\x06source\x12\x14\n" +
+	"\x05roles\x18\x18 \x03(\tR\x05roles\x12\x16\n" +
+	"\x06action\x18\x19 \x01(\tR\x06action\x12\x1b\n" +
+	"\tobject_id\x18\x1a \x01(\tR\bobjectId\x12\x1f\n" +
+	"\vdetail_json\x18\x1b \x01(\tR\n" +
+	"detailJson\x12\x17\n" +
+	"\agate_id\x18\x1c \x01(\tR\x06gateId\"\x81\x04\n" +
+	"\rAuditVersions\x12#\n" +
+	"\rindex_version\x18\x01 \x01(\tR\findexVersion\x12%\n" +
+	"\x0epolicy_version\x18\x02 \x01(\tR\rpolicyVersion\x12'\n" +
+	"\x0fembedding_model\x18\x03 \x01(\tR\x0eembeddingModel\x12!\n" +
+	"\frerank_model\x18\x04 \x01(\tR\vrerankModel\x12)\n" +
+	"\x10generation_model\x18\x05 \x01(\tR\x0fgenerationModel\x12%\n" +
+	"\x0eprompt_version\x18\x06 \x01(\tR\rpromptVersion\x12\x1b\n" +
+	"\tnli_model\x18\a \x01(\tR\bnliModel\x12-\n" +
+	"\x12calculator_version\x18\b \x01(\tR\x11calculatorVersion\x12#\n" +
+	"\rexperiment_id\x18\t \x01(\tR\fexperimentId\x12%\n" +
+	"\x0eexperiment_arm\x18\n" +
+	" \x01(\tR\rexperimentArm\x12\x1a\n" +
+	"\bdegraded\x18\v \x03(\tR\bdegraded\x12)\n" +
+	"\x10pipeline_version\x18\f \x01(\tR\x0fpipelineVersion\x12'\n" +
+	"\x0frouting_version\x18\r \x01(\tR\x0eroutingVersion2p\n" +
 	"\x11AuditAdminService\x12[\n" +
 	"\n" +
-	"QueryAudit\x12%.bambuflow.admin.v1.QueryAuditRequest\x1a&.bambuflow.admin.v1.QueryAuditResponseB\xde\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x0fAuditAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"QueryAudit\x12%.bambuflow.admin.v1.QueryAuditRequest\x1a&.bambuflow.admin.v1.QueryAuditResponseB\xda\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x0fAuditAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_audit_admin_proto_rawDescOnce sync.Once
@@ -406,25 +674,27 @@ func file_bambuflow_admin_v1_audit_admin_proto_rawDescGZIP() []byte {
 	return file_bambuflow_admin_v1_audit_admin_proto_rawDescData
 }
 
-var file_bambuflow_admin_v1_audit_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_bambuflow_admin_v1_audit_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_bambuflow_admin_v1_audit_admin_proto_goTypes = []any{
 	(*QueryAuditRequest)(nil),     // 0: bambuflow.admin.v1.QueryAuditRequest
 	(*QueryAuditResponse)(nil),    // 1: bambuflow.admin.v1.QueryAuditResponse
 	(*AuditRecord)(nil),           // 2: bambuflow.admin.v1.AuditRecord
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*AuditVersions)(nil),         // 3: bambuflow.admin.v1.AuditVersions
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
 var file_bambuflow_admin_v1_audit_admin_proto_depIdxs = []int32{
-	3, // 0: bambuflow.admin.v1.QueryAuditRequest.from:type_name -> google.protobuf.Timestamp
-	3, // 1: bambuflow.admin.v1.QueryAuditRequest.to:type_name -> google.protobuf.Timestamp
+	4, // 0: bambuflow.admin.v1.QueryAuditRequest.from:type_name -> google.protobuf.Timestamp
+	4, // 1: bambuflow.admin.v1.QueryAuditRequest.to:type_name -> google.protobuf.Timestamp
 	2, // 2: bambuflow.admin.v1.QueryAuditResponse.records:type_name -> bambuflow.admin.v1.AuditRecord
-	3, // 3: bambuflow.admin.v1.AuditRecord.time:type_name -> google.protobuf.Timestamp
-	0, // 4: bambuflow.admin.v1.AuditAdminService.QueryAudit:input_type -> bambuflow.admin.v1.QueryAuditRequest
-	1, // 5: bambuflow.admin.v1.AuditAdminService.QueryAudit:output_type -> bambuflow.admin.v1.QueryAuditResponse
-	5, // [5:6] is the sub-list for method output_type
-	4, // [4:5] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	4, // 3: bambuflow.admin.v1.AuditRecord.time:type_name -> google.protobuf.Timestamp
+	3, // 4: bambuflow.admin.v1.AuditRecord.versions:type_name -> bambuflow.admin.v1.AuditVersions
+	0, // 5: bambuflow.admin.v1.AuditAdminService.QueryAudit:input_type -> bambuflow.admin.v1.QueryAuditRequest
+	1, // 6: bambuflow.admin.v1.AuditAdminService.QueryAudit:output_type -> bambuflow.admin.v1.QueryAuditResponse
+	6, // [6:7] is the sub-list for method output_type
+	5, // [5:6] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_audit_admin_proto_init() }
@@ -438,7 +708,7 @@ func file_bambuflow_admin_v1_audit_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_admin_v1_audit_admin_proto_rawDesc), len(file_bambuflow_admin_v1_audit_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

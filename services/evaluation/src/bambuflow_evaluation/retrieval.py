@@ -4,7 +4,7 @@ P1 计划 T1b，待确认 P1-6 的 C。
 
 只调用 retrieval 的 Search，不经过生成，结果是确定的，所以只跑一次。
 提问身份是评测租户 bench 的固定模板，它只被授权检索评测集这一个数据源
-（tools/test-upstream/policy/data.json）。
+（governance 的租户授权，种子见 tools/test-upstream/sources.yaml）。
 """
 
 from __future__ import annotations

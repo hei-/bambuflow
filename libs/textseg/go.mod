@@ -1,4 +1,4 @@
-module github.com/bambu-ai/bambuflow/libs/textseg
+module github.com/hei-/bambuflow/libs/textseg
 
 go 1.26.0
 

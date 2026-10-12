@@ -19,7 +19,17 @@ service AnswerService {
   // 反馈（技术设计文档 F8、13.1）：有用 / 有误 / 引用不对，挂在对应回答下。只有提问人本人可提交，其他人一律 NOT_FOUND；
   // 同一提交人重复使用同一幂等键时返回已有反馈，内容不同时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
   rpc CreateFeedback(CreateFeedbackRequest) returns (CreateFeedbackResponse);
+  // 删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）：只删会话存储里的摘要、问题与上轮引用，
+  // 审计记录与回答记录不受影响。会话不存在、已过期或不属于调用者时同样成功返回，不让调用方据此判断别人的会话是否存在。
+  rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
 }
+
+message DeleteConversationRequest {
+  // conv_ 前缀。
+  string conversation_id = 1;
+}
+
+message DeleteConversationResponse {}
 
 message AnswerRequest {
   // 不超过 2000 字。
@@ -160,6 +170,8 @@ message ListedDocument {
   string title = 3;
   string source_uri = 4;
   bambuflow.common.v1.DocMetadata metadata = 5;
+  // 文档密级：gateway 据此在推送受限级列表项之前单独写审计（技术设计文档 8.6），不进对外 JSON。
+  bambuflow.common.v1.Classification classification = 6;
 }
 
 message Calculation {
@@ -286,6 +298,43 @@ message Why {
   // 请求所在的 A/B 实验与分组（orchestrator 详设 12.3）；租户没有运行中的实验时为空。
   string experiment_id = 17;
   ExperimentArm experiment_arm = 18;
+  // 被引用证据的召回解释（retrieval 详设 7.5）：命中它的召回路与名次、各路分数。每个引用一条，按 ref_id 排序。
+  repeated EvidenceScore evidence_scores = 19;
+  // 多跳路径里用 LLM 从精排后的候选中挑选证据（orchestrator 详设 6.5）时的模型与提示词版本，
+  // 如 chat@1+rerank@1；没有做 LLM 重排时为空。
+  string llm_rerank = 20;
+  // 本次使用的租户 pipeline 与全局 routing 版本（governance 详设 3.3，cfv_ 前缀）；没有生效版本时为空、用默认值。
+  string pipeline_version = 21;
+  string routing_version = 22;
+  // 提问人落在哪些灰度里（rel_ 前缀，governance 详设 4.1）：按 sha256(release_id + 用户) 分桶，与处理路径无关，
+  // 灰度观察据此分出候选组；对应对象的候选版本只在用到它的路径上生效（如 pipeline 只影响检索与回答阈值）
+  repeated string canary_releases = 23;
+}
+
+// EvidenceScore 与检索契约里的 ScoreDetails、RouteMatch 字段相同：对外的回答契约不引用内部服务契约，所以单独定义。
+message EvidenceScore {
+  int32 ref_id = 1;
+  string chunk_id = 2;
+  repeated EvidenceMatch matched_by = 3;
+  EvidenceScoreDetails score_details = 4;
+}
+
+message EvidenceMatch {
+  // keyword / dense / graph / identifier
+  string route = 1;
+  string query_id = 2;
+  int32 rank = 3;
+}
+
+// 各路分数归一化到 0–1，该路没有命中时不设。
+message EvidenceScoreDetails {
+  optional double keyword = 1;
+  optional double dense = 2;
+  optional double graph = 3;
+  optional double identifier = 4;
+  double rrf = 5;
+  optional double rerank = 6;
+  optional double sparse = 7;
 }
 
 // A/B 分组：按 user_id 与实验 id 哈希，同一用户在同一实验中始终在同一组。

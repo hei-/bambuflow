@@ -10,7 +10,8 @@ import (
 	"net/http"
 	"time"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	"github.com/hei-/bambuflow/services/gateway/internal/audit"
 )
 
 // POST /v1/answers 的 SSE 形式（stream = true，gateway 详设第 6 节）：把 orchestrator 的服务端流逐个转成 SSE 事件。
@@ -110,6 +111,10 @@ func (s *Server) streamAnswer(ctx context.Context, w http.ResponseWriter, c *cal
 		_, _ = io.WriteString(w, ": keep-alive\n\n")
 		_ = rc.Flush()
 	})
+	if c.answerSHA == "" {
+		// 没等到 final（客户端断开、出错）：摘要只算已推送的句子
+		c.answerSHA = audit.AnswerDigest(c.pushed)
+	}
 	// 内容已经发出，结束记录写不进去只能记日志
 	if err := s.writeAudit(c, http.StatusOK, reason, "end"); err != nil {
 		s.Log.ErrorContext(c.ctx, "入口审计写入失败", slog.Any("err", err))
@@ -146,11 +151,25 @@ func (s *Server) relay(c *call, events <-chan recvResult, beat <-chan time.Time,
 		}
 		switch ev := r.ev.GetEvent().(type) {
 		case *answerv1.StreamAnswerResponse_Citation:
+			c.restrictedChunk(ev.Citation.GetClassification(), ev.Citation.GetChunkId())
+			if err := s.writeRestricted(c); err != nil {
+				s.Log.ErrorContext(c.ctx, "受限级访问记录写入失败", slog.Any("err", err))
+				return fail(problemUnavailable)
+			}
 			send("citation", citationOf(ev.Citation))
 		case *answerv1.StreamAnswerResponse_Sentence:
+			if d := ev.Sentence.GetSentence().GetDocument(); d != nil {
+				c.restrictedDoc(d.GetClassification(), d.GetDocId())
+				if err := s.writeRestricted(c); err != nil {
+					s.Log.ErrorContext(c.ctx, "受限级访问记录写入失败", slog.Any("err", err))
+					return fail(problemUnavailable)
+				}
+			}
+			c.pushed = append(c.pushed, ev.Sentence.GetSentence().GetText())
 			send("sentence", streamSentenceJSON{sentenceOf(ev.Sentence.GetSentence()), enumName(ev.Sentence.GetBlockType()), scopeOf(ev.Sentence.GetScope())})
 		case *answerv1.StreamAnswerResponse_Final:
 			c.blocks, c.usage = ev.Final.GetAudit(), ev.Final.GetUsage()
+			c.recordAnswer(ev.Final.GetStatus(), ev.Final.GetWhy(), c.pushed)
 			s.observe(c, ev.Final.GetWhy().GetIntent())
 			send("final", finalJSON{Status: enumName(ev.Final.GetStatus()), Why: whyOf(ev.Final.GetWhy()), AnswerKind: answerKind(ev.Final.GetAnswerKind()),
 				Confidence: confidenceOf(ev.Final.GetConfidence())})

@@ -123,6 +123,13 @@ def test_large_table_split_repeats_header() -> None:
     parsed = assemble([table])
     assert len(table.text) > TABLE_MAX_CHARS
     chunks = chunk_parsed("s", "d", parsed)
+    # 另有一块文字摘要，span 指向整张表
+    summary = chunks.pop()
+    assert summary.text == (
+        "表格摘要：表中的表格，共 60 行，列为序号、制度条款、说明。"
+        "序号包括0、1、2、3、4、5、6、7、8、9等 60 项。"
+    )
+    assert (summary.start, summary.end, summary.page) == (0, len(parsed.text), 3)
     assert len(chunks) > 1
     seen: list[str] = []
     for c in chunks:

@@ -19,12 +19,12 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	batchv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/batch/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
+	"github.com/hei-/bambuflow/services/gateway/internal/issuer"
 )
 
 // ---- 假的 qa/batch：用 gateway 发布的 JWKS 验签 Principal，只对提交人 alice 返回批次 ----
@@ -410,6 +410,20 @@ func TestExchangeIssuesPrincipalWithCurrentAttributes(t *testing.T) {
 	}
 	if claims["sub"] != "alice" || claims["tenant"] != "credit" || claims["dept"] != "风险部" || claims["actor"] != "console" {
 		t.Fatalf("Principal 内容不对: %v", claims)
+	}
+	// 受限级禁止批量导出：即使提交人有受限级权限，批量条目的身份密级也只到机密
+	u.Clearance = 4
+	e.identities.users["alice"] = u
+	resp, err = ps.Exchange(context.Background(), &identityv1.ExchangeRequest{Delegation: deleg, BatchId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims = jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(resp.GetPrincipal(), claims); err != nil {
+		t.Fatal(err)
+	}
+	if claims["clearance"] != "CLASSIFICATION_CONFIDENTIAL" {
+		t.Fatalf("批量身份的密级应封顶为机密: %v", claims["clearance"])
 	}
 	if time.Until(resp.GetExpiresAt().AsTime()) > 5*time.Minute+time.Second {
 		t.Fatal("换发的 Principal 有效期不应超过 5 分钟")

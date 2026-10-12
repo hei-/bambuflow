@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
 )
 
 // 回放与反馈（技术设计文档 13.1，gateway 详设 4.1）：转到 orchestrator，回答记录存在那里。
@@ -57,6 +57,28 @@ func (s *Server) answerTarget(r *http.Request, c *call) (string, bool, error) {
 	return principal, t.Auditor(c.groups), nil
 }
 
+// ---- DELETE /v1/conversations/{conversation_id} ----
+
+// deleteConversation 删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）。归属由 orchestrator 判定；
+// 会话不存在或不属于调用者时同样返回 204，不让调用方据此判断别人的会话是否存在。审计记录照常写，不随会话删除。
+func (s *Server) deleteConversation(_ http.ResponseWriter, r *http.Request, c *call) (any, error) {
+	principal, _, err := s.authorize(r, c, access{priority: admission.PrioritySearch})
+	if err != nil {
+		return nil, err
+	}
+	id := r.PathValue("conversation_id")
+	if !conversationIDRe.MatchString(id) {
+		return nil, problemNotFound
+	}
+	ctx, cancel := downstream(c.ctx, principal, "answer", "", feedbackDeadline)
+	defer cancel()
+	if _, err := s.Orchestrator.DeleteConversation(ctx, &answerv1.DeleteConversationRequest{ConversationId: id}); err != nil {
+		return nil, fromGRPC(err)
+	}
+	c.httpStatus = http.StatusNoContent
+	return nil, nil
+}
+
 // ---- GET /v1/answers/{answer_id} ----
 
 // getAnswer 回放一次回答。引用与列表项已由 orchestrator 按调用者当前的权限复核；
@@ -84,6 +106,8 @@ func (s *Server) getAnswer(_ http.ResponseWriter, r *http.Request, c *call) (any
 		}
 	}
 	c.blocks = shown
+	// 回放解开的受限级审计快照同样是一次受限级访问（审计岗查看别人的回答也算）
+	c.restrictedAnswer(a)
 	return replayResult{
 		answerResult: answerJSON(&call{answerID: c.answerID, traceID: a.GetTraceId()}, a),
 		Question:     resp.GetQuestion(), CreatedAt: timeOf(resp.GetCreatedAt()),

@@ -35,13 +35,16 @@ enum ExperimentStatus {
   EXPERIMENT_STATUS_STOPPED = 2;
 }
 
-// 实验组替换的对象（orchestrator 详设 12.3）。本期只开放阈值：提示词与模型目前各只有一个可用版本。
-// 不填的字段沿用基线。
+// 实验组替换的对象（orchestrator 详设 12.3）：阈值，以及已单独过评测门禁的配置版本。至少替换一项；不填的沿用基线。
 message ExperimentOverrides {
   // 句支持度门槛，0.3–0.9（orchestrator 详设 12.2 的合理范围）
   optional double support_threshold = 1;
   // 引用覆盖率门槛，0.5–1.0
   optional double min_coverage = 2;
+  // 实验组替换的配置版本（cfv_ 前缀，最多 4 个）：该租户的 pipeline（检索计划、agent 预算、阈值）、routing（生成模型与
+  // 置信度权重）、回答模板（answer、agent-answer 各至多一个），每类对象至多一个。每个版本都须有评测门禁已通过、
+  // 未被驳回的发布（governance 详设 3.1“变体都已单独过门禁”）；pipeline 的门禁覆盖该租户。策略包不能做实验。
+  repeated string config_versions = 3;
 }
 
 message Experiment {

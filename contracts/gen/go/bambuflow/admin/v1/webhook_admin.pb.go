@@ -820,8 +820,8 @@ const file_bambuflow_admin_v1_webhook_admin_proto_rawDesc = "" +
 	"\x11ListSubscriptions\x12,.bambuflow.admin.v1.ListSubscriptionsRequest\x1a-.bambuflow.admin.v1.ListSubscriptionsResponse\x12s\n" +
 	"\x12DeleteSubscription\x12-.bambuflow.admin.v1.DeleteSubscriptionRequest\x1a..bambuflow.admin.v1.DeleteSubscriptionResponse\x12g\n" +
 	"\x0eListDeliveries\x12).bambuflow.admin.v1.ListDeliveriesRequest\x1a*.bambuflow.admin.v1.ListDeliveriesResponse\x12X\n" +
-	"\tRedeliver\x12$.bambuflow.admin.v1.RedeliverRequest\x1a%.bambuflow.admin.v1.RedeliverResponseB\xe0\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x11WebhookAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\tRedeliver\x12$.bambuflow.admin.v1.RedeliverRequest\x1a%.bambuflow.admin.v1.RedeliverResponseB\xdc\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x11WebhookAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_webhook_admin_proto_rawDescOnce sync.Once

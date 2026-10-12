@@ -14,7 +14,7 @@ from bambuflow.answer.v1 import answer_pb2
 from bambuflow.common.v1 import types_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2
 from bambuflow_grounding import Grounder, GroundingUnavailableError
-from bambuflow_orchestrator import agent, flow, prompt
+from bambuflow_orchestrator import agent, flow, llm_rerank, prompt
 from bambuflow_orchestrator.budget import Deadline
 from bambuflow_orchestrator.llm import LLMUnavailableError
 from bambuflow_orchestrator.session import StoreUnavailableError
@@ -111,16 +111,27 @@ class FakeLLM:
         answer: str | None = "",
         clock: Clock | None = None,
         cost: float = 0.0,
+        rerank: str | None = "",
     ) -> None:
         self.outputs = {
             prompt.PLAN_SYSTEM: plan,
             prompt.REPLAN_SYSTEM: replan,
             prompt.AGENT_SYSTEM: answer,
+            RERANK: rerank,
         }
         self.calls: list[tuple[str, str, float | None]] = []
+        self.models: list[str] = []
         self.clock, self.cost = clock, cost
 
-    def generate(self, system: str, user: str, timeout: float | None = None) -> FakeGeneration:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        timeout: float | None = None,
+        level: int = 2,
+        model: str = "",
+    ) -> FakeGeneration:
+        self.models.append(model)
         self.calls.append((system, user, timeout))
         if self.clock is not None:
             self.clock.t += self.cost
@@ -146,6 +157,11 @@ class OverlapNLI:
             raise GroundingUnavailableError("down")
         return [sum(ch in p for ch in h) / len(h) for p, h in pairs], "nli@t"
 
+    async def contradiction(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
+        if self.fail:
+            raise GroundingUnavailableError("down")
+        return [0.0] * len(pairs), "nli@t"
+
 
 class Access:
     async def allowed(self, chunk_ids: Sequence[str]) -> dict[str, bool]:
@@ -169,6 +185,7 @@ class Sink:
         self.dropped = True
 
 
+RERANK = prompt.RERANK_SYSTEM.format(keep=llm_rerank.KEEP)
 TWO = plan_lines("旧版信贷政策的抵押率", "新版信贷政策的抵押率")
 ANSWER = "\n".join([unit(OLD, 1, OLD), unit(NEW, 2, NEW, "b2")])
 
@@ -188,9 +205,22 @@ def run(
     sink: Sink | None = None,
     history: Sequence[str] = (),
     nli: OverlapNLI | None = None,
+    max_rounds: int | None = None,
+    max_sub_questions: int | None = None,
 ) -> answer_pb2.AnswerResponse:
     deadline = Deadline(seconds, clock)
-    a = agent.Agent(QUESTION, None, history, search, llm, deadline, sink or Sink(), clock)
+    a = agent.Agent(
+        QUESTION,
+        None,
+        history,
+        search,
+        llm,
+        deadline,
+        sink or Sink(),
+        clock,
+        max_rounds=max_rounds,
+        max_sub_questions=max_sub_questions,
+    )
     req = flow.Request(QUESTION, None, 8)
     answer = agent.AgentAnswer(req, a, llm, Grounder(nli or OverlapNLI(), Access()))
 
@@ -217,7 +247,7 @@ def test_one_round_when_every_sub_question_is_covered() -> None:
     assert rnd.round == 1 and [c.sub_question_id for c in rnd.calls] == ["q1", "q2"]
     assert all(c.covered and c.tool == "doc_search" for c in rnd.calls)
     assert [list(c.chunk_ids) for c in rnd.calls] == [["old#1"], ["new#1"]]
-    assert r.why.prompt_version == prompt.AGENT_PROMPT_VERSION
+    assert r.why.prompt_version == prompt.AGENT.version
     assert (r.why.index_version, r.why.rerank_model) == ("ix-1", "rerank@t")
     # 回答的提示词带子问题，没有未覆盖的子问题
     user = llm.calls[-1][1]
@@ -265,7 +295,14 @@ def test_at_most_three_rounds() -> None:
     replans = iter(["b", "c", "d"])
 
     class Replanner(FakeLLM):
-        def generate(self, system: str, user: str, timeout: float | None = None) -> FakeGeneration:
+        def generate(
+            self,
+            system: str,
+            user: str,
+            timeout: float | None = None,
+            level: int = 2,
+            model: str = "",
+        ) -> FakeGeneration:
             if system == prompt.REPLAN_SYSTEM:
                 self.outputs[system] = json.dumps({"id": "q1", "text": next(replans)})
             return super().generate(system, user, timeout)
@@ -278,6 +315,19 @@ def test_at_most_three_rounds() -> None:
     # 三轮都只有弱证据：仍然作答（不 GIVE_UP），也不算“未找到依据”
     assert r.status == answer_pb2.STATUS_ANSWERED
     assert all(b.block_id != "unresolved" for b in r.blocks)
+
+
+def test_pipeline_budget_lowers_rounds_and_sub_questions() -> None:
+    clock = Clock()
+    res = results(new=0.3)  # 第 2 个子问题只有弱证据：默认预算下会开第 2 轮
+    replan = json.dumps({"id": "q2", "text": "新版 正式表述"}, ensure_ascii=False)
+    llm = FakeLLM(
+        plan=plan_lines("旧版信贷政策的抵押率", "新版信贷政策的抵押率", "c"), replan=replan
+    )
+    search = FakeSearch(res, clock)
+    r = run(llm, search, clock, max_rounds=1, max_sub_questions=2)
+    assert len(r.why.agent_rounds) == 1
+    assert [q for q, _, _ in search.calls] == ["旧版信贷政策的抵押率", "新版信贷政策的抵押率"]
 
 
 def test_no_new_round_when_remaining_time_is_within_generation_reserve() -> None:
@@ -442,3 +492,50 @@ def test_unreranked_hits_count_as_covered() -> None:
     search = FakeSearch(res, clock, rerank_model="")
     r = run(FakeLLM(plan=TWO, answer=ANSWER), search, clock)
     assert len(r.why.agent_rounds) == 1 and r.status == answer_pb2.STATUS_ANSWERED
+
+
+def many() -> dict[str, list[retrieval_pb2.Hit]]:
+    """两个子问题各 13 条候选，合并后 26 条（超过 LLM 重排的门槛 20）。"""
+    return {
+        "旧版信贷政策的抵押率": [hit(f"old#{i}", OLD, 0.9 - i / 100) for i in range(13)],
+        "新版信贷政策的抵押率": [hit(f"new#{i}", NEW, 0.855 - i / 100) for i in range(13)],
+    }
+
+
+def by_score() -> list[str]:
+    hits = [h for hs in many().values() for h in hs]
+    return [h.chunk_id for h in sorted(hits, key=lambda h: h.score, reverse=True)]
+
+
+def test_llm_rerank_picks_context_from_top_twenty() -> None:
+    clock = Clock()
+    llm = FakeLLM(plan=TWO, answer=ANSWER, rerank='{"order": [3, 1, 3, 99, true]}')
+    r = run(llm, FakeSearch(many(), clock), clock)
+    top = by_score()[:20]
+    assert r.why.llm_rerank == "chat@t+" + prompt.RERANK_PROMPT_VERSION
+    # 只认范围内的编号，重复的只取一次；选中的排在最前，其余按精排分
+    assert list(r.audit.context_chunk_ids)[:3] == [top[2], top[0], top[1]]
+    (call,) = [c for c in llm.calls if c[0] == RERANK]
+    assert call[2] == llm_rerank.BUDGET and call[1].count("[") >= 20
+
+
+def test_llm_rerank_failure_falls_back_to_rerank_scores() -> None:
+    for out, reason in ((None, "unavailable"), ("不是 JSON", "unparseable")):
+        clock = Clock()
+        llm = FakeLLM(plan=TWO, answer=ANSWER, rerank=out)
+        r = run(llm, FakeSearch(many(), clock), clock)
+        assert r.why.llm_rerank == ""
+        assert ("llm_rerank", reason) in [(d.stage, d.reason) for d in r.why.degraded]
+        assert list(r.audit.context_chunk_ids)[:8] == by_score()[:8]
+
+
+def test_llm_rerank_needs_enough_candidates_and_time() -> None:
+    clock = Clock()
+    llm = FakeLLM(plan=TWO, answer=ANSWER)
+    run(llm, FakeSearch(results(), clock), clock)
+    assert RERANK not in llm.systems()
+    clock = Clock()
+    llm = FakeLLM(plan=TWO, answer=ANSWER)
+    r = run(llm, FakeSearch(many(), clock), clock, seconds=4.0)
+    assert RERANK not in llm.systems()
+    assert ("llm_rerank", "skipped_deadline") in [(d.stage, d.reason) for d in r.why.degraded]

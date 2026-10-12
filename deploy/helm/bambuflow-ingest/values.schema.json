@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "bambuflow-ingest values",
+  "description": "环境相关的值必须显式给出；开发口令、模拟服务和本地地址不能出现在部署用的 values 里。",
+  "type": "object",
+  "definitions": {
+    "noDev": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [{"not": {"pattern": "dev-only"}}, {"not": {"pattern": "[Mm][Oo][Cc][Kk]"}}]
+    },
+    "url": {
+      "allOf": [
+        {"$ref": "#/definitions/noDev"},
+        {"pattern": "^https?://[^/]+"},
+        {"not": {"pattern": "^https?://(localhost|127\\.0\\.0\\.1|rustfs|embedder|ocr|gateway)(:|/|$)"}}
+      ]
+    },
+    "addr": {"allOf": [{"$ref": "#/definitions/noDev"}, {"pattern": "^[^/:]+:[0-9]+$"}, {"not": {"pattern": "^(redis|localhost|127\\.0\\.0\\.1|governance|evaluation-api|indexing):"}}]},
+    "resources": {"type": "object", "required": ["requests", "limits"]},
+    "schedule": {"type": "string", "minLength": 9},
+    "sourceID": {"type": "string", "pattern": "^src_[A-Za-z0-9_]+$"}
+  },
+  "required": ["image", "vault", "networkPolicy", "online", "redisAddr", "objectStore", "audit", "indexing", "processing", "rebuildWorker", "connectors"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["registry", "tag"],
+      "properties": {"registry": {"$ref": "#/definitions/noDev"}, "tag": {"$ref": "#/definitions/noDev"}}
+    },
+    "vault": {
+      "type": "object",
+      "required": ["addr", "role"],
+      "properties": {"addr": {"$ref": "#/definitions/url"}, "role": {"$ref": "#/definitions/noDev"}}
+    },
+    "networkPolicy": {
+      "type": "object",
+      "required": ["onlineNamespace"],
+      "properties": {
+        "onlineNamespace": {"$ref": "#/definitions/noDev"},
+        "webhookFrom": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "online": {
+      "type": "object",
+      "required": ["jwksUrl", "configAddr", "evaluationAddr"],
+      "properties": {
+        "jwksUrl": {"allOf": [{"$ref": "#/definitions/noDev"}, {"pattern": "^https?://[^/]+/internal/jwks\\.json$"}]},
+        "configAddr": {"$ref": "#/definitions/addr"},
+        "evaluationAddr": {"$ref": "#/definitions/addr"}
+      }
+    },
+    "redisAddr": {"$ref": "#/definitions/addr"},
+    "objectStore": {
+      "type": "object",
+      "required": ["endpoint", "bucket"],
+      "properties": {"endpoint": {"$ref": "#/definitions/url"}, "bucket": {"type": "string", "minLength": 3}}
+    },
+    "audit": {
+      "type": "object",
+      "required": ["s3Endpoint", "bucket", "retentionDays"],
+      "properties": {"s3Endpoint": {"$ref": "#/definitions/url"}, "bucket": {"type": "string", "minLength": 3}, "retentionDays": {"type": "integer", "minimum": 1}}
+    },
+    "indexing": {
+      "type": "object",
+      "required": ["replicas", "publishSchedule", "purgeSchedule", "purgeGraceHours", "resources"],
+      "properties": {
+        "replicas": {"type": "integer", "minimum": 2},
+        "publishSchedule": {"$ref": "#/definitions/schedule"},
+        "expireSchedule": {"$ref": "#/definitions/schedule"},
+        "purgeSchedule": {"$ref": "#/definitions/schedule"},
+        "purgeGraceHours": {"type": "integer", "minimum": 24},
+        "retention": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1}, "propertyNames": {"$ref": "#/definitions/sourceID"}},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "processing": {
+      "type": "object",
+      "required": ["replicas", "embedderUrl", "embeddingModel", "resources", "admin"],
+      "properties": {
+        "replicas": {"type": "integer", "minimum": 1},
+        "embedderUrl": {"$ref": "#/definitions/url"},
+        "embeddingModel": {"$ref": "#/definitions/noDev"},
+        "ocrUrl": {"type": "string"},
+        "imageDescriberUrl": {"type": "string"},
+        "nerUrl": {"type": "string"},
+        "resources": {"$ref": "#/definitions/resources"}
+      }
+    },
+    "rebuildWorker": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "maxDocsPerSecond": {"type": "number", "exclusiveMinimum": 0},
+        "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+        "tolerations": {"type": "array", "items": {"type": "object"}}
+      },
+      "if": {"properties": {"enabled": {"const": true}}},
+      "then": {"properties": {"embeddingModel": {"$ref": "#/definitions/noDev"}}, "required": ["embeddingModel"]}
+    },
+    "connectors": {
+      "type": "object",
+      "required": ["admin", "resources", "sources", "poll"],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "command"],
+            "properties": {
+              "id": {"$ref": "#/definitions/sourceID"},
+              "command": {"enum": ["sync-wiki", "sync-fileshare", "sync-logs", "sync-dbschema", "sync-records"]},
+              "schedule": {"$ref": "#/definitions/schedule"},
+              "poll": {"type": "boolean"},
+              "webhook": {"type": "boolean"},
+              "reconcileCommand": {"enum": ["reconcile-wiki", "reconcile-fileshare"]},
+              "reconcileSchedule": {"$ref": "#/definitions/schedule"},
+              "env": {"type": "object", "additionalProperties": {"type": "string"}},
+              "configFiles": {"type": "object", "additionalProperties": {"type": "string"}}
+            },
+            "dependentRequired": {"reconcileCommand": ["reconcileSchedule"]},
+            "if": {"properties": {"poll": {"const": true}}, "required": ["poll"]},
+            "then": {"not": {"required": ["schedule"]}},
+            "else": {"required": ["schedule"], "properties": {"webhook": {"const": false}}}
+          }
+        },
+        "poll": {
+          "type": "object",
+          "required": ["min", "max"],
+          "properties": {
+            "min": {"type": "string", "pattern": "^[0-9]+(m|h)$"},
+            "max": {"type": "string", "pattern": "^[0-9]+(m|h)$"}
+          }
+        }
+      }
+    }
+  }
+}

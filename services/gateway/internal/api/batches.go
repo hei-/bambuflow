@@ -21,9 +21,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
+	batchv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/batch/v1"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
+	"github.com/hei-/bambuflow/services/gateway/internal/issuer"
 )
 
 // /v1/batches 系列接口（技术设计文档 13.5，gateway 详设 4.1）：转到 qa/batch。
@@ -378,6 +378,7 @@ func (s *Server) resultLine(c *call, res *batchv1.BatchResult) (batchResultLine,
 	}
 	item := &call{ctx: c.ctx, traceID: c.traceID, answerID: a.GetAnswerId(), batchID: c.batchID, jti: c.jti,
 		sub: c.sub, tenant: c.tenant, actor: c.actor, endpoint: "batch-result-item", start: s.Now(), blocks: a.GetAudit()}
+	item.recordAnswer(a.GetStatus(), a.GetWhy(), sentenceTexts(a.GetSentences()))
 	if err := s.writeAudit(item, http.StatusOK, "", ""); err != nil {
 		return line, err
 	}

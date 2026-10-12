@@ -1,5 +1,6 @@
-{{- /* 租户配置与管理接口的角色映射（gateway）、授权策略数据（retrieval 的 data.json）、sql_query 的视图目录（orchestrator），
-内容来自 values 的 tenants、gateway.adminRoles、policyData、orchestrator.sqlCatalog */ -}}
+{{- /* 租户配置与管理接口的角色映射（gateway）、策略包的数据源层与租户层（governance 首次启动时导入）、
+sql_query 的视图目录（orchestrator）、紧急拒绝规则的签名文件（retrieval 的备用通道，governance 详设 8.2），
+内容来自 values 的 tenants、gateway.adminRoles、policyLayers、orchestrator.sqlCatalog、retrieval.emergencyDenials */ -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -13,9 +14,11 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-policy-data
+  name: {{ .Release.Name }}-policy-layers
 data:
-  data.json: {{ toJson .Values.policyData | quote }}
+  {{- range $name, $body := .Values.policyLayers }}
+  {{ $name }}.rego: {{ $body | quote }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -32,3 +35,12 @@ metadata:
 data:
   sql-catalog.yaml: |
     {{- toYaml .Values.orchestrator.sqlCatalog | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-emergency-denials
+data:
+  {{- range $name, $signed := .Values.retrieval.emergencyDenials }}
+  {{ $name }}.json: {{ $signed | quote }}
+  {{- end }}

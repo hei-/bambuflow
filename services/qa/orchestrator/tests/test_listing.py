@@ -78,6 +78,7 @@ def doc(i: int) -> retrieval_pb2.DocumentSummary:
         doc_version=1,
         title=f"制度 {i}",
         source_uri=f"wiki://d{i}",
+        classification=types_pb2.CLASSIFICATION_INTERNAL,
         metadata=types_pb2.DocMetadata(
             effective_date="2025-04-01", validity_status=types_pb2.VALIDITY_STATUS_EFFECTIVE
         ),
@@ -126,6 +127,8 @@ def test_enumeration_lists_all_when_few() -> None:
     )
     items = [s for s in r.sentences if s.claim_type == answer_pb2.CLAIM_TYPE_LIST_ITEM]
     assert [s.document.doc_id for s in items] == ["d0", "d1"]
+    # gateway 按列表项的密级决定是否先写受限级访问记录
+    assert items[0].document.classification == types_pb2.CLASSIFICATION_INTERNAL
     assert items[0].text == "《制度 0》（2025-04-01 起生效，现行）" and not items[0].ref_ids
     scope = next(b for b in r.blocks if b.block_type == answer_pb2.BLOCK_TYPE_SCOPE)
     assert (scope.scope.total_count, scope.scope.shown, scope.scope.total_is_exact) == (2, 2, True)
@@ -167,3 +170,10 @@ def test_nothing_found_does_not_hint_at_hidden_docs() -> None:
 def test_inexact_total_is_not_stated_as_exact() -> None:
     r = run("列出所有制度", FakeCatalog(10000, exact=False))
     assert "超过 10000 份" in r.answer
+
+
+def test_item_text_marks_superseded() -> None:
+    d = doc(0)
+    d.metadata.validity_status = types_pb2.VALIDITY_STATUS_REPEALED
+    d.metadata.superseded_by = "d9"
+    assert listing.item_text(d) == "《制度 0》（2025-04-01 起生效，已废止，已被新版替代）"

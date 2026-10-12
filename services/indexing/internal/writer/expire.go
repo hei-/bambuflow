@@ -17,8 +17,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
 )
 
 // expireBatch 是每个事务处理的文档数：分批提交，锁住的行少，在线写入不受影响
@@ -66,7 +66,8 @@ func validRetention(m map[string]int32) error {
 
 // Expire 给每个数据源里源端时间早于“now - 保留天数”的在用文档写删除标记：与源端删除走同一个函数，
 // 对线上立即生效；删除时间记为 now，之后比它早产生的内容写入都被挡住（删除优先）。
-func Expire(ctx context.Context, pool *pgxpool.Pool, retention map[string]int32, now time.Time) (map[string]int64, error) {
+// 每批写一条变更审计（document.expire，列出写了删除标记的文档），与删除标记同一事务。
+func Expire(ctx context.Context, pool *pgxpool.Pool, retention map[string]int32, now time.Time, audit Auditor) (map[string]int64, error) {
 	out := map[string]int64{}
 	for _, src := range slices.Sorted(maps.Keys(retention)) {
 		before := now.Add(-time.Duration(retention[src]) * 24 * time.Hour)
@@ -83,6 +84,7 @@ func Expire(ctx context.Context, pool *pgxpool.Pool, retention map[string]int32,
 				if err != nil {
 					return err
 				}
+				var expired []string
 				for _, doc := range docs {
 					r, err := tombstone(ctx, tx, &ingestionv1.TombstoneDocumentRequest{SourceId: src, DocId: doc, OccurredAt: timestamppb.New(now)})
 					if err != nil {
@@ -90,6 +92,13 @@ func Expire(ctx context.Context, pool *pgxpool.Pool, retention map[string]int32,
 					}
 					if r == ingestionv1.TombstoneResult_TOMBSTONE_RESULT_TOMBSTONED {
 						n++
+						expired = append(expired, doc)
+					}
+				}
+				if len(expired) > 0 {
+					if err := audit.Write(ctx, "document.expire", src, map[string]any{"doc_ids": expired,
+						"retention_days": retention[src], "occurred_before": before}); err != nil {
+						return err
 					}
 				}
 				// 取不满一批说明已经处理完；已写删除标记的不再被选中，下一批从剩下的取
@@ -109,7 +118,7 @@ func (a *Admin) ExpireDocuments(ctx context.Context, r *adminv1.ExpireDocumentsR
 	if err := validRetention(r.GetRetentionDays()); err != nil {
 		return nil, err
 	}
-	got, err := Expire(ctx, a.Pool, r.GetRetentionDays(), time.Now())
+	got, err := Expire(ctx, a.Pool, r.GetRetentionDays(), time.Now(), a.Audit)
 	if err != nil {
 		a.Log.ErrorContext(ctx, "按保留期写删除标记失败", slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "暂时不可用")

@@ -27,7 +27,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 const (

@@ -7,6 +7,14 @@
   "loginWithEmailAllowed": false,
   "clients": [
     {
+      "clientId": "e2e-business-frontend",
+      "name": "业务系统的前端（e2e 用它直接拿用户的公司 IdP 令牌，再由业务系统做令牌交换）",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true
+    },
+    {
       "clientId": "${CORP_IDP_CLIENT_ID}",
       "name": "bambuflow 平台授权服务",
       "enabled": true,
@@ -17,7 +25,8 @@
       "directAccessGrantsEnabled": false,
       "redirectUris": ["${PLATFORM_ISSUER}/broker/corp-idp/endpoint"],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${PLATFORM_ISSUER}/broker/corp-idp/endpoint/logout_response"
       }
     }
   ],

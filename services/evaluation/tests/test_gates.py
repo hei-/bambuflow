@@ -1,6 +1,6 @@
 import asyncio
 import datetime as dt
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 import grpc
@@ -31,11 +31,14 @@ class MemStore:
     async def put(self, g: gates.GateRun) -> None:
         self.rows.append(g)
 
-    async def list(self, tenant: str, trigger: str, offset: int, limit: int) -> list[gates.GateRun]:
+    async def list(
+        self, tenants: Sequence[str], trigger: str, offset: int, limit: int
+    ) -> list[gates.GateRun]:
         rows = [
             g
             for g in sorted(self.rows, key=lambda g: g.created_at, reverse=True)
-            if (not tenant or tenant in g.tenants) and (not trigger or g.trigger == trigger)
+            if (not tenants or set(tenants) & set(g.tenants))
+            and (not trigger or g.trigger == trigger)
         ]
         return [
             g.__class__(**{**g.__dict__, "report_md": ""}) for g in rows[offset : offset + limit]
@@ -109,6 +112,10 @@ def test_list_and_get_gates() -> None:
         metrics = {m.name: m for m in g.metrics}
         assert metrics["groundedness"].value == 0.91
         assert not metrics["latency_p95_ms"].HasField("value")
+        owner = as_("tenant_owner:credit")
+        mine = await stub.ListGates(eval_gate_admin_pb2.ListGatesRequest(), **owner)
+        assert [g.gate_id for g in mine.gates] == [a.gate_id]
+        await stub.GetGate(eval_gate_admin_pb2.GetGateRequest(gate_id=a.gate_id), **owner)
         got = await stub.GetGate(eval_gate_admin_pb2.GetGateRequest(gate_id=a.gate_id), **ops)
         assert got.report_markdown == "# A" and got.gate.repeats == 3
         for bad, code in (
@@ -123,6 +130,20 @@ def test_list_and_get_gates() -> None:
             (
                 stub.ListGates(eval_gate_admin_pb2.ListGatesRequest(), **as_("auditor")),
                 grpc.StatusCode.PERMISSION_DENIED,
+            ),
+            # 租户负责人：别的租户的列表无权，别的租户的门禁与不存在的一样
+            (
+                stub.ListGates(
+                    eval_gate_admin_pb2.ListGatesRequest(tenant="ops"), **as_("tenant_owner:credit")
+                ),
+                grpc.StatusCode.PERMISSION_DENIED,
+            ),
+            (
+                stub.GetGate(
+                    eval_gate_admin_pb2.GetGateRequest(gate_id=b.gate_id),
+                    **as_("tenant_owner:credit"),
+                ),
+                grpc.StatusCode.NOT_FOUND,
             ),
         ):
             with pytest.raises(grpc.aio.AioRpcError) as e:

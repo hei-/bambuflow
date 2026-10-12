@@ -7,27 +7,66 @@ import "google/protobuf/timestamp.proto";
 // ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
 // gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 //
-// 现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-// 每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+// 配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+// 每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+// Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+// 全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
 // 变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
 // 已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
 service ConfigAdminService {
   rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
   rpc ListConfigVersions(ListConfigVersionsRequest) returns (ListConfigVersionsResponse);
   rpc CreateChangeRequest(CreateChangeRequestRequest) returns (CreateChangeRequestResponse);
+  // 按状态列出变更单（新的在前，最多 100 条），审批人据此找待审批的变更单
+  rpc ListChangeRequests(ListChangeRequestsRequest) returns (ListChangeRequestsResponse);
   rpc ApproveChangeRequest(ApproveChangeRequestRequest) returns (ApproveChangeRequestResponse);
   rpc RejectChangeRequest(RejectChangeRequestRequest) returns (RejectChangeRequestResponse);
   rpc CreateRelease(CreateReleaseRequest) returns (CreateReleaseResponse);
   rpc ApproveRelease(ApproveReleaseRequest) returns (ApproveReleaseResponse);
   rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
+  // 按状态列出发布（新的在前，最多 100 条）
+  rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse);
   rpc RollbackRelease(RollbackReleaseRequest) returns (RollbackReleaseResponse);
+  // 灰度中的发布全量生效（切生效指针）；一人执行
+  rpc PromoteRelease(PromoteReleaseRequest) returns (PromoteReleaseResponse);
+  // 终止灰度：候选版本不再生效，发布记为 rolled_back；一人执行（收紧不需要第二个人）
+  rpc AbortRollout(AbortRolloutRequest) returns (AbortRolloutResponse);
+}
+
+message PromoteReleaseRequest {
+  string release_id = 1;
+}
+
+message PromoteReleaseResponse {
+  Release release = 1;
+}
+
+message AbortRolloutRequest {
+  string release_id = 1;
+  // 必填，最多 500 字
+  string reason = 2;
+}
+
+message AbortRolloutResponse {
+  Release release = 1;
+}
+
+// Rollout 是灰度中的发布的范围：tenant 是灰度的租户，percent 是该租户里按用户分流的比例。
+message Rollout {
+  string tenant = 1;
+  int32 percent = 2;
+  google.protobuf.Timestamp started_at = 3;
+  // evaluation 最近一次观察的结果（governance 详设 4.1 第 ⑨ 步）：两组样本数与各项指标；还没观察过时为空
+  string observation = 4;
+  google.protobuf.Timestamp observed_at = 5;
 }
 
 message ConfigVersion {
   // cfv_ 前缀
   string version_id = 1;
-  // tenant
+  // tenant、pipeline、routing、policy
   string object = 2;
+  // 租户名；routing 为 global；policy 为 global、source:<数据源>、tenant:<租户>
   string scope = 3;
   // 同一对象内递增的序号
   int32 number = 4;
@@ -40,6 +79,9 @@ message ConfigVersion {
   string source_ref = 9;
   // 是否当前生效
   bool active = 10;
+  // 策略层发布前的差异分析（governance 详设 5.2 第 4 步）：这个版本生效后可见范围变大的代表性主体与变大的内容，
+  // 审批时重点核对；其他对象为空。
+  repeated string widened = 11;
 }
 
 message TenantSummary {
@@ -79,13 +121,17 @@ message ChangeRequest {
   string gate_id = 7;
   string author = 8;
   google.protobuf.Timestamp created_at = 9;
-  // open、approved、rejected、stale（审批时生效版本已不是 base，须重新提交）
+  // open、approved、rejected、stale（审批时生效版本已不是 base，须重新提交）、
+  // merge_request（Git 类对象 pipeline、routing、policy、prompt：已写成合并请求，在 Git 里评审，合并后由 CI 发布）、
+  // expired（7 天未审批自动关闭）
   string status = 10;
   string decided_by = 11;
   google.protobuf.Timestamp decided_at = 12;
   string reject_reason = 13;
   // 审批后生成的发布，rel_ 前缀
   string release_id = 14;
+  // status 为 merge_request 时的合并请求链接（governance 详设 3.1）
+  string merge_request_url = 15;
 }
 
 message CreateChangeRequestRequest {
@@ -100,6 +146,15 @@ message CreateChangeRequestRequest {
 
 message CreateChangeRequestResponse {
   ChangeRequest change_request = 1;
+}
+
+message ListChangeRequestsRequest {
+  // open、approved、rejected、stale；不填为全部
+  string status = 1;
+}
+
+message ListChangeRequestsResponse {
+  repeated ChangeRequest change_requests = 1;
 }
 
 message ApproveChangeRequestRequest {
@@ -131,7 +186,10 @@ message Release {
   string source = 6;
   string source_ref = 7;
   string gate_id = 8;
-  // pending_approval、active、superseded、rolled_back、rejected、stale
+  // gating（评测门禁中：影响回答的对象与策略包发布后由 governance 发起门禁，通过后才转为 pending_approval）、
+  // gate_failed（门禁不通过、无法判定或超时，原因见 gate_id 的门禁报告）、
+  // pending_approval、pending_second_approval（策略层已有第一位审批人，等第二位）、rolling_out（灰度中）、active、
+  // superseded、rolled_back、rejected、stale、expired（7 天未审批自动关闭）
   string status = 9;
   string requested_by = 10;
   google.protobuf.Timestamp requested_at = 11;
@@ -140,6 +198,13 @@ message Release {
   string rolled_back_by = 14;
   google.protobuf.Timestamp rolled_back_at = 15;
   string reason = 16;
+  // 策略层的第二位审批人（两位须是不同的人，至少一位是信息安全或数据属主）
+  string second_approved_by = 17;
+  google.protobuf.Timestamp second_approved_at = 18;
+  // 全局对象灰度的试点租户（发起时指定，不指定则审批时选第一个试点阶段的租户）
+  string canary_tenant = 19;
+  // status 为 rolling_out 时的灰度范围
+  Rollout rollout = 20;
 }
 
 message CreateReleaseRequest {
@@ -148,8 +213,12 @@ message CreateReleaseRequest {
   string content = 3;
   // Git 提交，如 git:3f2a…
   string source_ref = 4;
+  // 只有租户配置用：切到全量时附已通过、覆盖该租户的门禁。影响回答的对象（pipeline、routing、prompt）与策略包
+  // 由 governance 用候选版本自己发起门禁，这里给了也不用（门禁要评的是这个候选，别处跑过的门禁评的不是它）
   string gate_id = 5;
   string reason = 6;
+  // 全局对象（routing、prompt、全局与数据源策略层）灰度的试点租户；不填则审批时选第一个试点阶段的租户
+  string canary_tenant = 7;
 }
 
 message CreateReleaseResponse {
@@ -170,6 +239,15 @@ message GetReleaseRequest {
 
 message GetReleaseResponse {
   Release release = 1;
+}
+
+message ListReleasesRequest {
+  // pending_approval、active、superseded、rolled_back、rejected、stale；不填为全部
+  string status = 1;
+}
+
+message ListReleasesResponse {
+  repeated Release releases = 1;
 }
 
 message RollbackReleaseRequest {

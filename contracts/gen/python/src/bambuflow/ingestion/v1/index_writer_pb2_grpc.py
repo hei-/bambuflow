@@ -31,6 +31,26 @@ class IndexWriterServiceStub:
                 request_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.UpdateAclRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.UpdateAclResponse.FromString,
                 _registered_method=True)
+        self.LookupVectors = channel.unary_unary(
+                '/bambuflow.ingestion.v1.IndexWriterService/LookupVectors',
+                request_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.LookupVectorsRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.LookupVectorsResponse.FromString,
+                _registered_method=True)
+        self.SetPartitionGrants = channel.unary_unary(
+                '/bambuflow.ingestion.v1.IndexWriterService/SetPartitionGrants',
+                request_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.SetPartitionGrantsRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.SetPartitionGrantsResponse.FromString,
+                _registered_method=True)
+        self.ListSourceDocuments = channel.unary_stream(
+                '/bambuflow.ingestion.v1.IndexWriterService/ListSourceDocuments',
+                request_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.ListSourceDocumentsRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.ListSourceDocumentsResponse.FromString,
+                _registered_method=True)
+        self.RecordPurge = channel.unary_unary(
+                '/bambuflow.ingestion.v1.IndexWriterService/RecordPurge',
+                request_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.RecordPurgeRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.RecordPurgeResponse.FromString,
+                _registered_method=True)
 
 
 class IndexWriterServiceServicer:
@@ -61,6 +81,37 @@ class IndexWriterServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def LookupVectors(self, request, context):
+        """按块的向量缓存（入库管道详设第 8 节）：按向量化输入的摘要与嵌入模型版本取已入库的向量，命中的块不再送嵌入模型。
+        只读，查不到的不在结果里；缓存不可用时调用方照常全部向量化。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetPartitionGrants(self, request, context):
+        """替换分区级数据源一个分区的全部被授权方（PartitionGrantChanged）；不改索引与文档权限。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListSourceDocuments(self, request, context):
+        """ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
+        connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecordPurge(self, request, context):
+        """RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+        同一存储重复记录时保留最早的时间。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IndexWriterServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -78,6 +129,26 @@ def add_IndexWriterServiceServicer_to_server(servicer, server):
                     servicer.UpdateAcl,
                     request_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.UpdateAclRequest.FromString,
                     response_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.UpdateAclResponse.SerializeToString,
+            ),
+            'LookupVectors': grpc.unary_unary_rpc_method_handler(
+                    servicer.LookupVectors,
+                    request_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.LookupVectorsRequest.FromString,
+                    response_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.LookupVectorsResponse.SerializeToString,
+            ),
+            'SetPartitionGrants': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetPartitionGrants,
+                    request_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.SetPartitionGrantsRequest.FromString,
+                    response_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.SetPartitionGrantsResponse.SerializeToString,
+            ),
+            'ListSourceDocuments': grpc.unary_stream_rpc_method_handler(
+                    servicer.ListSourceDocuments,
+                    request_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.ListSourceDocumentsRequest.FromString,
+                    response_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.ListSourceDocumentsResponse.SerializeToString,
+            ),
+            'RecordPurge': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecordPurge,
+                    request_deserializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.RecordPurgeRequest.FromString,
+                    response_serializer=bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.RecordPurgeResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -163,6 +234,114 @@ class IndexWriterService:
             '/bambuflow.ingestion.v1.IndexWriterService/UpdateAcl',
             bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.UpdateAclRequest.SerializeToString,
             bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.UpdateAclResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LookupVectors(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.ingestion.v1.IndexWriterService/LookupVectors',
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.LookupVectorsRequest.SerializeToString,
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.LookupVectorsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetPartitionGrants(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.ingestion.v1.IndexWriterService/SetPartitionGrants',
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.SetPartitionGrantsRequest.SerializeToString,
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.SetPartitionGrantsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListSourceDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/bambuflow.ingestion.v1.IndexWriterService/ListSourceDocuments',
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.ListSourceDocumentsRequest.SerializeToString,
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.ListSourceDocumentsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecordPurge(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.ingestion.v1.IndexWriterService/RecordPurge',
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.RecordPurgeRequest.SerializeToString,
+            bambuflow_dot_ingestion_dot_v1_dot_index__writer__pb2.RecordPurgeResponse.FromString,
             options,
             channel_credentials,
             insecure,

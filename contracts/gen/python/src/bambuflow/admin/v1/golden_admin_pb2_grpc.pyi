@@ -42,6 +42,11 @@ class GoldenSetAdminServiceStub:
     ListQuestions: _grpc.UnaryUnaryMultiCallable[_golden_admin_pb2.ListQuestionsRequest, _golden_admin_pb2.ListQuestionsResponse]
     SubmitCandidate: _grpc.UnaryUnaryMultiCallable[_golden_admin_pb2.SubmitCandidateRequest, _golden_admin_pb2.SubmitCandidateResponse]
     ReviewCandidate: _grpc.UnaryUnaryMultiCallable[_golden_admin_pb2.ReviewCandidateRequest, _golden_admin_pb2.ReviewCandidateResponse]
+    ListFeedbackCases: _grpc.UnaryUnaryMultiCallable[_golden_admin_pb2.ListFeedbackCasesRequest, _golden_admin_pb2.ListFeedbackCasesResponse]
+    """负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：用户标为“有误”或“引用不对”的回答，每天由在线抽样任务登记，
+    只有掩码后的问题、反馈与当时引用的文档，不含用户身份。业务专家据此出候选题（origin=feedback）后标为已转题，或驳回
+    """
+    ResolveFeedbackCase: _grpc.UnaryUnaryMultiCallable[_golden_admin_pb2.ResolveFeedbackCaseRequest, _golden_admin_pb2.ResolveFeedbackCaseResponse]
 
 @_typing.type_check_only
 class GoldenSetAdminServiceAsyncStub(GoldenSetAdminServiceStub):
@@ -57,6 +62,11 @@ class GoldenSetAdminServiceAsyncStub(GoldenSetAdminServiceStub):
     ListQuestions: _aio.UnaryUnaryMultiCallable[_golden_admin_pb2.ListQuestionsRequest, _golden_admin_pb2.ListQuestionsResponse]  # type: ignore[assignment]
     SubmitCandidate: _aio.UnaryUnaryMultiCallable[_golden_admin_pb2.SubmitCandidateRequest, _golden_admin_pb2.SubmitCandidateResponse]  # type: ignore[assignment]
     ReviewCandidate: _aio.UnaryUnaryMultiCallable[_golden_admin_pb2.ReviewCandidateRequest, _golden_admin_pb2.ReviewCandidateResponse]  # type: ignore[assignment]
+    ListFeedbackCases: _aio.UnaryUnaryMultiCallable[_golden_admin_pb2.ListFeedbackCasesRequest, _golden_admin_pb2.ListFeedbackCasesResponse]  # type: ignore[assignment]
+    """负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：用户标为“有误”或“引用不对”的回答，每天由在线抽样任务登记，
+    只有掩码后的问题、反馈与当时引用的文档，不含用户身份。业务专家据此出候选题（origin=feedback）后标为已转题，或驳回
+    """
+    ResolveFeedbackCase: _aio.UnaryUnaryMultiCallable[_golden_admin_pb2.ResolveFeedbackCaseRequest, _golden_admin_pb2.ResolveFeedbackCaseResponse]  # type: ignore[assignment]
 
 class GoldenSetAdminServiceServicer(metaclass=_abc_1.ABCMeta):
     """GoldenSetAdminService 是评测集题目的查看与候选题复核（evaluation 详设 3.4、8.2），由 evaluation 实现，
@@ -87,5 +97,22 @@ class GoldenSetAdminServiceServicer(metaclass=_abc_1.ABCMeta):
         request: _golden_admin_pb2.ReviewCandidateRequest,
         context: _ServicerContext,
     ) -> _typing.Union[_golden_admin_pb2.ReviewCandidateResponse, _abc.Awaitable[_golden_admin_pb2.ReviewCandidateResponse]]: ...
+
+    @_abc_1.abstractmethod
+    def ListFeedbackCases(
+        self,
+        request: _golden_admin_pb2.ListFeedbackCasesRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_golden_admin_pb2.ListFeedbackCasesResponse, _abc.Awaitable[_golden_admin_pb2.ListFeedbackCasesResponse]]:
+        """负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：用户标为“有误”或“引用不对”的回答，每天由在线抽样任务登记，
+        只有掩码后的问题、反馈与当时引用的文档，不含用户身份。业务专家据此出候选题（origin=feedback）后标为已转题，或驳回
+        """
+
+    @_abc_1.abstractmethod
+    def ResolveFeedbackCase(
+        self,
+        request: _golden_admin_pb2.ResolveFeedbackCaseRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_golden_admin_pb2.ResolveFeedbackCaseResponse, _abc.Awaitable[_golden_admin_pb2.ResolveFeedbackCaseResponse]]: ...
 
 def add_GoldenSetAdminServiceServicer_to_server(servicer: GoldenSetAdminServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

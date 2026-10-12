@@ -96,25 +96,34 @@ class ListDeadLettersResponse(_message.Message):
     def __init__(self, dead_letters: _Optional[_Iterable[_Union[DeadLetter, _Mapping]]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
 
 class ReplayRequest(_message.Message):
-    __slots__ = ("source_id", "stage", "error_code", "doc_ids", "reason")
+    __slots__ = ("source_id", "stage", "error_code", "doc_ids", "reason", "to", "pipeline_version", "include_succeeded")
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
     ERROR_CODE_FIELD_NUMBER: _ClassVar[int]
     DOC_IDS_FIELD_NUMBER: _ClassVar[int]
     REASON_FIELD_NUMBER: _ClassVar[int]
+    FROM_FIELD_NUMBER: _ClassVar[int]
+    TO_FIELD_NUMBER: _ClassVar[int]
+    PIPELINE_VERSION_FIELD_NUMBER: _ClassVar[int]
+    INCLUDE_SUCCEEDED_FIELD_NUMBER: _ClassVar[int]
     source_id: str
     stage: str
     error_code: str
     doc_ids: _containers.RepeatedScalarFieldContainer[str]
     reason: str
-    def __init__(self, source_id: _Optional[str] = ..., stage: _Optional[str] = ..., error_code: _Optional[str] = ..., doc_ids: _Optional[_Iterable[str]] = ..., reason: _Optional[str] = ...) -> None: ...
+    to: _timestamp_pb2.Timestamp
+    pipeline_version: str
+    include_succeeded: bool
+    def __init__(self, source_id: _Optional[str] = ..., stage: _Optional[str] = ..., error_code: _Optional[str] = ..., doc_ids: _Optional[_Iterable[str]] = ..., reason: _Optional[str] = ..., to: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., pipeline_version: _Optional[str] = ..., include_succeeded: _Optional[bool] = ..., **kwargs) -> None: ...
 
 class ReplayResponse(_message.Message):
-    __slots__ = ("ingest_batch_id", "replayed", "skipped_quarantined")
+    __slots__ = ("ingest_batch_id", "replayed", "skipped_quarantined", "reprocessed")
     INGEST_BATCH_ID_FIELD_NUMBER: _ClassVar[int]
     REPLAYED_FIELD_NUMBER: _ClassVar[int]
     SKIPPED_QUARANTINED_FIELD_NUMBER: _ClassVar[int]
+    REPROCESSED_FIELD_NUMBER: _ClassVar[int]
     ingest_batch_id: str
     replayed: int
     skipped_quarantined: int
-    def __init__(self, ingest_batch_id: _Optional[str] = ..., replayed: _Optional[int] = ..., skipped_quarantined: _Optional[int] = ...) -> None: ...
+    reprocessed: int
+    def __init__(self, ingest_batch_id: _Optional[str] = ..., replayed: _Optional[int] = ..., skipped_quarantined: _Optional[int] = ..., reprocessed: _Optional[int] = ...) -> None: ...

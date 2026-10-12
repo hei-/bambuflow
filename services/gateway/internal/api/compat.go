@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
 )
 
 // POST /v1/compat/chat/completions（技术设计文档 13.9、gateway 详设 4.1）：让已有常见 chat completions 客户端的系统

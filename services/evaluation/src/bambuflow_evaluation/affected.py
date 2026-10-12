@@ -3,7 +3,7 @@
 规则偏保守：拿不准的路径一律算影响全部租户，宁可多跑也不漏跑。
 - 只改文档、Helm chart 与它的冒烟测试：不影响回答，不跑业务评测（权限评测集照常全量跑）；
 - 租户自己的配置目录：只影响该租户；
-- 其余（services/、libs/、contracts/、config/policy/、评测集与基线、CI 本身等）：影响全部租户。
+- 其余（services/、libs/、contracts/、config/policies/、评测集与基线、CI 本身等）：影响全部租户。
 """
 
 from __future__ import annotations

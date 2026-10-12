@@ -742,8 +742,8 @@ const file_bambuflow_admin_v1_index_version_admin_proto_rawDesc = "" +
 	"\x18IndexVersionAdminService\x12p\n" +
 	"\x11ListIndexVersions\x12,.bambuflow.admin.v1.ListIndexVersionsRequest\x1a-.bambuflow.admin.v1.ListIndexVersionsResponse\x12y\n" +
 	"\x14ActivateIndexVersion\x12/.bambuflow.admin.v1.ActivateIndexVersionRequest\x1a0.bambuflow.admin.v1.ActivateIndexVersionResponse\x12m\n" +
-	"\x10ApproveOperation\x12+.bambuflow.admin.v1.ApproveOperationRequest\x1a,.bambuflow.admin.v1.ApproveOperationResponseB\xe5\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x16IndexVersionAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x10ApproveOperation\x12+.bambuflow.admin.v1.ApproveOperationRequest\x1a,.bambuflow.admin.v1.ApproveOperationResponseB\xe1\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x16IndexVersionAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_index_version_admin_proto_rawDescOnce sync.Once

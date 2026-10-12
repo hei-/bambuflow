@@ -82,10 +82,13 @@ type EvalConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 要评测的索引版本（如待发布版本）；不填为当前线上版本
 	IndexVersion string `protobuf:"bytes,1,opt,name=index_version,json=indexVersion,proto3" json:"index_version,omitempty"`
-	// 配置快照版本；现在评测副本用自己加载的快照，这里只记录
+	// 配置快照版本：只记录；评测副本用自己加载的生效快照，再按 config_version 换上候选
 	SnapshotVersion string `protobuf:"bytes,2,opt,name=snapshot_version,json=snapshotVersion,proto3" json:"snapshot_version,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 要评测的候选配置版本（cfv_ 前缀，governance 配置发布时给出）：评测副本向 governance 按版本取候选
+	// （ConfigService.GetCandidate），只在候选这一侧换上；不填为当前生效的配置
+	ConfigVersion string `protobuf:"bytes,3,opt,name=config_version,json=configVersion,proto3" json:"config_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvalConfig) Reset() {
@@ -132,6 +135,13 @@ func (x *EvalConfig) GetSnapshotVersion() string {
 	return ""
 }
 
+func (x *EvalConfig) GetConfigVersion() string {
+	if x != nil {
+		return x.ConfigVersion
+	}
+	return ""
+}
+
 type RunGateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ci、config_release、index_publish、index_rebuild、scheduled
@@ -141,14 +151,18 @@ type RunGateRequest struct {
 	Tenants []string `protobuf:"bytes,3,rep,name=tenants,proto3" json:"tenants,omitempty"`
 	// 增量发布时本批文档（记录用；按文档挑权限题还没有做）
 	DocIds []string `protobuf:"bytes,4,rep,name=doc_ids,json=docIds,proto3" json:"doc_ids,omitempty"`
-	// 规则集，默认按 trigger 选：index_publish 用每租户 30 题的冒烟集，其余用全部题
+	// 规则集，默认按 trigger 选：index_publish 用每租户 30 题的冒烟集（smoke），其余用全部题（full）；
+	// permission 只跑权限题（带 must_not_cite 的题），策略包的发布用它（governance 详设 4.2）
 	Ruleset string `protobuf:"bytes,5,opt,name=ruleset,proto3" json:"ruleset,omitempty"`
 	// 不填按 trigger 取：index_publish 5 分钟，其余 30 分钟，index_rebuild 4 小时
 	Deadline *durationpb.Duration `protobuf:"bytes,6,opt,name=deadline,proto3" json:"deadline,omitempty"`
 	// 同一个候选重复调用返回同一个 gate_id
 	IdempotencyKey string `protobuf:"bytes,7,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// 还没有线上版本（第一次发布）：没有可对照的基线，只检查越权与待复核。由调用方明确声明，
+	// 不从基线是否报错推断：线上检索故障时门禁必须得不出结论，而不是放宽
+	FirstRelease  bool `protobuf:"varint,8,opt,name=first_release,json=firstRelease,proto3" json:"first_release,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunGateRequest) Reset() {
@@ -228,6 +242,13 @@ func (x *RunGateRequest) GetIdempotencyKey() string {
 		return x.IdempotencyKey
 	}
 	return ""
+}
+
+func (x *RunGateRequest) GetFirstRelease() bool {
+	if x != nil {
+		return x.FirstRelease
+	}
+	return false
 }
 
 type RunGateResponse struct {
@@ -393,11 +414,12 @@ var File_bambuflow_evaluation_v1_gate_proto protoreflect.FileDescriptor
 
 const file_bambuflow_evaluation_v1_gate_proto_rawDesc = "" +
 	"\n" +
-	"\"bambuflow/evaluation/v1/gate.proto\x12\x17bambuflow.evaluation.v1\x1a\x1egoogle/protobuf/duration.proto\"\\\n" +
+	"\"bambuflow/evaluation/v1/gate.proto\x12\x17bambuflow.evaluation.v1\x1a\x1egoogle/protobuf/duration.proto\"\x83\x01\n" +
 	"\n" +
 	"EvalConfig\x12#\n" +
 	"\rindex_version\x18\x01 \x01(\tR\findexVersion\x12)\n" +
-	"\x10snapshot_version\x18\x02 \x01(\tR\x0fsnapshotVersion\"\x9a\x02\n" +
+	"\x10snapshot_version\x18\x02 \x01(\tR\x0fsnapshotVersion\x12%\n" +
+	"\x0econfig_version\x18\x03 \x01(\tR\rconfigVersion\"\xbf\x02\n" +
 	"\x0eRunGateRequest\x12\x18\n" +
 	"\atrigger\x18\x01 \x01(\tR\atrigger\x12A\n" +
 	"\tcandidate\x18\x02 \x01(\v2#.bambuflow.evaluation.v1.EvalConfigR\tcandidate\x12\x18\n" +
@@ -405,7 +427,8 @@ const file_bambuflow_evaluation_v1_gate_proto_rawDesc = "" +
 	"\adoc_ids\x18\x04 \x03(\tR\x06docIds\x12\x18\n" +
 	"\aruleset\x18\x05 \x01(\tR\aruleset\x125\n" +
 	"\bdeadline\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\bdeadline\x12'\n" +
-	"\x0fidempotency_key\x18\a \x01(\tR\x0eidempotencyKey\"*\n" +
+	"\x0fidempotency_key\x18\a \x01(\tR\x0eidempotencyKey\x12#\n" +
+	"\rfirst_release\x18\b \x01(\bR\ffirstRelease\"*\n" +
 	"\x0fRunGateResponse\x12\x17\n" +
 	"\agate_id\x18\x01 \x01(\tR\x06gateId\")\n" +
 	"\x0eGetGateRequest\x12\x17\n" +
@@ -426,8 +449,8 @@ const file_bambuflow_evaluation_v1_gate_proto_rawDesc = "" +
 	"\x15VERDICT_INDETERMINATE\x10\x042\xc9\x01\n" +
 	"\vEvalService\x12\\\n" +
 	"\aRunGate\x12'.bambuflow.evaluation.v1.RunGateRequest\x1a(.bambuflow.evaluation.v1.RunGateResponse\x12\\\n" +
-	"\aGetGate\x12'.bambuflow.evaluation.v1.GetGateRequest\x1a(.bambuflow.evaluation.v1.GetGateResponseB\xfb\x01\n" +
-	"\x1bcom.bambuflow.evaluation.v1B\tGateProtoP\x01ZSgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/evaluation/v1;evaluationv1\xa2\x02\x03BEX\xaa\x02\x17Bambuflow.Evaluation.V1\xca\x02\x17Bambuflow\\Evaluation\\V1\xe2\x02#Bambuflow\\Evaluation\\V1\\GPBMetadata\xea\x02\x19Bambuflow::Evaluation::V1b\x06proto3"
+	"\aGetGate\x12'.bambuflow.evaluation.v1.GetGateRequest\x1a(.bambuflow.evaluation.v1.GetGateResponseB\xf7\x01\n" +
+	"\x1bcom.bambuflow.evaluation.v1B\tGateProtoP\x01ZOgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/evaluation/v1;evaluationv1\xa2\x02\x03BEX\xaa\x02\x17Bambuflow.Evaluation.V1\xca\x02\x17Bambuflow\\Evaluation\\V1\xe2\x02#Bambuflow\\Evaluation\\V1\\GPBMetadata\xea\x02\x19Bambuflow::Evaluation::V1b\x06proto3"
 
 var (
 	file_bambuflow_evaluation_v1_gate_proto_rawDescOnce sync.Once

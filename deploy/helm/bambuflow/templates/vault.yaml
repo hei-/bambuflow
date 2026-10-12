@@ -2,13 +2,16 @@
 Vault 注入（技术设计文档 12.6，部署配置清单）：
 - Vault Secrets Operator 把 <kvMount>/bambuflow/<组件> 同步为 Secret <release>-<组件>，各服务以 envFrom 读取；
   LLM 网关密钥单独放在 bambuflow/orchestrator-llm（键 api_key），以文件挂载给 orchestrator（BF_LLM_API_KEY_FILE），不进环境变量；
+  governance.gitForge.kind 为 gitlab 时，GitLab 项目访问令牌放在 bambuflow/governance-git（键 token），同样以文件挂载；
   orchestrator 的数据库连接串（回答记录与反馈）与 Redis 口令在 bambuflow/orchestrator；
   qa/batch、webhook 的数据库连接串与 Redis 口令分别在 bambuflow/batch、bambuflow/webhook；
+  身份同步的数据库连接串与上游凭证（LDAP 绑定口令或 SCIM 调用凭证）在 bambuflow/identity-sync；
   evaluation 的数据库连接串（在线抽样评审的结果）在 bambuflow/evaluation，常驻服务与在线抽样评审的 CronJob 共用；
   密钥在 Vault 里轮换后，Operator 在 refreshAfter 内更新 Secret 并滚动重启对应工作负载。
 - Operator 以 <release>-vault-sync 这个 ServiceAccount 经 Kubernetes 认证登录 Vault，角色为 vault.role。
 运行期还要直接访问 Vault 的组件（gateway、webhook）另由 Vault Agent 注入令牌，见 services.yaml；
-webhook 用单独的角色 vault.webhookRole，只能读写 <kvMount>/webhooks/*（订阅的签名密钥）。
+webhook 用单独的角色 vault.webhookRole，只能读写 <kvMount>/webhooks/*（订阅的签名密钥）；
+gateway 用单独的角色 vault.gatewayRole，只能读写 <kvMount>/gateway/principal-signing（定期轮换并写回）。
 */ -}}
 {{- $v := .Values -}}
 ---
@@ -36,7 +39,11 @@ spec:
   kubernetes:
     role: {{ $v.vault.role | quote }}
     serviceAccount: {{ .Release.Name }}-vault-sync
-{{- range $name, $target := dict "gateway" "gateway:StatefulSet" "retrieval" "retrieval:Deployment" "orchestrator" "orchestrator:Deployment" "orchestrator-llm" "orchestrator:Deployment" "governance" "governance:Deployment" "batch" "batch:Deployment" "evaluation" "evaluation:Deployment" "webhook" "webhook:Deployment" }}
+{{- $secrets := dict "gateway" "gateway:StatefulSet" "retrieval" "retrieval:Deployment" "orchestrator" "orchestrator:Deployment" "orchestrator-llm" "orchestrator:Deployment" "governance" "governance:Deployment" "batch" "batch:Deployment" "evaluation" "evaluation:Deployment" "webhook" "webhook:Deployment" "identity-sync" "identity-sync:Deployment" }}
+{{- if eq $v.governance.gitForge.kind "gitlab" }}
+{{- $_ := set $secrets "governance-git" "governance:Deployment" }}
+{{- end }}
+{{- range $name, $target := $secrets }}
 {{- $ctx := dict "root" $ "component" $name }}
 {{- $kind := index (splitList ":" $target) 1 }}
 ---

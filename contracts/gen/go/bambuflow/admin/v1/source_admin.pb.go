@@ -7,7 +7,7 @@
 package adminv1
 
 import (
-	v1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -27,7 +27,7 @@ type SourceStatus int32
 
 const (
 	SourceStatus_SOURCE_STATUS_UNSPECIFIED SourceStatus = 0
-	// 已注册，待数据属主审批
+	// 已注册，待数据属主审批（受限级还待信息安全审批）
 	SourceStatus_SOURCE_STATUS_PENDING SourceStatus = 1
 	SourceStatus_SOURCE_STATUS_ACTIVE  SourceStatus = 2
 	// 已撤销，不再恢复
@@ -77,6 +77,171 @@ func (SourceStatus) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{0}
 }
 
+// 数据源的权限模型（总体设计 ADR-14）：注册时声明、随数据源审批；未声明按文档级。
+type PermissionModel int32
+
+const (
+	PermissionModel_PERMISSION_MODEL_UNSPECIFIED PermissionModel = 0
+	// 文档级：每份文档带自己的 ACL（邮件、Wiki 页面限制、有限发放的文件）
+	PermissionModel_PERMISSION_MODEL_DOCUMENT PermissionModel = 1
+	// 分区级：按知识库或目录授权，文档只带分区 token，分区授权单独同步
+	PermissionModel_PERMISSION_MODEL_PARTITION PermissionModel = 2
+)
+
+// Enum value maps for PermissionModel.
+var (
+	PermissionModel_name = map[int32]string{
+		0: "PERMISSION_MODEL_UNSPECIFIED",
+		1: "PERMISSION_MODEL_DOCUMENT",
+		2: "PERMISSION_MODEL_PARTITION",
+	}
+	PermissionModel_value = map[string]int32{
+		"PERMISSION_MODEL_UNSPECIFIED": 0,
+		"PERMISSION_MODEL_DOCUMENT":    1,
+		"PERMISSION_MODEL_PARTITION":   2,
+	}
+)
+
+func (x PermissionModel) Enum() *PermissionModel {
+	p := new(PermissionModel)
+	*p = x
+	return p
+}
+
+func (x PermissionModel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PermissionModel) Descriptor() protoreflect.EnumDescriptor {
+	return file_bambuflow_admin_v1_source_admin_proto_enumTypes[1].Descriptor()
+}
+
+func (PermissionModel) Type() protoreflect.EnumType {
+	return &file_bambuflow_admin_v1_source_admin_proto_enumTypes[1]
+}
+
+func (x PermissionModel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PermissionModel.Descriptor instead.
+func (PermissionModel) EnumDescriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{1}
+}
+
+// 审批人以哪种身份审批
+type ApprovalCapacity int32
+
+const (
+	// 按数据属主处理
+	ApprovalCapacity_APPROVAL_CAPACITY_UNSPECIFIED ApprovalCapacity = 0
+	ApprovalCapacity_APPROVAL_CAPACITY_DATA_OWNER  ApprovalCapacity = 1
+	// 信息安全，只用于受限级数据源
+	ApprovalCapacity_APPROVAL_CAPACITY_INFOSEC ApprovalCapacity = 2
+)
+
+// Enum value maps for ApprovalCapacity.
+var (
+	ApprovalCapacity_name = map[int32]string{
+		0: "APPROVAL_CAPACITY_UNSPECIFIED",
+		1: "APPROVAL_CAPACITY_DATA_OWNER",
+		2: "APPROVAL_CAPACITY_INFOSEC",
+	}
+	ApprovalCapacity_value = map[string]int32{
+		"APPROVAL_CAPACITY_UNSPECIFIED": 0,
+		"APPROVAL_CAPACITY_DATA_OWNER":  1,
+		"APPROVAL_CAPACITY_INFOSEC":     2,
+	}
+)
+
+func (x ApprovalCapacity) Enum() *ApprovalCapacity {
+	p := new(ApprovalCapacity)
+	*p = x
+	return p
+}
+
+func (x ApprovalCapacity) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ApprovalCapacity) Descriptor() protoreflect.EnumDescriptor {
+	return file_bambuflow_admin_v1_source_admin_proto_enumTypes[2].Descriptor()
+}
+
+func (ApprovalCapacity) Type() protoreflect.EnumType {
+	return &file_bambuflow_admin_v1_source_admin_proto_enumTypes[2]
+}
+
+func (x ApprovalCapacity) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ApprovalCapacity.Descriptor instead.
+func (ApprovalCapacity) EnumDescriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{2}
+}
+
+type GrantApplicationStatus int32
+
+const (
+	GrantApplicationStatus_GRANT_APPLICATION_STATUS_UNSPECIFIED GrantApplicationStatus = 0
+	GrantApplicationStatus_GRANT_APPLICATION_STATUS_PENDING     GrantApplicationStatus = 1
+	// 已审批，授权已写入
+	GrantApplicationStatus_GRANT_APPLICATION_STATUS_APPROVED GrantApplicationStatus = 2
+	GrantApplicationStatus_GRANT_APPLICATION_STATUS_REJECTED GrantApplicationStatus = 3
+	// 申请人撤回
+	GrantApplicationStatus_GRANT_APPLICATION_STATUS_WITHDRAWN GrantApplicationStatus = 4
+	// 7 天未审批
+	GrantApplicationStatus_GRANT_APPLICATION_STATUS_EXPIRED GrantApplicationStatus = 5
+)
+
+// Enum value maps for GrantApplicationStatus.
+var (
+	GrantApplicationStatus_name = map[int32]string{
+		0: "GRANT_APPLICATION_STATUS_UNSPECIFIED",
+		1: "GRANT_APPLICATION_STATUS_PENDING",
+		2: "GRANT_APPLICATION_STATUS_APPROVED",
+		3: "GRANT_APPLICATION_STATUS_REJECTED",
+		4: "GRANT_APPLICATION_STATUS_WITHDRAWN",
+		5: "GRANT_APPLICATION_STATUS_EXPIRED",
+	}
+	GrantApplicationStatus_value = map[string]int32{
+		"GRANT_APPLICATION_STATUS_UNSPECIFIED": 0,
+		"GRANT_APPLICATION_STATUS_PENDING":     1,
+		"GRANT_APPLICATION_STATUS_APPROVED":    2,
+		"GRANT_APPLICATION_STATUS_REJECTED":    3,
+		"GRANT_APPLICATION_STATUS_WITHDRAWN":   4,
+		"GRANT_APPLICATION_STATUS_EXPIRED":     5,
+	}
+)
+
+func (x GrantApplicationStatus) Enum() *GrantApplicationStatus {
+	p := new(GrantApplicationStatus)
+	*p = x
+	return p
+}
+
+func (x GrantApplicationStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (GrantApplicationStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_bambuflow_admin_v1_source_admin_proto_enumTypes[3].Descriptor()
+}
+
+func (GrantApplicationStatus) Type() protoreflect.EnumType {
+	return &file_bambuflow_admin_v1_source_admin_proto_enumTypes[3]
+}
+
+func (x GrantApplicationStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use GrantApplicationStatus.Descriptor instead.
+func (GrantApplicationStatus) EnumDescriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{3}
+}
+
 type Source struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// src_ 前缀
@@ -95,11 +260,19 @@ type Source struct {
 	ApprovedAt    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=approved_at,json=approvedAt,proto3" json:"approved_at,omitempty"`
 	ApprovalBasis string                 `protobuf:"bytes,11,opt,name=approval_basis,json=approvalBasis,proto3" json:"approval_basis,omitempty"`
 	// 撤销记录；未撤销时为空
-	RevokedBy     string                 `protobuf:"bytes,12,opt,name=revoked_by,json=revokedBy,proto3" json:"revoked_by,omitempty"`
-	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
-	RevokeReason  string                 `protobuf:"bytes,14,opt,name=revoke_reason,json=revokeReason,proto3" json:"revoke_reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RevokedBy    string                 `protobuf:"bytes,12,opt,name=revoked_by,json=revokedBy,proto3" json:"revoked_by,omitempty"`
+	RevokedAt    *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
+	RevokeReason string                 `protobuf:"bytes,14,opt,name=revoke_reason,json=revokeReason,proto3" json:"revoke_reason,omitempty"`
+	// 信息安全的审批记录，只有受限级数据源有；待审批时为空
+	SecurityApprovedBy    string                 `protobuf:"bytes,15,opt,name=security_approved_by,json=securityApprovedBy,proto3" json:"security_approved_by,omitempty"`
+	SecurityApprovedAt    *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=security_approved_at,json=securityApprovedAt,proto3" json:"security_approved_at,omitempty"`
+	SecurityApprovalBasis string                 `protobuf:"bytes,17,opt,name=security_approval_basis,json=securityApprovalBasis,proto3" json:"security_approval_basis,omitempty"`
+	// 推送入库的客户端（入库管道详设 14.5）：业务系统经推送入库 API 写这个数据源时用的服务账号客户端 ID；
+	// 注册时登记，随数据源一起审批。为空表示不接受推送
+	PushClient      string          `protobuf:"bytes,18,opt,name=push_client,json=pushClient,proto3" json:"push_client,omitempty"`
+	PermissionModel PermissionModel `protobuf:"varint,19,opt,name=permission_model,json=permissionModel,proto3,enum=bambuflow.admin.v1.PermissionModel" json:"permission_model,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Source) Reset() {
@@ -230,20 +403,149 @@ func (x *Source) GetRevokeReason() string {
 	return ""
 }
 
+func (x *Source) GetSecurityApprovedBy() string {
+	if x != nil {
+		return x.SecurityApprovedBy
+	}
+	return ""
+}
+
+func (x *Source) GetSecurityApprovedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SecurityApprovedAt
+	}
+	return nil
+}
+
+func (x *Source) GetSecurityApprovalBasis() string {
+	if x != nil {
+		return x.SecurityApprovalBasis
+	}
+	return ""
+}
+
+func (x *Source) GetPushClient() string {
+	if x != nil {
+		return x.PushClient
+	}
+	return ""
+}
+
+func (x *Source) GetPermissionModel() PermissionModel {
+	if x != nil {
+		return x.PermissionModel
+	}
+	return PermissionModel_PERMISSION_MODEL_UNSPECIFIED
+}
+
+type ListSourcesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 不填为全部状态
+	Status        SourceStatus `protobuf:"varint,1,opt,name=status,proto3,enum=bambuflow.admin.v1.SourceStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSourcesRequest) Reset() {
+	*x = ListSourcesRequest{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSourcesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSourcesRequest) ProtoMessage() {}
+
+func (x *ListSourcesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSourcesRequest.ProtoReflect.Descriptor instead.
+func (*ListSourcesRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ListSourcesRequest) GetStatus() SourceStatus {
+	if x != nil {
+		return x.Status
+	}
+	return SourceStatus_SOURCE_STATUS_UNSPECIFIED
+}
+
+type ListSourcesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 新注册的在前
+	Sources       []*Source `protobuf:"bytes,1,rep,name=sources,proto3" json:"sources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSourcesResponse) Reset() {
+	*x = ListSourcesResponse{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSourcesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSourcesResponse) ProtoMessage() {}
+
+func (x *ListSourcesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSourcesResponse.ProtoReflect.Descriptor instead.
+func (*ListSourcesResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListSourcesResponse) GetSources() []*Source {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
 type RegisterSourceRequest struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	Type                  v1.SourceType          `protobuf:"varint,1,opt,name=type,proto3,enum=bambuflow.common.v1.SourceType" json:"type,omitempty"`
 	OwnerDept             string                 `protobuf:"bytes,2,opt,name=owner_dept,json=ownerDept,proto3" json:"owner_dept,omitempty"`
 	DefaultClassification v1.Classification      `protobuf:"varint,3,opt,name=default_classification,json=defaultClassification,proto3,enum=bambuflow.common.v1.Classification" json:"default_classification,omitempty"`
 	// 用途与负责人，便于审批
-	Description   string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// 可选：接受推送入库时的推送客户端，见 Source.push_client
+	PushClient string `protobuf:"bytes,5,opt,name=push_client,json=pushClient,proto3" json:"push_client,omitempty"`
+	// 不填按文档级
+	PermissionModel PermissionModel `protobuf:"varint,6,opt,name=permission_model,json=permissionModel,proto3,enum=bambuflow.admin.v1.PermissionModel" json:"permission_model,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RegisterSourceRequest) Reset() {
 	*x = RegisterSourceRequest{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -255,7 +557,7 @@ func (x *RegisterSourceRequest) String() string {
 func (*RegisterSourceRequest) ProtoMessage() {}
 
 func (x *RegisterSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -268,7 +570,7 @@ func (x *RegisterSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterSourceRequest.ProtoReflect.Descriptor instead.
 func (*RegisterSourceRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RegisterSourceRequest) GetType() v1.SourceType {
@@ -299,6 +601,20 @@ func (x *RegisterSourceRequest) GetDescription() string {
 	return ""
 }
 
+func (x *RegisterSourceRequest) GetPushClient() string {
+	if x != nil {
+		return x.PushClient
+	}
+	return ""
+}
+
+func (x *RegisterSourceRequest) GetPermissionModel() PermissionModel {
+	if x != nil {
+		return x.PermissionModel
+	}
+	return PermissionModel_PERMISSION_MODEL_UNSPECIFIED
+}
+
 type RegisterSourceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        *Source                `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
@@ -308,7 +624,7 @@ type RegisterSourceResponse struct {
 
 func (x *RegisterSourceResponse) Reset() {
 	*x = RegisterSourceResponse{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -320,7 +636,7 @@ func (x *RegisterSourceResponse) String() string {
 func (*RegisterSourceResponse) ProtoMessage() {}
 
 func (x *RegisterSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -333,7 +649,7 @@ func (x *RegisterSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterSourceResponse.ProtoReflect.Descriptor instead.
 func (*RegisterSourceResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RegisterSourceResponse) GetSource() *Source {
@@ -347,14 +663,15 @@ type ApproveSourceRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	SourceId string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
 	// 审批依据，必填
-	Basis         string `protobuf:"bytes,2,opt,name=basis,proto3" json:"basis,omitempty"`
+	Basis         string           `protobuf:"bytes,2,opt,name=basis,proto3" json:"basis,omitempty"`
+	Capacity      ApprovalCapacity `protobuf:"varint,3,opt,name=capacity,proto3,enum=bambuflow.admin.v1.ApprovalCapacity" json:"capacity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ApproveSourceRequest) Reset() {
 	*x = ApproveSourceRequest{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -366,7 +683,7 @@ func (x *ApproveSourceRequest) String() string {
 func (*ApproveSourceRequest) ProtoMessage() {}
 
 func (x *ApproveSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -379,7 +696,7 @@ func (x *ApproveSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveSourceRequest.ProtoReflect.Descriptor instead.
 func (*ApproveSourceRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ApproveSourceRequest) GetSourceId() string {
@@ -396,6 +713,13 @@ func (x *ApproveSourceRequest) GetBasis() string {
 	return ""
 }
 
+func (x *ApproveSourceRequest) GetCapacity() ApprovalCapacity {
+	if x != nil {
+		return x.Capacity
+	}
+	return ApprovalCapacity_APPROVAL_CAPACITY_UNSPECIFIED
+}
+
 type ApproveSourceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        *Source                `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
@@ -405,7 +729,7 @@ type ApproveSourceResponse struct {
 
 func (x *ApproveSourceResponse) Reset() {
 	*x = ApproveSourceResponse{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -417,7 +741,7 @@ func (x *ApproveSourceResponse) String() string {
 func (*ApproveSourceResponse) ProtoMessage() {}
 
 func (x *ApproveSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -430,7 +754,7 @@ func (x *ApproveSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveSourceResponse.ProtoReflect.Descriptor instead.
 func (*ApproveSourceResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ApproveSourceResponse) GetSource() *Source {
@@ -450,7 +774,7 @@ type RevokeSourceRequest struct {
 
 func (x *RevokeSourceRequest) Reset() {
 	*x = RevokeSourceRequest{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -462,7 +786,7 @@ func (x *RevokeSourceRequest) String() string {
 func (*RevokeSourceRequest) ProtoMessage() {}
 
 func (x *RevokeSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -475,7 +799,7 @@ func (x *RevokeSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeSourceRequest.ProtoReflect.Descriptor instead.
 func (*RevokeSourceRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RevokeSourceRequest) GetSourceId() string {
@@ -503,7 +827,7 @@ type RevokeSourceResponse struct {
 
 func (x *RevokeSourceResponse) Reset() {
 	*x = RevokeSourceResponse{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -515,7 +839,7 @@ func (x *RevokeSourceResponse) String() string {
 func (*RevokeSourceResponse) ProtoMessage() {}
 
 func (x *RevokeSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -528,7 +852,7 @@ func (x *RevokeSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeSourceResponse.ProtoReflect.Descriptor instead.
 func (*RevokeSourceResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RevokeSourceResponse) GetSource() *Source {
@@ -546,18 +870,20 @@ func (x *RevokeSourceResponse) GetDenialId() string {
 }
 
 type Grant struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
-	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	GrantedBy     string                 `protobuf:"bytes,3,opt,name=granted_by,json=grantedBy,proto3" json:"granted_by,omitempty"`
-	GrantedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=granted_at,json=grantedAt,proto3" json:"granted_at,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SourceId  string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Tenant    string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	GrantedBy string                 `protobuf:"bytes,3,opt,name=granted_by,json=grantedBy,proto3" json:"granted_by,omitempty"`
+	GrantedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=granted_at,json=grantedAt,proto3" json:"granted_at,omitempty"`
+	// 经授权申请审批的授权：申请 ID（gra_）；数据属主直接授权的为空
+	ApplicationId string `protobuf:"bytes,5,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Grant) Reset() {
 	*x = Grant{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -569,7 +895,7 @@ func (x *Grant) String() string {
 func (*Grant) ProtoMessage() {}
 
 func (x *Grant) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -582,7 +908,7 @@ func (x *Grant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Grant.ProtoReflect.Descriptor instead.
 func (*Grant) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Grant) GetSourceId() string {
@@ -613,6 +939,13 @@ func (x *Grant) GetGrantedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Grant) GetApplicationId() string {
+	if x != nil {
+		return x.ApplicationId
+	}
+	return ""
+}
+
 type ListGrantsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
@@ -622,7 +955,7 @@ type ListGrantsRequest struct {
 
 func (x *ListGrantsRequest) Reset() {
 	*x = ListGrantsRequest{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[8]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -634,7 +967,7 @@ func (x *ListGrantsRequest) String() string {
 func (*ListGrantsRequest) ProtoMessage() {}
 
 func (x *ListGrantsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[8]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -647,7 +980,7 @@ func (x *ListGrantsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGrantsRequest.ProtoReflect.Descriptor instead.
 func (*ListGrantsRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{8}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListGrantsRequest) GetSourceId() string {
@@ -666,7 +999,7 @@ type ListGrantsResponse struct {
 
 func (x *ListGrantsResponse) Reset() {
 	*x = ListGrantsResponse{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[9]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -678,7 +1011,7 @@ func (x *ListGrantsResponse) String() string {
 func (*ListGrantsResponse) ProtoMessage() {}
 
 func (x *ListGrantsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[9]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -691,7 +1024,7 @@ func (x *ListGrantsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGrantsResponse.ProtoReflect.Descriptor instead.
 func (*ListGrantsResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{9}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListGrantsResponse) GetGrants() []*Grant {
@@ -711,7 +1044,7 @@ type CreateGrantRequest struct {
 
 func (x *CreateGrantRequest) Reset() {
 	*x = CreateGrantRequest{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[10]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -723,7 +1056,7 @@ func (x *CreateGrantRequest) String() string {
 func (*CreateGrantRequest) ProtoMessage() {}
 
 func (x *CreateGrantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[10]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -736,7 +1069,7 @@ func (x *CreateGrantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGrantRequest.ProtoReflect.Descriptor instead.
 func (*CreateGrantRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateGrantRequest) GetSourceId() string {
@@ -764,7 +1097,7 @@ type CreateGrantResponse struct {
 
 func (x *CreateGrantResponse) Reset() {
 	*x = CreateGrantResponse{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[11]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -776,7 +1109,7 @@ func (x *CreateGrantResponse) String() string {
 func (*CreateGrantResponse) ProtoMessage() {}
 
 func (x *CreateGrantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[11]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -789,7 +1122,7 @@ func (x *CreateGrantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGrantResponse.ProtoReflect.Descriptor instead.
 func (*CreateGrantResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{11}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateGrantResponse) GetGrant() *Grant {
@@ -816,7 +1149,7 @@ type DeleteGrantRequest struct {
 
 func (x *DeleteGrantRequest) Reset() {
 	*x = DeleteGrantRequest{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[12]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -828,7 +1161,7 @@ func (x *DeleteGrantRequest) String() string {
 func (*DeleteGrantRequest) ProtoMessage() {}
 
 func (x *DeleteGrantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[12]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -841,7 +1174,7 @@ func (x *DeleteGrantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGrantRequest.ProtoReflect.Descriptor instead.
 func (*DeleteGrantRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{12}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DeleteGrantRequest) GetSourceId() string {
@@ -866,7 +1199,7 @@ type DeleteGrantResponse struct {
 
 func (x *DeleteGrantResponse) Reset() {
 	*x = DeleteGrantResponse{}
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[13]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -878,7 +1211,7 @@ func (x *DeleteGrantResponse) String() string {
 func (*DeleteGrantResponse) ProtoMessage() {}
 
 func (x *DeleteGrantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[13]
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -891,14 +1224,528 @@ func (x *DeleteGrantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGrantResponse.ProtoReflect.Descriptor instead.
 func (*DeleteGrantResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{13}
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{15}
+}
+
+type GrantApplication struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// gra_ 前缀
+	ApplicationId string `protobuf:"bytes,1,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
+	SourceId      string `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Tenant        string `protobuf:"bytes,3,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// 申请理由（用途），供属主判断
+	Reason    string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	Status    GrantApplicationStatus `protobuf:"varint,5,opt,name=status,proto3,enum=bambuflow.admin.v1.GrantApplicationStatus" json:"status,omitempty"`
+	AppliedBy string                 `protobuf:"bytes,6,opt,name=applied_by,json=appliedBy,proto3" json:"applied_by,omitempty"`
+	AppliedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=applied_at,json=appliedAt,proto3" json:"applied_at,omitempty"`
+	// 审批、驳回或撤回的人、时间与依据（审批时的依据，如内部工单号；驳回、撤回时的理由）；待审批时为空
+	DecidedBy     string                 `protobuf:"bytes,8,opt,name=decided_by,json=decidedBy,proto3" json:"decided_by,omitempty"`
+	DecidedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	DecisionNote  string                 `protobuf:"bytes,10,opt,name=decision_note,json=decisionNote,proto3" json:"decision_note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrantApplication) Reset() {
+	*x = GrantApplication{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrantApplication) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrantApplication) ProtoMessage() {}
+
+func (x *GrantApplication) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrantApplication.ProtoReflect.Descriptor instead.
+func (*GrantApplication) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GrantApplication) GetApplicationId() string {
+	if x != nil {
+		return x.ApplicationId
+	}
+	return ""
+}
+
+func (x *GrantApplication) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *GrantApplication) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *GrantApplication) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *GrantApplication) GetStatus() GrantApplicationStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GrantApplicationStatus_GRANT_APPLICATION_STATUS_UNSPECIFIED
+}
+
+func (x *GrantApplication) GetAppliedBy() string {
+	if x != nil {
+		return x.AppliedBy
+	}
+	return ""
+}
+
+func (x *GrantApplication) GetAppliedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AppliedAt
+	}
+	return nil
+}
+
+func (x *GrantApplication) GetDecidedBy() string {
+	if x != nil {
+		return x.DecidedBy
+	}
+	return ""
+}
+
+func (x *GrantApplication) GetDecidedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return nil
+}
+
+func (x *GrantApplication) GetDecisionNote() string {
+	if x != nil {
+		return x.DecisionNote
+	}
+	return ""
+}
+
+type ApplyGrantRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyGrantRequest) Reset() {
+	*x = ApplyGrantRequest{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyGrantRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyGrantRequest) ProtoMessage() {}
+
+func (x *ApplyGrantRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyGrantRequest.ProtoReflect.Descriptor instead.
+func (*ApplyGrantRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ApplyGrantRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *ApplyGrantRequest) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *ApplyGrantRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type ApplyGrantResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Application   *GrantApplication      `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyGrantResponse) Reset() {
+	*x = ApplyGrantResponse{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyGrantResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyGrantResponse) ProtoMessage() {}
+
+func (x *ApplyGrantResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyGrantResponse.ProtoReflect.Descriptor instead.
+func (*ApplyGrantResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ApplyGrantResponse) GetApplication() *GrantApplication {
+	if x != nil {
+		return x.Application
+	}
+	return nil
+}
+
+type ListGrantApplicationsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 不填为全部状态
+	Status        GrantApplicationStatus `protobuf:"varint,1,opt,name=status,proto3,enum=bambuflow.admin.v1.GrantApplicationStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListGrantApplicationsRequest) Reset() {
+	*x = ListGrantApplicationsRequest{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListGrantApplicationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListGrantApplicationsRequest) ProtoMessage() {}
+
+func (x *ListGrantApplicationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListGrantApplicationsRequest.ProtoReflect.Descriptor instead.
+func (*ListGrantApplicationsRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ListGrantApplicationsRequest) GetStatus() GrantApplicationStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GrantApplicationStatus_GRANT_APPLICATION_STATUS_UNSPECIFIED
+}
+
+type ListGrantApplicationsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 新申请的在前，最多 200 条
+	Applications  []*GrantApplication `protobuf:"bytes,1,rep,name=applications,proto3" json:"applications,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListGrantApplicationsResponse) Reset() {
+	*x = ListGrantApplicationsResponse{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListGrantApplicationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListGrantApplicationsResponse) ProtoMessage() {}
+
+func (x *ListGrantApplicationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListGrantApplicationsResponse.ProtoReflect.Descriptor instead.
+func (*ListGrantApplicationsResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ListGrantApplicationsResponse) GetApplications() []*GrantApplication {
+	if x != nil {
+		return x.Applications
+	}
+	return nil
+}
+
+type ApproveGrantApplicationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApplicationId string                 `protobuf:"bytes,1,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
+	// 审批依据，必填
+	Basis         string `protobuf:"bytes,2,opt,name=basis,proto3" json:"basis,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApproveGrantApplicationRequest) Reset() {
+	*x = ApproveGrantApplicationRequest{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApproveGrantApplicationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApproveGrantApplicationRequest) ProtoMessage() {}
+
+func (x *ApproveGrantApplicationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApproveGrantApplicationRequest.ProtoReflect.Descriptor instead.
+func (*ApproveGrantApplicationRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ApproveGrantApplicationRequest) GetApplicationId() string {
+	if x != nil {
+		return x.ApplicationId
+	}
+	return ""
+}
+
+func (x *ApproveGrantApplicationRequest) GetBasis() string {
+	if x != nil {
+		return x.Basis
+	}
+	return ""
+}
+
+type ApproveGrantApplicationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Application   *GrantApplication      `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
+	Grant         *Grant                 `protobuf:"bytes,2,opt,name=grant,proto3" json:"grant,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApproveGrantApplicationResponse) Reset() {
+	*x = ApproveGrantApplicationResponse{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApproveGrantApplicationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApproveGrantApplicationResponse) ProtoMessage() {}
+
+func (x *ApproveGrantApplicationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApproveGrantApplicationResponse.ProtoReflect.Descriptor instead.
+func (*ApproveGrantApplicationResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ApproveGrantApplicationResponse) GetApplication() *GrantApplication {
+	if x != nil {
+		return x.Application
+	}
+	return nil
+}
+
+func (x *ApproveGrantApplicationResponse) GetGrant() *Grant {
+	if x != nil {
+		return x.Grant
+	}
+	return nil
+}
+
+type RejectGrantApplicationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApplicationId string                 `protobuf:"bytes,1,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RejectGrantApplicationRequest) Reset() {
+	*x = RejectGrantApplicationRequest{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RejectGrantApplicationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RejectGrantApplicationRequest) ProtoMessage() {}
+
+func (x *RejectGrantApplicationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RejectGrantApplicationRequest.ProtoReflect.Descriptor instead.
+func (*RejectGrantApplicationRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *RejectGrantApplicationRequest) GetApplicationId() string {
+	if x != nil {
+		return x.ApplicationId
+	}
+	return ""
+}
+
+func (x *RejectGrantApplicationRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type RejectGrantApplicationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Application   *GrantApplication      `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RejectGrantApplicationResponse) Reset() {
+	*x = RejectGrantApplicationResponse{}
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RejectGrantApplicationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RejectGrantApplicationResponse) ProtoMessage() {}
+
+func (x *RejectGrantApplicationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_source_admin_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RejectGrantApplicationResponse.ProtoReflect.Descriptor instead.
+func (*RejectGrantApplicationResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *RejectGrantApplicationResponse) GetApplication() *GrantApplication {
+	if x != nil {
+		return x.Application
+	}
+	return nil
 }
 
 var File_bambuflow_admin_v1_source_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_source_admin_proto_rawDesc = "" +
 	"\n" +
-	"%bambuflow/admin/v1/source_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8f\x05\n" +
+	"%bambuflow/admin/v1/source_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb8\a\n" +
 	"\x06Source\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x123\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x1f.bambuflow.common.v1.SourceTypeR\x04type\x12\x1d\n" +
@@ -921,18 +1768,32 @@ const file_bambuflow_admin_v1_source_admin_proto_rawDesc = "" +
 	"revoked_by\x18\f \x01(\tR\trevokedBy\x129\n" +
 	"\n" +
 	"revoked_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\x12#\n" +
-	"\rrevoke_reason\x18\x0e \x01(\tR\frevokeReason\"\xe9\x01\n" +
+	"\rrevoke_reason\x18\x0e \x01(\tR\frevokeReason\x120\n" +
+	"\x14security_approved_by\x18\x0f \x01(\tR\x12securityApprovedBy\x12L\n" +
+	"\x14security_approved_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\x12securityApprovedAt\x126\n" +
+	"\x17security_approval_basis\x18\x11 \x01(\tR\x15securityApprovalBasis\x12\x1f\n" +
+	"\vpush_client\x18\x12 \x01(\tR\n" +
+	"pushClient\x12N\n" +
+	"\x10permission_model\x18\x13 \x01(\x0e2#.bambuflow.admin.v1.PermissionModelR\x0fpermissionModel\"N\n" +
+	"\x12ListSourcesRequest\x128\n" +
+	"\x06status\x18\x01 \x01(\x0e2 .bambuflow.admin.v1.SourceStatusR\x06status\"K\n" +
+	"\x13ListSourcesResponse\x124\n" +
+	"\asources\x18\x01 \x03(\v2\x1a.bambuflow.admin.v1.SourceR\asources\"\xda\x02\n" +
 	"\x15RegisterSourceRequest\x123\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1f.bambuflow.common.v1.SourceTypeR\x04type\x12\x1d\n" +
 	"\n" +
 	"owner_dept\x18\x02 \x01(\tR\townerDept\x12Z\n" +
 	"\x16default_classification\x18\x03 \x01(\x0e2#.bambuflow.common.v1.ClassificationR\x15defaultClassification\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"L\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x1f\n" +
+	"\vpush_client\x18\x05 \x01(\tR\n" +
+	"pushClient\x12N\n" +
+	"\x10permission_model\x18\x06 \x01(\x0e2#.bambuflow.admin.v1.PermissionModelR\x0fpermissionModel\"L\n" +
 	"\x16RegisterSourceResponse\x122\n" +
-	"\x06source\x18\x01 \x01(\v2\x1a.bambuflow.admin.v1.SourceR\x06source\"I\n" +
+	"\x06source\x18\x01 \x01(\v2\x1a.bambuflow.admin.v1.SourceR\x06source\"\x8b\x01\n" +
 	"\x14ApproveSourceRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x14\n" +
-	"\x05basis\x18\x02 \x01(\tR\x05basis\"K\n" +
+	"\x05basis\x18\x02 \x01(\tR\x05basis\x12@\n" +
+	"\bcapacity\x18\x03 \x01(\x0e2$.bambuflow.admin.v1.ApprovalCapacityR\bcapacity\"K\n" +
 	"\x15ApproveSourceResponse\x122\n" +
 	"\x06source\x18\x01 \x01(\v2\x1a.bambuflow.admin.v1.SourceR\x06source\"J\n" +
 	"\x13RevokeSourceRequest\x12\x1b\n" +
@@ -940,14 +1801,15 @@ const file_bambuflow_admin_v1_source_admin_proto_rawDesc = "" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"g\n" +
 	"\x14RevokeSourceResponse\x122\n" +
 	"\x06source\x18\x01 \x01(\v2\x1a.bambuflow.admin.v1.SourceR\x06source\x12\x1b\n" +
-	"\tdenial_id\x18\x02 \x01(\tR\bdenialId\"\x96\x01\n" +
+	"\tdenial_id\x18\x02 \x01(\tR\bdenialId\"\xbd\x01\n" +
 	"\x05Grant\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12\x1d\n" +
 	"\n" +
 	"granted_by\x18\x03 \x01(\tR\tgrantedBy\x129\n" +
 	"\n" +
-	"granted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tgrantedAt\"0\n" +
+	"granted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tgrantedAt\x12%\n" +
+	"\x0eapplication_id\x18\x05 \x01(\tR\rapplicationId\"0\n" +
 	"\x11ListGrantsRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\"G\n" +
 	"\x12ListGrantsResponse\x121\n" +
@@ -961,21 +1823,79 @@ const file_bambuflow_admin_v1_source_admin_proto_rawDesc = "" +
 	"\x12DeleteGrantRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\"\x15\n" +
-	"\x13DeleteGrantResponse*}\n" +
+	"\x13DeleteGrantResponse\"\xa3\x03\n" +
+	"\x10GrantApplication\x12%\n" +
+	"\x0eapplication_id\x18\x01 \x01(\tR\rapplicationId\x12\x1b\n" +
+	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x16\n" +
+	"\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12B\n" +
+	"\x06status\x18\x05 \x01(\x0e2*.bambuflow.admin.v1.GrantApplicationStatusR\x06status\x12\x1d\n" +
+	"\n" +
+	"applied_by\x18\x06 \x01(\tR\tappliedBy\x129\n" +
+	"\n" +
+	"applied_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tappliedAt\x12\x1d\n" +
+	"\n" +
+	"decided_by\x18\b \x01(\tR\tdecidedBy\x129\n" +
+	"\n" +
+	"decided_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\x12#\n" +
+	"\rdecision_note\x18\n" +
+	" \x01(\tR\fdecisionNote\"`\n" +
+	"\x11ApplyGrantRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
+	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\\\n" +
+	"\x12ApplyGrantResponse\x12F\n" +
+	"\vapplication\x18\x01 \x01(\v2$.bambuflow.admin.v1.GrantApplicationR\vapplication\"b\n" +
+	"\x1cListGrantApplicationsRequest\x12B\n" +
+	"\x06status\x18\x01 \x01(\x0e2*.bambuflow.admin.v1.GrantApplicationStatusR\x06status\"i\n" +
+	"\x1dListGrantApplicationsResponse\x12H\n" +
+	"\fapplications\x18\x01 \x03(\v2$.bambuflow.admin.v1.GrantApplicationR\fapplications\"]\n" +
+	"\x1eApproveGrantApplicationRequest\x12%\n" +
+	"\x0eapplication_id\x18\x01 \x01(\tR\rapplicationId\x12\x14\n" +
+	"\x05basis\x18\x02 \x01(\tR\x05basis\"\x9a\x01\n" +
+	"\x1fApproveGrantApplicationResponse\x12F\n" +
+	"\vapplication\x18\x01 \x01(\v2$.bambuflow.admin.v1.GrantApplicationR\vapplication\x12/\n" +
+	"\x05grant\x18\x02 \x01(\v2\x19.bambuflow.admin.v1.GrantR\x05grant\"^\n" +
+	"\x1dRejectGrantApplicationRequest\x12%\n" +
+	"\x0eapplication_id\x18\x01 \x01(\tR\rapplicationId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"h\n" +
+	"\x1eRejectGrantApplicationResponse\x12F\n" +
+	"\vapplication\x18\x01 \x01(\v2$.bambuflow.admin.v1.GrantApplicationR\vapplication*}\n" +
 	"\fSourceStatus\x12\x1d\n" +
 	"\x19SOURCE_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15SOURCE_STATUS_PENDING\x10\x01\x12\x18\n" +
 	"\x14SOURCE_STATUS_ACTIVE\x10\x02\x12\x19\n" +
-	"\x15SOURCE_STATUS_REVOKED\x10\x032\xe3\x04\n" +
+	"\x15SOURCE_STATUS_REVOKED\x10\x03*r\n" +
+	"\x0fPermissionModel\x12 \n" +
+	"\x1cPERMISSION_MODEL_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19PERMISSION_MODEL_DOCUMENT\x10\x01\x12\x1e\n" +
+	"\x1aPERMISSION_MODEL_PARTITION\x10\x02*v\n" +
+	"\x10ApprovalCapacity\x12!\n" +
+	"\x1dAPPROVAL_CAPACITY_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cAPPROVAL_CAPACITY_DATA_OWNER\x10\x01\x12\x1d\n" +
+	"\x19APPROVAL_CAPACITY_INFOSEC\x10\x02*\x84\x02\n" +
+	"\x16GrantApplicationStatus\x12(\n" +
+	"$GRANT_APPLICATION_STATUS_UNSPECIFIED\x10\x00\x12$\n" +
+	" GRANT_APPLICATION_STATUS_PENDING\x10\x01\x12%\n" +
+	"!GRANT_APPLICATION_STATUS_APPROVED\x10\x02\x12%\n" +
+	"!GRANT_APPLICATION_STATUS_REJECTED\x10\x03\x12&\n" +
+	"\"GRANT_APPLICATION_STATUS_WITHDRAWN\x10\x04\x12$\n" +
+	" GRANT_APPLICATION_STATUS_EXPIRED\x10\x052\xa4\t\n" +
 	"\x12SourceAdminService\x12g\n" +
-	"\x0eRegisterSource\x12).bambuflow.admin.v1.RegisterSourceRequest\x1a*.bambuflow.admin.v1.RegisterSourceResponse\x12d\n" +
+	"\x0eRegisterSource\x12).bambuflow.admin.v1.RegisterSourceRequest\x1a*.bambuflow.admin.v1.RegisterSourceResponse\x12^\n" +
+	"\vListSources\x12&.bambuflow.admin.v1.ListSourcesRequest\x1a'.bambuflow.admin.v1.ListSourcesResponse\x12d\n" +
 	"\rApproveSource\x12(.bambuflow.admin.v1.ApproveSourceRequest\x1a).bambuflow.admin.v1.ApproveSourceResponse\x12a\n" +
 	"\fRevokeSource\x12'.bambuflow.admin.v1.RevokeSourceRequest\x1a(.bambuflow.admin.v1.RevokeSourceResponse\x12[\n" +
 	"\n" +
 	"ListGrants\x12%.bambuflow.admin.v1.ListGrantsRequest\x1a&.bambuflow.admin.v1.ListGrantsResponse\x12^\n" +
 	"\vCreateGrant\x12&.bambuflow.admin.v1.CreateGrantRequest\x1a'.bambuflow.admin.v1.CreateGrantResponse\x12^\n" +
-	"\vDeleteGrant\x12&.bambuflow.admin.v1.DeleteGrantRequest\x1a'.bambuflow.admin.v1.DeleteGrantResponseB\xdf\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x10SourceAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\vDeleteGrant\x12&.bambuflow.admin.v1.DeleteGrantRequest\x1a'.bambuflow.admin.v1.DeleteGrantResponse\x12[\n" +
+	"\n" +
+	"ApplyGrant\x12%.bambuflow.admin.v1.ApplyGrantRequest\x1a&.bambuflow.admin.v1.ApplyGrantResponse\x12|\n" +
+	"\x15ListGrantApplications\x120.bambuflow.admin.v1.ListGrantApplicationsRequest\x1a1.bambuflow.admin.v1.ListGrantApplicationsResponse\x12\x82\x01\n" +
+	"\x17ApproveGrantApplication\x122.bambuflow.admin.v1.ApproveGrantApplicationRequest\x1a3.bambuflow.admin.v1.ApproveGrantApplicationResponse\x12\x7f\n" +
+	"\x16RejectGrantApplication\x121.bambuflow.admin.v1.RejectGrantApplicationRequest\x1a2.bambuflow.admin.v1.RejectGrantApplicationResponseB\xdb\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x10SourceAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_source_admin_proto_rawDescOnce sync.Once
@@ -989,60 +1909,99 @@ func file_bambuflow_admin_v1_source_admin_proto_rawDescGZIP() []byte {
 	return file_bambuflow_admin_v1_source_admin_proto_rawDescData
 }
 
-var file_bambuflow_admin_v1_source_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_bambuflow_admin_v1_source_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_bambuflow_admin_v1_source_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_bambuflow_admin_v1_source_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_bambuflow_admin_v1_source_admin_proto_goTypes = []any{
-	(SourceStatus)(0),              // 0: bambuflow.admin.v1.SourceStatus
-	(*Source)(nil),                 // 1: bambuflow.admin.v1.Source
-	(*RegisterSourceRequest)(nil),  // 2: bambuflow.admin.v1.RegisterSourceRequest
-	(*RegisterSourceResponse)(nil), // 3: bambuflow.admin.v1.RegisterSourceResponse
-	(*ApproveSourceRequest)(nil),   // 4: bambuflow.admin.v1.ApproveSourceRequest
-	(*ApproveSourceResponse)(nil),  // 5: bambuflow.admin.v1.ApproveSourceResponse
-	(*RevokeSourceRequest)(nil),    // 6: bambuflow.admin.v1.RevokeSourceRequest
-	(*RevokeSourceResponse)(nil),   // 7: bambuflow.admin.v1.RevokeSourceResponse
-	(*Grant)(nil),                  // 8: bambuflow.admin.v1.Grant
-	(*ListGrantsRequest)(nil),      // 9: bambuflow.admin.v1.ListGrantsRequest
-	(*ListGrantsResponse)(nil),     // 10: bambuflow.admin.v1.ListGrantsResponse
-	(*CreateGrantRequest)(nil),     // 11: bambuflow.admin.v1.CreateGrantRequest
-	(*CreateGrantResponse)(nil),    // 12: bambuflow.admin.v1.CreateGrantResponse
-	(*DeleteGrantRequest)(nil),     // 13: bambuflow.admin.v1.DeleteGrantRequest
-	(*DeleteGrantResponse)(nil),    // 14: bambuflow.admin.v1.DeleteGrantResponse
-	(v1.SourceType)(0),             // 15: bambuflow.common.v1.SourceType
-	(v1.Classification)(0),         // 16: bambuflow.common.v1.Classification
-	(*timestamppb.Timestamp)(nil),  // 17: google.protobuf.Timestamp
+	(SourceStatus)(0),                       // 0: bambuflow.admin.v1.SourceStatus
+	(PermissionModel)(0),                    // 1: bambuflow.admin.v1.PermissionModel
+	(ApprovalCapacity)(0),                   // 2: bambuflow.admin.v1.ApprovalCapacity
+	(GrantApplicationStatus)(0),             // 3: bambuflow.admin.v1.GrantApplicationStatus
+	(*Source)(nil),                          // 4: bambuflow.admin.v1.Source
+	(*ListSourcesRequest)(nil),              // 5: bambuflow.admin.v1.ListSourcesRequest
+	(*ListSourcesResponse)(nil),             // 6: bambuflow.admin.v1.ListSourcesResponse
+	(*RegisterSourceRequest)(nil),           // 7: bambuflow.admin.v1.RegisterSourceRequest
+	(*RegisterSourceResponse)(nil),          // 8: bambuflow.admin.v1.RegisterSourceResponse
+	(*ApproveSourceRequest)(nil),            // 9: bambuflow.admin.v1.ApproveSourceRequest
+	(*ApproveSourceResponse)(nil),           // 10: bambuflow.admin.v1.ApproveSourceResponse
+	(*RevokeSourceRequest)(nil),             // 11: bambuflow.admin.v1.RevokeSourceRequest
+	(*RevokeSourceResponse)(nil),            // 12: bambuflow.admin.v1.RevokeSourceResponse
+	(*Grant)(nil),                           // 13: bambuflow.admin.v1.Grant
+	(*ListGrantsRequest)(nil),               // 14: bambuflow.admin.v1.ListGrantsRequest
+	(*ListGrantsResponse)(nil),              // 15: bambuflow.admin.v1.ListGrantsResponse
+	(*CreateGrantRequest)(nil),              // 16: bambuflow.admin.v1.CreateGrantRequest
+	(*CreateGrantResponse)(nil),             // 17: bambuflow.admin.v1.CreateGrantResponse
+	(*DeleteGrantRequest)(nil),              // 18: bambuflow.admin.v1.DeleteGrantRequest
+	(*DeleteGrantResponse)(nil),             // 19: bambuflow.admin.v1.DeleteGrantResponse
+	(*GrantApplication)(nil),                // 20: bambuflow.admin.v1.GrantApplication
+	(*ApplyGrantRequest)(nil),               // 21: bambuflow.admin.v1.ApplyGrantRequest
+	(*ApplyGrantResponse)(nil),              // 22: bambuflow.admin.v1.ApplyGrantResponse
+	(*ListGrantApplicationsRequest)(nil),    // 23: bambuflow.admin.v1.ListGrantApplicationsRequest
+	(*ListGrantApplicationsResponse)(nil),   // 24: bambuflow.admin.v1.ListGrantApplicationsResponse
+	(*ApproveGrantApplicationRequest)(nil),  // 25: bambuflow.admin.v1.ApproveGrantApplicationRequest
+	(*ApproveGrantApplicationResponse)(nil), // 26: bambuflow.admin.v1.ApproveGrantApplicationResponse
+	(*RejectGrantApplicationRequest)(nil),   // 27: bambuflow.admin.v1.RejectGrantApplicationRequest
+	(*RejectGrantApplicationResponse)(nil),  // 28: bambuflow.admin.v1.RejectGrantApplicationResponse
+	(v1.SourceType)(0),                      // 29: bambuflow.common.v1.SourceType
+	(v1.Classification)(0),                  // 30: bambuflow.common.v1.Classification
+	(*timestamppb.Timestamp)(nil),           // 31: google.protobuf.Timestamp
 }
 var file_bambuflow_admin_v1_source_admin_proto_depIdxs = []int32{
-	15, // 0: bambuflow.admin.v1.Source.type:type_name -> bambuflow.common.v1.SourceType
-	16, // 1: bambuflow.admin.v1.Source.default_classification:type_name -> bambuflow.common.v1.Classification
+	29, // 0: bambuflow.admin.v1.Source.type:type_name -> bambuflow.common.v1.SourceType
+	30, // 1: bambuflow.admin.v1.Source.default_classification:type_name -> bambuflow.common.v1.Classification
 	0,  // 2: bambuflow.admin.v1.Source.status:type_name -> bambuflow.admin.v1.SourceStatus
-	17, // 3: bambuflow.admin.v1.Source.created_at:type_name -> google.protobuf.Timestamp
-	17, // 4: bambuflow.admin.v1.Source.approved_at:type_name -> google.protobuf.Timestamp
-	17, // 5: bambuflow.admin.v1.Source.revoked_at:type_name -> google.protobuf.Timestamp
-	15, // 6: bambuflow.admin.v1.RegisterSourceRequest.type:type_name -> bambuflow.common.v1.SourceType
-	16, // 7: bambuflow.admin.v1.RegisterSourceRequest.default_classification:type_name -> bambuflow.common.v1.Classification
-	1,  // 8: bambuflow.admin.v1.RegisterSourceResponse.source:type_name -> bambuflow.admin.v1.Source
-	1,  // 9: bambuflow.admin.v1.ApproveSourceResponse.source:type_name -> bambuflow.admin.v1.Source
-	1,  // 10: bambuflow.admin.v1.RevokeSourceResponse.source:type_name -> bambuflow.admin.v1.Source
-	17, // 11: bambuflow.admin.v1.Grant.granted_at:type_name -> google.protobuf.Timestamp
-	8,  // 12: bambuflow.admin.v1.ListGrantsResponse.grants:type_name -> bambuflow.admin.v1.Grant
-	8,  // 13: bambuflow.admin.v1.CreateGrantResponse.grant:type_name -> bambuflow.admin.v1.Grant
-	2,  // 14: bambuflow.admin.v1.SourceAdminService.RegisterSource:input_type -> bambuflow.admin.v1.RegisterSourceRequest
-	4,  // 15: bambuflow.admin.v1.SourceAdminService.ApproveSource:input_type -> bambuflow.admin.v1.ApproveSourceRequest
-	6,  // 16: bambuflow.admin.v1.SourceAdminService.RevokeSource:input_type -> bambuflow.admin.v1.RevokeSourceRequest
-	9,  // 17: bambuflow.admin.v1.SourceAdminService.ListGrants:input_type -> bambuflow.admin.v1.ListGrantsRequest
-	11, // 18: bambuflow.admin.v1.SourceAdminService.CreateGrant:input_type -> bambuflow.admin.v1.CreateGrantRequest
-	13, // 19: bambuflow.admin.v1.SourceAdminService.DeleteGrant:input_type -> bambuflow.admin.v1.DeleteGrantRequest
-	3,  // 20: bambuflow.admin.v1.SourceAdminService.RegisterSource:output_type -> bambuflow.admin.v1.RegisterSourceResponse
-	5,  // 21: bambuflow.admin.v1.SourceAdminService.ApproveSource:output_type -> bambuflow.admin.v1.ApproveSourceResponse
-	7,  // 22: bambuflow.admin.v1.SourceAdminService.RevokeSource:output_type -> bambuflow.admin.v1.RevokeSourceResponse
-	10, // 23: bambuflow.admin.v1.SourceAdminService.ListGrants:output_type -> bambuflow.admin.v1.ListGrantsResponse
-	12, // 24: bambuflow.admin.v1.SourceAdminService.CreateGrant:output_type -> bambuflow.admin.v1.CreateGrantResponse
-	14, // 25: bambuflow.admin.v1.SourceAdminService.DeleteGrant:output_type -> bambuflow.admin.v1.DeleteGrantResponse
-	20, // [20:26] is the sub-list for method output_type
-	14, // [14:20] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	31, // 3: bambuflow.admin.v1.Source.created_at:type_name -> google.protobuf.Timestamp
+	31, // 4: bambuflow.admin.v1.Source.approved_at:type_name -> google.protobuf.Timestamp
+	31, // 5: bambuflow.admin.v1.Source.revoked_at:type_name -> google.protobuf.Timestamp
+	31, // 6: bambuflow.admin.v1.Source.security_approved_at:type_name -> google.protobuf.Timestamp
+	1,  // 7: bambuflow.admin.v1.Source.permission_model:type_name -> bambuflow.admin.v1.PermissionModel
+	0,  // 8: bambuflow.admin.v1.ListSourcesRequest.status:type_name -> bambuflow.admin.v1.SourceStatus
+	4,  // 9: bambuflow.admin.v1.ListSourcesResponse.sources:type_name -> bambuflow.admin.v1.Source
+	29, // 10: bambuflow.admin.v1.RegisterSourceRequest.type:type_name -> bambuflow.common.v1.SourceType
+	30, // 11: bambuflow.admin.v1.RegisterSourceRequest.default_classification:type_name -> bambuflow.common.v1.Classification
+	1,  // 12: bambuflow.admin.v1.RegisterSourceRequest.permission_model:type_name -> bambuflow.admin.v1.PermissionModel
+	4,  // 13: bambuflow.admin.v1.RegisterSourceResponse.source:type_name -> bambuflow.admin.v1.Source
+	2,  // 14: bambuflow.admin.v1.ApproveSourceRequest.capacity:type_name -> bambuflow.admin.v1.ApprovalCapacity
+	4,  // 15: bambuflow.admin.v1.ApproveSourceResponse.source:type_name -> bambuflow.admin.v1.Source
+	4,  // 16: bambuflow.admin.v1.RevokeSourceResponse.source:type_name -> bambuflow.admin.v1.Source
+	31, // 17: bambuflow.admin.v1.Grant.granted_at:type_name -> google.protobuf.Timestamp
+	13, // 18: bambuflow.admin.v1.ListGrantsResponse.grants:type_name -> bambuflow.admin.v1.Grant
+	13, // 19: bambuflow.admin.v1.CreateGrantResponse.grant:type_name -> bambuflow.admin.v1.Grant
+	3,  // 20: bambuflow.admin.v1.GrantApplication.status:type_name -> bambuflow.admin.v1.GrantApplicationStatus
+	31, // 21: bambuflow.admin.v1.GrantApplication.applied_at:type_name -> google.protobuf.Timestamp
+	31, // 22: bambuflow.admin.v1.GrantApplication.decided_at:type_name -> google.protobuf.Timestamp
+	20, // 23: bambuflow.admin.v1.ApplyGrantResponse.application:type_name -> bambuflow.admin.v1.GrantApplication
+	3,  // 24: bambuflow.admin.v1.ListGrantApplicationsRequest.status:type_name -> bambuflow.admin.v1.GrantApplicationStatus
+	20, // 25: bambuflow.admin.v1.ListGrantApplicationsResponse.applications:type_name -> bambuflow.admin.v1.GrantApplication
+	20, // 26: bambuflow.admin.v1.ApproveGrantApplicationResponse.application:type_name -> bambuflow.admin.v1.GrantApplication
+	13, // 27: bambuflow.admin.v1.ApproveGrantApplicationResponse.grant:type_name -> bambuflow.admin.v1.Grant
+	20, // 28: bambuflow.admin.v1.RejectGrantApplicationResponse.application:type_name -> bambuflow.admin.v1.GrantApplication
+	7,  // 29: bambuflow.admin.v1.SourceAdminService.RegisterSource:input_type -> bambuflow.admin.v1.RegisterSourceRequest
+	5,  // 30: bambuflow.admin.v1.SourceAdminService.ListSources:input_type -> bambuflow.admin.v1.ListSourcesRequest
+	9,  // 31: bambuflow.admin.v1.SourceAdminService.ApproveSource:input_type -> bambuflow.admin.v1.ApproveSourceRequest
+	11, // 32: bambuflow.admin.v1.SourceAdminService.RevokeSource:input_type -> bambuflow.admin.v1.RevokeSourceRequest
+	14, // 33: bambuflow.admin.v1.SourceAdminService.ListGrants:input_type -> bambuflow.admin.v1.ListGrantsRequest
+	16, // 34: bambuflow.admin.v1.SourceAdminService.CreateGrant:input_type -> bambuflow.admin.v1.CreateGrantRequest
+	18, // 35: bambuflow.admin.v1.SourceAdminService.DeleteGrant:input_type -> bambuflow.admin.v1.DeleteGrantRequest
+	21, // 36: bambuflow.admin.v1.SourceAdminService.ApplyGrant:input_type -> bambuflow.admin.v1.ApplyGrantRequest
+	23, // 37: bambuflow.admin.v1.SourceAdminService.ListGrantApplications:input_type -> bambuflow.admin.v1.ListGrantApplicationsRequest
+	25, // 38: bambuflow.admin.v1.SourceAdminService.ApproveGrantApplication:input_type -> bambuflow.admin.v1.ApproveGrantApplicationRequest
+	27, // 39: bambuflow.admin.v1.SourceAdminService.RejectGrantApplication:input_type -> bambuflow.admin.v1.RejectGrantApplicationRequest
+	8,  // 40: bambuflow.admin.v1.SourceAdminService.RegisterSource:output_type -> bambuflow.admin.v1.RegisterSourceResponse
+	6,  // 41: bambuflow.admin.v1.SourceAdminService.ListSources:output_type -> bambuflow.admin.v1.ListSourcesResponse
+	10, // 42: bambuflow.admin.v1.SourceAdminService.ApproveSource:output_type -> bambuflow.admin.v1.ApproveSourceResponse
+	12, // 43: bambuflow.admin.v1.SourceAdminService.RevokeSource:output_type -> bambuflow.admin.v1.RevokeSourceResponse
+	15, // 44: bambuflow.admin.v1.SourceAdminService.ListGrants:output_type -> bambuflow.admin.v1.ListGrantsResponse
+	17, // 45: bambuflow.admin.v1.SourceAdminService.CreateGrant:output_type -> bambuflow.admin.v1.CreateGrantResponse
+	19, // 46: bambuflow.admin.v1.SourceAdminService.DeleteGrant:output_type -> bambuflow.admin.v1.DeleteGrantResponse
+	22, // 47: bambuflow.admin.v1.SourceAdminService.ApplyGrant:output_type -> bambuflow.admin.v1.ApplyGrantResponse
+	24, // 48: bambuflow.admin.v1.SourceAdminService.ListGrantApplications:output_type -> bambuflow.admin.v1.ListGrantApplicationsResponse
+	26, // 49: bambuflow.admin.v1.SourceAdminService.ApproveGrantApplication:output_type -> bambuflow.admin.v1.ApproveGrantApplicationResponse
+	28, // 50: bambuflow.admin.v1.SourceAdminService.RejectGrantApplication:output_type -> bambuflow.admin.v1.RejectGrantApplicationResponse
+	40, // [40:51] is the sub-list for method output_type
+	29, // [29:40] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_source_admin_proto_init() }
@@ -1055,8 +2014,8 @@ func file_bambuflow_admin_v1_source_admin_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_admin_v1_source_admin_proto_rawDesc), len(file_bambuflow_admin_v1_source_admin_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   14,
+			NumEnums:      4,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

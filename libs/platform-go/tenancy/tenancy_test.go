@@ -95,6 +95,22 @@ func TestMemberOfIsSorted(t *testing.T) {
 	}
 }
 
+func TestOwnerOfNeedNotBeMember(t *testing.T) {
+	r, err := Load(writeTenants(t, map[string]string{
+		"risk":   "tenant: risk\nrollout: general\nmember_groups: [all]\nowner_groups: [risk-owners, biz-owners]\n",
+		"credit": "tenant: credit\nrollout: general\nmember_groups: [all]\nowner_groups: [biz-owners]\n",
+	}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.OwnerOf([]string{"biz-owners"}); strings.Join(got, ",") != "credit,risk" {
+		t.Errorf("OwnerOf = %v", got)
+	}
+	if got := r.OwnerOf([]string{"all"}); len(got) != 0 {
+		t.Errorf("成员不是负责人: %v", got)
+	}
+}
+
 func TestResolveAgent(t *testing.T) {
 	r, err := Load(writeTenants(t, map[string]string{
 		"credit": "tenant: credit\nrollout: general\nmember_groups: [credit-l2]\nbound_clients: [biz]\n" +

@@ -44,6 +44,9 @@ type Tenant struct {
 	// AuditorGroups 是该租户的审计岗：可以回放本租户任何人的回答（gateway 详设 4.1）。
 	// 审计岗怎么识别设计没有定，先按群组配置；不配置时没有审计岗
 	AuditorGroups []string `yaml:"auditor_groups"`
+	// OwnerGroups 是租户负责人（governance 详设 9.1）：只读本租户的配置版本、评测门禁与质量趋势。
+	// 不必是租户成员；gateway 据此给管理 Principal 加 tenant_owner:<租户> 角色
+	OwnerGroups []string `yaml:"owner_groups"`
 	// Quota 是租户这一层的限制（gateway 详设 5.1）；未配置的项取保守默认值，见 Limits
 	Quota Quota `yaml:"quota"`
 }
@@ -253,6 +256,18 @@ func (r *Registry) MemberOf(groups []string) []string {
 	var out []string
 	for name, t := range r.tenants {
 		if intersects(t.MemberGroups, groups) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// OwnerOf 返回用户作为租户负责人的租户（按名字排序）。
+func (r *Registry) OwnerOf(groups []string) []string {
+	var out []string
+	for name, t := range r.tenants {
+		if intersects(t.OwnerGroups, groups) {
 			out = append(out, name)
 		}
 	}

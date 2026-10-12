@@ -1,9 +1,10 @@
-// Package tenantsync 持有 gateway 当前生效的租户配置：以 governance 为唯一事实来源，从 ConfigService 取 gateway 的
+// Package tenantsync 持有 gateway 当前生效的租户配置（与接受推送入库的数据源）：以 governance 为唯一事实来源，从 ConfigService 取 gateway 的
 // 快照、验签、用与 governance 同一份校验代码（libs/platform-go/tenancy）解析后整份原子替换（governance 详设 4、7.1、8.1）。
 // 订阅 Watch，版本一变立即刷新；另按固定间隔拉取兜底。每次加载的结果经 Ack 上报。
 //
-// 启动时拿不到快照就不启动（设计 8.1：新实例拿不到快照不接流量）。之后刷新失败继续用上一份：governance 故障不影响问答
-// （设计 1.4）；收紧类变更（移出成员群组）在下一次成功刷新后生效。本地磁盘缓存上一份快照还没有做。
+// 加载成功的快照写本地磁盘（Cache）。启动时拿不到快照先用盘上的一份（Restore），盘上也没有就不启动（设计 8.1：
+// 新实例拿不到快照不接流量）。之后刷新失败继续用上一份：governance 故障不影响问答（设计 1.4）；
+// 收紧类变更（移出成员群组）在下一次成功刷新后生效。
 package tenantsync
 
 import (
@@ -17,8 +18,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/snapshot"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
 )
 
 const service = "gateway"
@@ -30,22 +32,50 @@ type Client interface {
 	Ack(ctx context.Context, in *configv1.AckRequest, opts ...grpc.CallOption) (*configv1.AckResponse, error)
 }
 
+// Cache 是快照的本地磁盘缓存（libs/platform-go/snapshot.Cache）。
+type Cache interface {
+	Save(signed *configv1.GetSnapshotResponse) error
+	Load() (*configv1.GetSnapshotResponse, time.Time, error)
+}
+
 type Watcher struct {
 	Client Client
 	// Open 验签并返回快照本体（libs/platform-go/snapshot）；验签不过的快照不加载
 	Open func(ctx context.Context, resp *configv1.GetSnapshotResponse) (*configv1.GetSnapshotResponse, error)
 	// PlatformClients 是平台级客户端（BF_PLATFORM_CLIENTS），不属于任何租户
 	PlatformClients []string
-	Instance        string
-	Log             *slog.Logger
+	// Cache 为 nil 时不写盘（BF_SNAPSHOT_CACHE_DIR 为空）
+	Cache    Cache
+	Instance string
+	Log      *slog.Logger
 
-	live    atomic.Pointer[tenancy.Registry]
+	live atomic.Pointer[tenancy.Registry]
+	// push 是接受推送入库的数据源（source_id → 推送客户端与默认密级），与租户配置同一份快照
+	push    atomic.Pointer[map[string]*configv1.PushSource]
 	mu      sync.Mutex
 	version string
 }
 
 // Registry 返回当前生效的租户配置；Refresh 成功之前为 nil（启动时先 Refresh 成功才对外服务）。
 func (w *Watcher) Registry() *tenancy.Registry { return w.live.Load() }
+
+// PushSource 返回接受推送入库的数据源；不接受推送、不存在或快照还没加载时 ok 为 false。
+func (w *Watcher) PushSource(id string) (*configv1.PushSource, bool) {
+	m := w.push.Load()
+	if m == nil {
+		return nil, false
+	}
+	p, ok := (*m)[id]
+	return p, ok
+}
+
+func pushSources(resp *configv1.GetSnapshotResponse) *map[string]*configv1.PushSource {
+	m := make(map[string]*configv1.PushSource, len(resp.GetPushSources()))
+	for _, p := range resp.GetPushSources() {
+		m[p.GetSourceId()] = p
+	}
+	return &m
+}
 
 // Refresh 拉一次快照，校验通过后整份替换；任何一份配置不合法就整份不加载，继续用上一份。
 func (w *Watcher) Refresh(ctx context.Context) error {
@@ -73,11 +103,40 @@ func (w *Watcher) Refresh(ctx context.Context) error {
 	changed := w.version != version
 	w.version = version
 	w.live.Store(reg)
+	w.push.Store(pushSources(resp))
 	w.mu.Unlock()
 	if changed {
 		w.Log.InfoContext(ctx, "租户配置已更新", slog.String("snapshot_version", version), slog.Int("tenants", len(resp.GetTenants())))
 	}
+	if w.Cache != nil {
+		if err := w.Cache.Save(signed); err != nil {
+			w.Log.WarnContext(ctx, "快照写本地磁盘失败", slog.Any("err", err))
+		}
+	}
 	w.ack(ctx, version, "")
+	return nil
+}
+
+// Restore 用本地磁盘上的快照启动（启动时 governance 不可用）；之后 Watch 与 Run 照常向 governance 对齐。
+func (w *Watcher) Restore(ctx context.Context) error {
+	if w.Cache == nil {
+		return snapshot.ErrNoCache
+	}
+	resp, confirmed, err := w.Cache.Load()
+	if err != nil {
+		return err
+	}
+	reg, err := build(resp.GetTenants(), w.PlatformClients)
+	if err != nil {
+		return err
+	}
+	w.mu.Lock()
+	w.version = resp.GetSnapshotVersion()
+	w.live.Store(reg)
+	w.push.Store(pushSources(resp))
+	w.mu.Unlock()
+	w.Log.WarnContext(ctx, "governance 不可用，先用本地磁盘上的租户配置启动", slog.String("snapshot_version", resp.GetSnapshotVersion()),
+		slog.Time("confirmed_at", confirmed))
 	return nil
 }
 

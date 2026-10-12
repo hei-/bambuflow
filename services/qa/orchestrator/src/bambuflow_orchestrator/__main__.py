@@ -30,13 +30,15 @@ from bambuflow_orchestrator import export, migrate, records, structured
 from bambuflow_orchestrator.admission import DEFAULT_LIMIT, Admission
 from bambuflow_orchestrator.config import ConfigClient
 from bambuflow_orchestrator.experiments import Experiments, refresh
-from bambuflow_orchestrator.llm import ChatClient
+from bambuflow_orchestrator.llm import ChatClient, Router
+from bambuflow_orchestrator.plans import Plans
 from bambuflow_orchestrator.records import PGRecords
 from bambuflow_orchestrator.server import AnswerService
 from bambuflow_orchestrator.session import RedisStore
 from bambuflow_platform import envelope, logs, telemetry
 from bambuflow_platform.grpc_server import AuthInterceptor
-from bambuflow_platform.principal import JWKS, Verifier
+from bambuflow_platform.principal import EVAL_ISSUER, ISSUER, JWKS, Verifier
+from bambuflow_platform.snapshot import SnapshotCache
 
 _log = logging.getLogger("bambuflow_orchestrator")
 LISTEN = os.environ.get("BF_LISTEN", "0.0.0.0:9090")
@@ -50,16 +52,45 @@ PG_POOL_MAX = 10
 PG_POOL_TIMEOUT = 0.5
 
 
-def _llm_api_key() -> str:
+def _llm_api_key(var: str = "BF_LLM_API_KEY_FILE") -> str:
     """外部 LLM 的密钥从 secret 文件读取。
 
     不经环境变量，避免出现在 docker inspect 与进程环境里。
     """
-    path = os.environ.get("BF_LLM_API_KEY_FILE", "")
+    path = os.environ.get(var, "")
     if not path or not os.path.exists(path):
         return ""
     with open(path, encoding="utf-8") as f:
         return f.read().strip()
+
+
+def _router(env: os._Environ[str], http: httpx.AsyncClient) -> Router:
+    """按密级选模型（总体设计 8.6）。BF_LLM_URL/MODEL 是默认模型，
+    BF_LLM_KIND=external 表示它是外部模型（只处理公开级）；
+    受限级要另配专用实例 BF_LLM_RESTRICTED_URL/MODEL（密钥 BF_LLM_RESTRICTED_API_KEY_FILE），
+    没配时受限级内容不调用模型、只返回证据。
+    BF_LLM_ALT_MODELS（逗号分隔）是同一网关上 routing 可以选用的其他模型
+    （A/B 与模型切换，详设 12.3）。"""
+    kind = env.get("BF_LLM_KIND", "private")
+    if kind not in ("private", "external"):
+        raise ValueError(f"BF_LLM_KIND 只能是 private 或 external，得到 {kind!r}")
+    extra = json.loads(env.get("BF_LLM_EXTRA_BODY") or "{}")
+    default = ChatClient(env["BF_LLM_URL"], env["BF_LLM_MODEL"], http, _llm_api_key(), extra)
+    restricted = None
+    if env.get("BF_LLM_RESTRICTED_URL") and env.get("BF_LLM_RESTRICTED_MODEL"):
+        restricted = ChatClient(
+            env["BF_LLM_RESTRICTED_URL"],
+            env["BF_LLM_RESTRICTED_MODEL"],
+            http,
+            _llm_api_key("BF_LLM_RESTRICTED_API_KEY_FILE"),
+            extra,
+        )
+    alternatives = {
+        m: ChatClient(env["BF_LLM_URL"], m, http, _llm_api_key(), extra)
+        for m in (x.strip() for x in env.get("BF_LLM_ALT_MODELS", "").split(","))
+        if m and m != default.model
+    }
+    return Router(default, kind == "external", restricted, alternatives)
 
 
 def _sql(env: os._Environ[str]) -> tuple[structured.Catalog, structured.QueryService] | None:
@@ -91,15 +122,37 @@ def _answer_keys(
 async def serve() -> None:
     env = os.environ
     provider = telemetry.setup("orchestrator") if env.get("OTEL_EXPORTER_OTLP_ENDPOINT") else None
-    verifier = Verifier(JWKS(env["BF_PRINCIPAL_JWKS_URL"]))
-    # 配置快照验签后才使用；取不到或验签不过就不启动（governance 详设 8.1、9.2）
+    # 评测副本（BF_EVAL_MODE=1）只信任 evaluation 签发的评测身份，不接受 gateway 签发的 Principal；
+    # 线上实例反之（evaluation 详设 4.2）
+    eval_mode = env.get("BF_EVAL_MODE") == "1"
+    verifier = Verifier(
+        JWKS(env["BF_PRINCIPAL_JWKS_URL"]), issuer=EVAL_ISSUER if eval_mode else ISSUER
+    )
+    # 配置快照验签后才使用（governance 详设 8.1、9.2）：取不到时先用本地磁盘上的一份，
+    # 盘上也没有（新实例）就不启动；验签不过同样不启动
     config_channel = grpc.aio.insecure_channel(env["BF_CONFIG_ADDR"])
-    config = ConfigClient(config_pb2_grpc.ConfigServiceStub(config_channel), socket.gethostname())
-    snap = await config.snapshot()
+    cache_dir = env.get("BF_SNAPSHOT_CACHE_DIR", "")
+    config = ConfigClient(
+        config_pb2_grpc.ConfigServiceStub(config_channel),
+        socket.gethostname(),
+        SnapshotCache(cache_dir, "orchestrator") if cache_dir else None,
+    )
+    try:
+        snap = await config.snapshot()
+        fresh = True
+    except (grpc.RpcError, TimeoutError, OSError):
+        snap, fresh = config.cached(), False
     vocab = Vocabularies.from_snapshot(snap)
     experiments = Experiments(list(snap.experiments))
+    plans = Plans(
+        list(snap.pipelines),
+        snap.routing if snap.HasField("routing") else None,
+        list(snap.prompts),
+        list(snap.canaries),
+    )
     loaded = {"version": snap.snapshot_version}
-    await config.ack(snap.snapshot_version, "")
+    if fresh:
+        await config.ack(snap.snapshot_version, "")
     _log.info("已加载配置快照", extra={"snapshot_version": snap.snapshot_version})
 
     async def ack(version: str, reason: str) -> None:
@@ -135,7 +188,7 @@ async def serve() -> None:
                 AuthInterceptor(
                     verifier,
                     internal=frozenset({export.SERVICE}),
-                    eval_mode=env.get("BF_EVAL_MODE") == "1",
+                    eval_mode=eval_mode,
                 ),
             ]
         )
@@ -144,13 +197,7 @@ async def serve() -> None:
         )
         answers = AnswerService(
             retrieval_pb2_grpc.RetrievalServiceStub(channel),
-            ChatClient(
-                env["BF_LLM_URL"],
-                env["BF_LLM_MODEL"],
-                http,
-                _llm_api_key(),
-                json.loads(env.get("BF_LLM_EXTRA_BODY") or "{}"),
-            ),
+            _router(env, http),
             KServeNLI(env["BF_NLI_URL"], http),
             vocab,
             RedisStore(rdb),
@@ -160,6 +207,9 @@ async def serve() -> None:
             experiments,
             _sql(env),
             _answer_keys(env, http),
+            plans,
+            # 评测副本按请求取配置发布门禁的候选（governance 详设 4.1 第 ③④ 步）
+            config.candidate if eval_mode else None,
         )
         answer_pb2_grpc.add_AnswerServiceServicer_to_server(answers, server)
         server.add_insecure_port(LISTEN)
@@ -169,7 +219,14 @@ async def serve() -> None:
         wake = asyncio.Event()
         # 词条新增、停用随同一份快照下发：查询映射也随之更新（governance 详设 6.1）
         refreshing = asyncio.create_task(
-            refresh(experiments, config.snapshot, wake=wake, ack=ack, on_vocab=answers.set_vocab)
+            refresh(
+                experiments,
+                config.snapshot,
+                wake=wake,
+                ack=ack,
+                on_vocab=answers.set_vocab,
+                plans=plans,
+            )
         )
         watching = asyncio.create_task(config.watch(lambda: loaded["version"], wake))
         _log.info("orchestrator 已启动")

@@ -25,28 +25,30 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n(bambuflow/admin/v1/eval_gate_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"E\n\nGateMetric\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n\x05value\x18\x02 \x01(\x01H\x00R\x05value\x88\x01\x01\x42\x08\n\x06_value\"?\n\x11GateConfigVersion\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n\x06values\x18\x02 \x03(\tR\x06values\"\xbd\x03\n\x04Gate\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\x12\x18\n\x07trigger\x18\x02 \x01(\tR\x07trigger\x12\x1d\n\ngolden_set\x18\x03 \x01(\tR\tgoldenSet\x12%\n\x0egolden_version\x18\x04 \x01(\tR\rgoldenVersion\x12\x18\n\x07tenants\x18\x05 \x03(\tR\x07tenants\x12\x1e\n\nconclusion\x18\x06 \x01(\tR\nconclusion\x12\x18\n\x07reasons\x18\x07 \x03(\tR\x07reasons\x12\x1a\n\x08unstable\x18\x08 \x03(\tR\x08unstable\x12\x38\n\x07metrics\x18\t \x03(\x0b\x32\x1e.bambuflow.admin.v1.GateMetricR\x07metrics\x12=\n\x06\x63onfig\x18\n \x03(\x0b\x32%.bambuflow.admin.v1.GateConfigVersionR\x06\x63onfig\x12\x18\n\x07repeats\x18\x0b \x01(\x05R\x07repeats\x12\x39\n\ncreated_at\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\"\x80\x01\n\x10ListGatesRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x18\n\x07trigger\x18\x02 \x01(\tR\x07trigger\x12\x1b\n\tpage_size\x18\x03 \x01(\x05R\x08pageSize\x12\x1d\n\npage_token\x18\x04 \x01(\tR\tpageToken\"k\n\x11ListGatesResponse\x12.\n\x05gates\x18\x01 \x03(\x0b\x32\x18.bambuflow.admin.v1.GateR\x05gates\x12&\n\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\")\n\x0eGetGateRequest\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\"h\n\x0fGetGateResponse\x12,\n\x04gate\x18\x01 \x01(\x0b\x32\x18.bambuflow.admin.v1.GateR\x04gate\x12\'\n\x0freport_markdown\x18\x02 \x01(\tR\x0ereportMarkdown2\xc4\x01\n\x14\x45valGateAdminService\x12X\n\tListGates\x12$.bambuflow.admin.v1.ListGatesRequest\x1a%.bambuflow.admin.v1.ListGatesResponse\x12R\n\x07GetGate\x12\".bambuflow.admin.v1.GetGateRequest\x1a#.bambuflow.admin.v1.GetGateResponseB\xe1\x01\n\x16\x63om.bambuflow.admin.v1B\x12\x45valGateAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n(bambuflow/admin/v1/eval_gate_admin.proto\x12\x12\x62\x61mbuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"E\n\nGateMetric\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n\x05value\x18\x02 \x01(\x01H\x00R\x05value\x88\x01\x01\x42\x08\n\x06_value\"?\n\x11GateConfigVersion\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n\x06values\x18\x02 \x03(\tR\x06values\"\x80\x04\n\x04Gate\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\x12\x18\n\x07trigger\x18\x02 \x01(\tR\x07trigger\x12\x1d\n\ngolden_set\x18\x03 \x01(\tR\tgoldenSet\x12%\n\x0egolden_version\x18\x04 \x01(\tR\rgoldenVersion\x12\x18\n\x07tenants\x18\x05 \x03(\tR\x07tenants\x12\x1e\n\nconclusion\x18\x06 \x01(\tR\nconclusion\x12\x18\n\x07reasons\x18\x07 \x03(\tR\x07reasons\x12\x1a\n\x08unstable\x18\x08 \x03(\tR\x08unstable\x12\x38\n\x07metrics\x18\t \x03(\x0b\x32\x1e.bambuflow.admin.v1.GateMetricR\x07metrics\x12=\n\x06\x63onfig\x18\n \x03(\x0b\x32%.bambuflow.admin.v1.GateConfigVersionR\x06\x63onfig\x12\x18\n\x07repeats\x18\x0b \x01(\x05R\x07repeats\x12\x39\n\ncreated_at\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x41\n\treadiness\x18\r \x03(\x0b\x32#.bambuflow.admin.v1.TenantReadinessR\treadiness\"\x82\x02\n\x0fTenantReadiness\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x14\n\x05stage\x18\x02 \x01(\tR\x05stage\x12\x18\n\x07\x63ounted\x18\x03 \x01(\x05R\x07\x63ounted\x12\x1e\n\nunreviewed\x18\x04 \x01(\x05R\nunreviewed\x12!\n\x0crefuse_share\x18\x05 \x01(\x01R\x0brefuseShare\x12\'\n\x0fsynthetic_share\x18\x06 \x01(\x01R\x0esyntheticShare\x12\'\n\x0f\x64ouble_reviewed\x18\x07 \x01(\x05R\x0e\x64oubleReviewed\x12\x12\n\x04gaps\x18\x08 \x03(\tR\x04gaps\"\x80\x01\n\x10ListGatesRequest\x12\x16\n\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x18\n\x07trigger\x18\x02 \x01(\tR\x07trigger\x12\x1b\n\tpage_size\x18\x03 \x01(\x05R\x08pageSize\x12\x1d\n\npage_token\x18\x04 \x01(\tR\tpageToken\"k\n\x11ListGatesResponse\x12.\n\x05gates\x18\x01 \x03(\x0b\x32\x18.bambuflow.admin.v1.GateR\x05gates\x12&\n\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\")\n\x0eGetGateRequest\x12\x17\n\x07gate_id\x18\x01 \x01(\tR\x06gateId\"h\n\x0fGetGateResponse\x12,\n\x04gate\x18\x01 \x01(\x0b\x32\x18.bambuflow.admin.v1.GateR\x04gate\x12\'\n\x0freport_markdown\x18\x02 \x01(\tR\x0ereportMarkdown2\xc4\x01\n\x14\x45valGateAdminService\x12X\n\tListGates\x12$.bambuflow.admin.v1.ListGatesRequest\x1a%.bambuflow.admin.v1.ListGatesResponse\x12R\n\x07GetGate\x12\".bambuflow.admin.v1.GetGateRequest\x1a#.bambuflow.admin.v1.GetGateResponseB\xdd\x01\n\x16\x63om.bambuflow.admin.v1B\x12\x45valGateAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03\x42\x41X\xaa\x02\x12\x42\x61mbuflow.Admin.V1\xca\x02\x12\x42\x61mbuflow\\Admin\\V1\xe2\x02\x1e\x42\x61mbuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14\x42\x61mbuflow::Admin::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.admin.v1.eval_gate_admin_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\026com.bambuflow.admin.v1B\022EvalGateAdminProtoP\001ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\242\002\003BAX\252\002\022Bambuflow.Admin.V1\312\002\022Bambuflow\\Admin\\V1\342\002\036Bambuflow\\Admin\\V1\\GPBMetadata\352\002\024Bambuflow::Admin::V1'
+  _globals['DESCRIPTOR']._serialized_options = b'\n\026com.bambuflow.admin.v1B\022EvalGateAdminProtoP\001ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\242\002\003BAX\252\002\022Bambuflow.Admin.V1\312\002\022Bambuflow\\Admin\\V1\342\002\036Bambuflow\\Admin\\V1\\GPBMetadata\352\002\024Bambuflow::Admin::V1'
   _globals['_GATEMETRIC']._serialized_start=97
   _globals['_GATEMETRIC']._serialized_end=166
   _globals['_GATECONFIGVERSION']._serialized_start=168
   _globals['_GATECONFIGVERSION']._serialized_end=231
   _globals['_GATE']._serialized_start=234
-  _globals['_GATE']._serialized_end=679
-  _globals['_LISTGATESREQUEST']._serialized_start=682
-  _globals['_LISTGATESREQUEST']._serialized_end=810
-  _globals['_LISTGATESRESPONSE']._serialized_start=812
-  _globals['_LISTGATESRESPONSE']._serialized_end=919
-  _globals['_GETGATEREQUEST']._serialized_start=921
-  _globals['_GETGATEREQUEST']._serialized_end=962
-  _globals['_GETGATERESPONSE']._serialized_start=964
-  _globals['_GETGATERESPONSE']._serialized_end=1068
-  _globals['_EVALGATEADMINSERVICE']._serialized_start=1071
-  _globals['_EVALGATEADMINSERVICE']._serialized_end=1267
+  _globals['_GATE']._serialized_end=746
+  _globals['_TENANTREADINESS']._serialized_start=749
+  _globals['_TENANTREADINESS']._serialized_end=1007
+  _globals['_LISTGATESREQUEST']._serialized_start=1010
+  _globals['_LISTGATESREQUEST']._serialized_end=1138
+  _globals['_LISTGATESRESPONSE']._serialized_start=1140
+  _globals['_LISTGATESRESPONSE']._serialized_end=1247
+  _globals['_GETGATEREQUEST']._serialized_start=1249
+  _globals['_GETGATEREQUEST']._serialized_end=1290
+  _globals['_GETGATERESPONSE']._serialized_start=1292
+  _globals['_GETGATERESPONSE']._serialized_end=1396
+  _globals['_EVALGATEADMINSERVICE']._serialized_start=1399
+  _globals['_EVALGATEADMINSERVICE']._serialized_end=1595
 # @@protoc_insertion_point(module_scope)

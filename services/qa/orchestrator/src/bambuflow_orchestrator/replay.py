@@ -74,7 +74,9 @@ def prune(
         if not out.citations:
             out.status = answer_pb2.STATUS_INSUFFICIENT_EVIDENCE
     elif out.status != answer_pb2.STATUS_REFUSED and not any(
-        s.ref_ids or s.HasField("document") for s in out.sentences
+        # 程序写的说明（冲突说明也带引用）不算回答内容
+        (s.ref_ids or s.HasField("document")) and s.claim_type != answer_pb2.CLAIM_TYPE_NONE
+        for s in out.sentences
     ):
         out.status = answer_pb2.STATUS_INSUFFICIENT_EVIDENCE
     return out

@@ -1,0 +1,166 @@
+{{- /*
+入库平面的定时任务（入库管道详设第 4、10 节，技术设计文档 9.2）：
+- indexing-publish：增量发布（发布前在评测副本上跑评测门禁，通过才切别名；全量重建写完后跑完整评测集门禁）；
+- indexing-expire：按数据源保留期给到期文档写删除标记（只在配置了 indexing.retention 时渲染）；
+- indexing-purge-deleted：删除标记过了观察期后物理删除，写删除凭证；
+- connectors-sync-<数据源>、connectors-reconcile-<数据源>：每个数据源的同步与每日对账。CronJob 与它拉起的 Pod 都带
+  bambuflow.io/source-id 标签：connectors-admin 的“立即同步”按它找到 CronJob、从模板建 Job，并据此判断是否已有同步在跑。
+上一次没跑完不重叠执行（concurrencyPolicy: Forbid）；失败由 Job 重试两次，仍失败时等下一轮并告警（Job 失败指标）。
+*/ -}}
+{{- $v := .Values -}}
+{{- $s3 := dict "BF_S3_ENDPOINT" $v.objectStore.endpoint "BF_S3_BUCKET" $v.objectStore.bucket -}}
+{{- $audit := dict "BF_AUDIT_S3_ENDPOINT" $v.audit.s3Endpoint "BF_AUDIT_BUCKET" $v.audit.bucket "BF_AUDIT_RETENTION_DAYS" (toString $v.audit.retentionDays) -}}
+{{- $jobs := dict
+  "indexing-publish" (dict "schedule" $v.indexing.publishSchedule "image" "indexing" "args" (list "publish") "secret" "indexing"
+    "resources" $v.indexing.resources "deadline" 3600
+    "env" (merge (dict "BF_EVAL_ADDR" $v.online.evaluationAddr) $audit))
+  "indexing-purge-deleted" (dict "schedule" $v.indexing.purgeSchedule "image" "indexing" "args" (list "purge-deleted") "secret" "indexing"
+    "resources" $v.indexing.resources "deadline" 3600
+    "env" (merge (dict "BF_PURGE_GRACE_HOURS" (toString $v.indexing.purgeGraceHours)) $audit))
+-}}
+{{- if $v.indexing.retention }}
+{{- $_ := set $jobs "indexing-expire" (dict "schedule" $v.indexing.expireSchedule "image" "indexing" "args" (list "expire") "secret" "indexing"
+    "resources" $v.indexing.resources "deadline" 3600
+    "env" (merge (dict "BF_RETENTION_FILE" "/etc/bambuflow/retention.yaml") $audit)
+    "files" (dict "name" (printf "%s-retention" .Release.Name) "mountPath" "/etc/bambuflow/retention.yaml" "subPath" "retention.yaml")) }}
+{{- end }}
+{{- range $v.connectors.sources }}
+{{- $src := . }}
+{{- $env := merge (dict
+    "BF_SOURCE_ID" $src.id
+    "BF_REDIS_ADDR" $v.redisAddr
+    "BF_INDEXING_ADDR" (printf "%s-indexing:9090" $.Release.Name)) ($src.env | default dict) $s3 }}
+{{- $files := ternary (dict "name" (printf "%s-source-%s" $.Release.Name ($src.id | replace "_" "-")) "mountPath" "/etc/bambuflow/source") nil (not (empty $src.configFiles)) }}
+{{- /* poll: true 的数据源改由常驻轮询同步（pollers.yaml），不建定时同步任务 */ -}}
+{{- if not $src.poll }}
+{{- $_ := set $jobs (printf "connectors-sync-%s" ($src.id | replace "_" "-")) (dict "schedule" $src.schedule "image" "connectors" "args" (list $src.command)
+    "secret" "connectors" "sourceSecret" (printf "connectors-%s" ($src.id | replace "_" "-")) "sourceID" $src.id
+    "resources" $v.connectors.resources "deadline" 3600 "env" $env "files" $files) }}
+{{- end }}
+{{- if $src.reconcileCommand }}
+{{- $_ := set $jobs (printf "connectors-reconcile-%s" ($src.id | replace "_" "-")) (dict "schedule" $src.reconcileSchedule "image" "connectors"
+    "args" (list $src.reconcileCommand) "secret" "connectors" "sourceSecret" (printf "connectors-%s" ($src.id | replace "_" "-"))
+    "reconcile" true "resources" $v.connectors.resources "deadline" 7200 "env" $env "files" $files) }}
+{{- end }}
+{{- end }}
+{{- range $name, $job := $jobs }}
+{{- $ctx := dict "root" $ "component" $name }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+    {{- if and $job.sourceID (not $job.reconcile) }}
+    bambuflow.io/source-id: {{ $job.sourceID | quote }}
+    {{- end }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "bambuflow.labels" $ctx | nindent 8 }}
+        {{- if $job.sourceID }}
+        bambuflow.io/source-id: {{ $job.sourceID | quote }}
+        {{- end }}
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: {{ $job.deadline }}
+      template:
+        metadata:
+          labels:
+            {{- include "bambuflow.labels" $ctx | nindent 12 }}
+        spec:
+          serviceAccountName: {{ include "bambuflow.name" $ctx }}
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            fsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: {{ $job.image }}
+              image: "{{ $v.image.registry }}/{{ $job.image }}:{{ $v.image.tag }}"
+              imagePullPolicy: {{ $v.image.pullPolicy }}
+              args: {{ toJson $job.args }}
+              env:
+                {{- range $k, $val := $job.env }}
+                - name: {{ $k }}
+                  value: {{ $val | quote }}
+                {{- end }}
+                - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                  value: {{ $v.otel.endpoint | quote }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "bambuflow.name" (dict "root" $ "component" $job.secret) }}
+                {{- with $job.sourceSecret }}
+                # 这个数据源自己的密钥（如表结构源的只读账号），没有时不注入
+                - secretRef:
+                    name: {{ include "bambuflow.name" (dict "root" $ "component" .) }}
+                    optional: true
+                {{- end }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                {{- with $job.files }}
+                - name: files
+                  mountPath: {{ .mountPath }}
+                  {{- with .subPath }}
+                  subPath: {{ . }}
+                  {{- end }}
+                  readOnly: true
+                {{- end }}
+              resources:
+                {{- toYaml $job.resources | nindent 16 }}
+              securityContext:
+                runAsUser: 65532
+                runAsGroup: 65532
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            {{- with $job.files }}
+            - name: files
+              configMap:
+                name: {{ .name }}
+            {{- end }}
+{{- end }}
+{{- if $v.indexing.retention }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-retention
+data:
+  retention.yaml: |
+    {{- toYaml (dict "retention_days" $v.indexing.retention) | nindent 4 }}
+{{- end }}
+{{- range $v.connectors.sources }}
+{{- if .configFiles }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-source-{{ .id | replace "_" "-" }}
+data:
+  {{- range $file, $content := .configFiles }}
+  {{ $file }}: |
+    {{- $content | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

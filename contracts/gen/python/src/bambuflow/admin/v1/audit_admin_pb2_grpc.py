@@ -8,7 +8,10 @@ from bambuflow.admin.v1 import audit_admin_pb2 as bambuflow_dot_admin_dot_v1_dot
 class AuditAdminServiceStub:
     """AuditAdminService 是审计查询（技术设计文档 13.2，governance 详设 7.2），由 governance 实现，
     gateway 的 GET /v1/admin/audit 调用，只给审计岗；每次查询本身写 governance 的变更审计。
-    数据来自 gateway 送到审计桶的入口审计段：谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档。
+    按审计索引（技术设计文档 4.1 audit_index）查，原文从审计桶读。三类记录：
+    access 是 gateway 的入口审计（谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档），
+    change 是各服务的变更审计（governance、indexing、connectors、evaluation），eval 是评测回放的请求（evaluation 详设 4.2）。
+    索引在记录送进审计桶后约 1 分钟内可查。
     """
 
     def __init__(self, channel):
@@ -27,7 +30,10 @@ class AuditAdminServiceStub:
 class AuditAdminServiceServicer:
     """AuditAdminService 是审计查询（技术设计文档 13.2，governance 详设 7.2），由 governance 实现，
     gateway 的 GET /v1/admin/audit 调用，只给审计岗；每次查询本身写 governance 的变更审计。
-    数据来自 gateway 送到审计桶的入口审计段：谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档。
+    按审计索引（技术设计文档 4.1 audit_index）查，原文从审计桶读。三类记录：
+    access 是 gateway 的入口审计（谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档），
+    change 是各服务的变更审计（governance、indexing、connectors、evaluation），eval 是评测回放的请求（evaluation 详设 4.2）。
+    索引在记录送进审计桶后约 1 分钟内可查。
     """
 
     def QueryAudit(self, request, context):
@@ -55,7 +61,10 @@ def add_AuditAdminServiceServicer_to_server(servicer, server):
 class AuditAdminService:
     """AuditAdminService 是审计查询（技术设计文档 13.2，governance 详设 7.2），由 governance 实现，
     gateway 的 GET /v1/admin/audit 调用，只给审计岗；每次查询本身写 governance 的变更审计。
-    数据来自 gateway 送到审计桶的入口审计段：谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档。
+    按审计索引（技术设计文档 4.1 audit_index）查，原文从审计桶读。三类记录：
+    access 是 gateway 的入口审计（谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档），
+    change 是各服务的变更审计（governance、indexing、connectors、evaluation），eval 是评测回放的请求（evaluation 详设 4.2）。
+    索引在记录送进审计桶后约 1 分钟内可查。
     """
 
     @staticmethod

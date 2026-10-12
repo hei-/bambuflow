@@ -32,7 +32,7 @@ class GetQualityTrendsResponse(_message.Message):
     def __init__(self, tenant: _Optional[str] = ..., days: _Optional[_Iterable[_Union[DailyQuality, _Mapping]]] = ..., groundedness_7d: _Optional[float] = ..., groundedness_30d: _Optional[float] = ..., declining: _Optional[bool] = ...) -> None: ...
 
 class DailyQuality(_message.Message):
-    __slots__ = ("day", "sampled", "sentences", "groundedness", "citation_precision", "judge_model", "computed_at")
+    __slots__ = ("day", "sampled", "sentences", "groundedness", "citation_precision", "judge_model", "computed_at", "answers", "feedback_useful", "feedback_wrong", "feedback_bad_citation", "faithfulness", "faithfulness_judged", "llm_judge")
     DAY_FIELD_NUMBER: _ClassVar[int]
     SAMPLED_FIELD_NUMBER: _ClassVar[int]
     SENTENCES_FIELD_NUMBER: _ClassVar[int]
@@ -40,6 +40,13 @@ class DailyQuality(_message.Message):
     CITATION_PRECISION_FIELD_NUMBER: _ClassVar[int]
     JUDGE_MODEL_FIELD_NUMBER: _ClassVar[int]
     COMPUTED_AT_FIELD_NUMBER: _ClassVar[int]
+    ANSWERS_FIELD_NUMBER: _ClassVar[int]
+    FEEDBACK_USEFUL_FIELD_NUMBER: _ClassVar[int]
+    FEEDBACK_WRONG_FIELD_NUMBER: _ClassVar[int]
+    FEEDBACK_BAD_CITATION_FIELD_NUMBER: _ClassVar[int]
+    FAITHFULNESS_FIELD_NUMBER: _ClassVar[int]
+    FAITHFULNESS_JUDGED_FIELD_NUMBER: _ClassVar[int]
+    LLM_JUDGE_FIELD_NUMBER: _ClassVar[int]
     day: str
     sampled: int
     sentences: int
@@ -47,4 +54,11 @@ class DailyQuality(_message.Message):
     citation_precision: float
     judge_model: str
     computed_at: _timestamp_pb2.Timestamp
-    def __init__(self, day: _Optional[str] = ..., sampled: _Optional[int] = ..., sentences: _Optional[int] = ..., groundedness: _Optional[float] = ..., citation_precision: _Optional[float] = ..., judge_model: _Optional[str] = ..., computed_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    answers: int
+    feedback_useful: int
+    feedback_wrong: int
+    feedback_bad_citation: int
+    faithfulness: float
+    faithfulness_judged: int
+    llm_judge: str
+    def __init__(self, day: _Optional[str] = ..., sampled: _Optional[int] = ..., sentences: _Optional[int] = ..., groundedness: _Optional[float] = ..., citation_precision: _Optional[float] = ..., judge_model: _Optional[str] = ..., computed_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., answers: _Optional[int] = ..., feedback_useful: _Optional[int] = ..., feedback_wrong: _Optional[int] = ..., feedback_bad_citation: _Optional[int] = ..., faithfulness: _Optional[float] = ..., faithfulness_judged: _Optional[int] = ..., llm_judge: _Optional[str] = ...) -> None: ...

@@ -7,7 +7,7 @@
 package configv1
 
 import (
-	v1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -311,8 +311,8 @@ const file_bambuflow_config_v1_experiment_control_proto_rawDesc = "" +
 	"\x18ExperimentControlService\x12f\n" +
 	"\rGetExperiment\x12).bambuflow.config.v1.GetExperimentRequest\x1a*.bambuflow.config.v1.GetExperimentResponse\x12\x81\x01\n" +
 	"\x16ListRunningExperiments\x122.bambuflow.config.v1.ListRunningExperimentsRequest\x1a3.bambuflow.config.v1.ListRunningExperimentsResponse\x12o\n" +
-	"\x10StopForGuardrail\x12,.bambuflow.config.v1.StopForGuardrailRequest\x1a-.bambuflow.config.v1.StopForGuardrailResponseB\xec\x01\n" +
-	"\x17com.bambuflow.config.v1B\x16ExperimentControlProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\xa2\x02\x03BCX\xaa\x02\x13Bambuflow.Config.V1\xca\x02\x13Bambuflow\\Config\\V1\xe2\x02\x1fBambuflow\\Config\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Config::V1b\x06proto3"
+	"\x10StopForGuardrail\x12,.bambuflow.config.v1.StopForGuardrailRequest\x1a-.bambuflow.config.v1.StopForGuardrailResponseB\xe8\x01\n" +
+	"\x17com.bambuflow.config.v1B\x16ExperimentControlProtoP\x01ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1;configv1\xa2\x02\x03BCX\xaa\x02\x13Bambuflow.Config.V1\xca\x02\x13Bambuflow\\Config\\V1\xe2\x02\x1fBambuflow\\Config\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Config::V1b\x06proto3"
 
 var (
 	file_bambuflow_config_v1_experiment_control_proto_rawDescOnce sync.Once

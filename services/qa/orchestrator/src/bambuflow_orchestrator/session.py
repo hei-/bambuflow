@@ -1,8 +1,9 @@
 """会话与 agent 中间状态（orchestrator 详设第 10 节），存在 Redis。
 
-会话只存理解下一轮所需的最少信息：最近 3 轮的问题（已做 PII 掩码）和上一轮引用的 chunk_id，
-不存文档正文，也不存回答里的事实：下一轮的事实必须重新检索（详设 10.2）。
-会话摘要要等选定生成摘要的模型（详设第 16 节待决问题），在那之前只存问题，规划器据此理解指代。
+会话只存理解下一轮所需的最少信息：对话摘要、最近 3 轮的问题（改写后的版本，已做 PII 掩码）
+和上一轮引用的块（chunk_id 与所属文档），不存文档正文，也不存回答里的事实：
+下一轮的事实必须重新检索（详设 10.2）。摘要在每轮回答之后异步更新（summary.py）；
+会话一旦用到受限级内容就不再存摘要，只存问题和引用（详设 10.1）。
 
 会话只属于发起它的用户：owner 是“租户 + 用户”的指纹，每轮校验；不匹配或已过期时当作新会话、
 换一个新 ID，不报错，也不沿用对方给的 ID，避免暴露或覆盖他人的会话（详设 10.4）。
@@ -24,6 +25,7 @@ from typing import Any, Protocol
 import redis.asyncio
 from redis.exceptions import RedisError
 
+from bambuflow.common.v1 import types_pb2
 from bambuflow_orchestrator import redact
 
 _log = logging.getLogger(__name__)
@@ -31,6 +33,8 @@ _log = logging.getLogger(__name__)
 SESSION_TTL = 24 * 3600  # 每轮续期
 MAX_TURNS = 50
 RECENT_QUESTIONS = 3
+# 摘要上限：约 400 token（详设 10.1）
+SUMMARY_CHARS = 500
 AGENT_STATE_TTL = 600  # agent 中间状态，回答完成后立即删除（详设 10.3）
 
 
@@ -57,13 +61,24 @@ def new_conversation_id() -> str:
     return "conv_" + secrets.token_hex(12)
 
 
+@dataclass(frozen=True)
+class Cited:
+    """上一轮引用的一块：下一轮遇到“上面那个制度”时按调用者当前的权限取它的标题（详设 10.1）。"""
+
+    chunk_id: str
+    doc_id: str
+
+
 @dataclass
 class Session:
     conversation_id: str
     owner: str
     recent_questions: list[str] = field(default_factory=list)
-    last_citations: list[str] = field(default_factory=list)
+    last_citations: list[Cited] = field(default_factory=list)
     turn_count: int = 0
+    summary: str = ""
+    # 用到过受限级内容：不再存摘要
+    restricted: bool = False
     # False：没能读到并校验会话（Redis 不可用），本轮结束后不写
     writable: bool = True
     degraded: bool = False
@@ -95,34 +110,89 @@ class Sessions:
             or data["turn_count"] >= MAX_TURNS
         ):
             return Session(new_conversation_id(), owner)
+        restricted = data.get("restricted") is True
+        summary = data.get("summary")
         return Session(
             conversation_id,
             owner,
             recent_questions=[q for q in data.get("recent_questions", []) if isinstance(q, str)],
-            last_citations=[c for c in data.get("last_citations", []) if isinstance(c, str)],
+            last_citations=[
+                Cited(c["chunk_id"], c["doc_id"])
+                for c in data.get("last_citations", [])
+                if isinstance(c, dict)
+                and isinstance(c.get("chunk_id"), str)
+                and isinstance(c.get("doc_id"), str)
+            ],
             turn_count=data["turn_count"],
+            summary=summary if isinstance(summary, str) and not restricted else "",
+            restricted=restricted,
         )
 
-    async def record(self, tenant: str, session: Session, question: str, cited: list[str]) -> None:
-        """本轮结束后更新会话；失败只记日志，不影响已经返回的回答（详设 10.2）。"""
+    async def record(
+        self,
+        tenant: str,
+        session: Session,
+        question: str,
+        cited: list[Cited],
+        level: int = types_pb2.CLASSIFICATION_INTERNAL,
+    ) -> int | None:
+        """本轮结束后更新会话，返回写入的轮次；没写（不可写或失败）时返回 None。
+        失败只记日志，不影响已经返回的回答（详设 10.2）。level 是本轮上下文的最高密级。"""
         if not session.writable:
-            return
-        recent = [*session.recent_questions, redact.mask(question)][-RECENT_QUESTIONS:]
+            return None
+        restricted = session.restricted or level >= types_pb2.CLASSIFICATION_RESTRICTED
+        turn = session.turn_count + 1
         value = {
             "owner": session.owner,
-            "recent_questions": recent,
-            "last_citations": cited,
-            "turn_count": session.turn_count + 1,
+            "recent_questions": [*session.recent_questions, redact.mask(question)][
+                -RECENT_QUESTIONS:
+            ],
+            "last_citations": [{"chunk_id": c.chunk_id, "doc_id": c.doc_id} for c in cited],
+            "turn_count": turn,
+            "summary": "" if restricted else session.summary,
+            "restricted": restricted,
             "updated_at": int(self._clock()),
         }
         try:
-            await self._store.set(
-                self._key(tenant, session.conversation_id),
-                json.dumps(value, ensure_ascii=False).encode(),
-                SESSION_TTL,
-            )
+            await self._write(tenant, session.conversation_id, value)
         except StoreUnavailableError as e:
             _log.warning("会话写入失败", extra={"err": str(e)})
+            return None
+        return turn
+
+    async def update_summary(
+        self, tenant: str, conversation_id: str, owner: str, turn: int, summary: str
+    ) -> None:
+        """写入第 turn 轮之后的摘要。会话已经有了更新的一轮、换了主人或用到过受限级内容时不写：
+        摘要是异步生成的，晚到的结果不能覆盖新的状态。失败只记日志（下一轮退回只用最近的问题）。"""
+        try:
+            data = _load(await self._store.get(self._key(tenant, conversation_id)))
+            if (
+                data is None
+                or data.get("owner") != owner
+                or data.get("turn_count") != turn
+                or data.get("restricted") is not False
+            ):
+                return
+            data["summary"] = redact.mask(summary)[:SUMMARY_CHARS]
+            await self._write(tenant, conversation_id, data)
+        except StoreUnavailableError as e:
+            _log.warning("会话摘要写入失败", extra={"err": str(e)})
+
+    async def delete(self, tenant: str, owner: str, conversation_id: str) -> None:
+        """删除调用者自己的会话（详设 10.4）；不存在或不属于调用者时什么也不做。
+        存储不可用时抛 StoreUnavailableError：删除必须确定完成，不能静默失败。"""
+        key = self._key(tenant, conversation_id)
+        data = _load(await self._store.get(key))
+        if data is not None and data.get("owner") == owner:
+            await self._store.delete(key)
+
+    async def _write(self, tenant: str, conversation_id: str, value: dict[str, Any]) -> None:
+        await self._store.set(
+            self._key(tenant, conversation_id),
+            json.dumps(value, ensure_ascii=False).encode(),
+            SESSION_TTL,
+        )
 
 
 class AgentStates:

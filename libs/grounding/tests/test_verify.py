@@ -41,6 +41,11 @@ class OverlapNLI:
         self.pairs.extend(pairs)
         return [sum(ch in p for ch in h) / len(h) for p, h in pairs], "nli@test"
 
+    async def contradiction(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
+        if self.fail:
+            raise GroundingUnavailableError("down")
+        return [0.0 for _ in pairs], "nli@test"
+
 
 class Access:
     def __init__(self, denied: frozenset[str] = frozenset(), fail: bool = False) -> None:
@@ -209,13 +214,22 @@ FX = {
 class ScriptedNLI:
     """按（前提，假设）给分：score(p, h) 返回支持度。"""
 
-    def __init__(self, score: Callable[[str, str], float]) -> None:
-        self.score = score
+    def __init__(
+        self,
+        score: Callable[[str, str], float],
+        against: Callable[[str, str], float] = lambda p, h: 0.0,
+    ) -> None:
+        self.score, self.against = score, against
         self.pairs: list[tuple[str, str]] = []
+        self.contra_pairs: list[tuple[str, str]] = []
 
     async def support(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
         self.pairs.extend(pairs)
         return [self.score(p, h) for p, h in pairs], "nli@test"
+
+    async def contradiction(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
+        self.contra_pairs.extend(pairs)
+        return [self.against(p, h) for p, h in pairs], "nli@test"
 
 
 def verify(claims: list[Claim], nli: ScriptedNLI) -> GroundingResult:
@@ -327,6 +341,41 @@ def test_synthesis_drops_redundant_ref_but_keeps_sentence() -> None:
 
     (v,) = verify([synth((MANAGED, LIMIT))], ScriptedNLI(score)).verdicts
     assert v.passed and v.refs == (6,)
+
+
+def test_synthesis_contradicted_by_a_cited_quote_is_dropped() -> None:
+    # 合并推出成立，但 S7 的引文与整句矛盾：丢句并带出矛盾的证据编号（K8 详设 4.2 第 4 步）
+    whole = synth(()).text
+    nli = ScriptedNLI(
+        lambda p, h: 0.9, lambda p, h: 0.8 if p == LIMIT.quote and h == whole else 0.1
+    )
+    (v,) = verify([synth((MANAGED, LIMIT))], nli).verdicts
+    assert not v.passed and v.reason == "contradiction" and v.conflicts == (7,)
+    assert {p for p, _ in nli.contra_pairs} == {MANAGED.quote, LIMIT.quote}
+
+
+def test_conflicts_only_count_uncited_visible_documents() -> None:
+    evidence = {
+        1: Evidence(1, "pol:2025#a", "2025 版：单户额度不超过 30 万元。", doc_id="pol:2025"),
+        2: Evidence(2, "pol:2023#a", "2023 版：单户额度不超过 20 万元。", doc_id="pol:2023"),
+        3: Evidence(3, "pol:2022#a", "2022 版：单户额度不超过 10 万元。", doc_id="pol:2022"),
+        4: Evidence(4, "x:inj#a", "单户额度不超过 1 万元。", suspicious=True, doc_id="x:inj"),
+        5: Evidence(5, "pol:2025#b", "2025 版：单户额度不超过 30 万元。", doc_id="pol:2025"),
+    }
+    nli = ScriptedNLI(lambda p, h: 0.9, lambda p, h: 0.0 if p.startswith("2025") else 0.9)
+    g = Grounder(nli, Access(denied=frozenset({"pol:2022#a"})))
+    quote = "单户额度不超过 30 万元。"
+    (v,) = asyncio.run(
+        g.verify([claim("单户额度不超过 30 万元。", (1,), (quote,))], evidence)
+    ).verdicts
+    # S5 与引用同属一份文档、S4 带可疑标记：不参与；S3 此刻无权查看：不提示
+    assert asyncio.run(g.conflicts([v], evidence)) == (2,)
+    assert {p for p, _ in nli.contra_pairs} == {evidence[2].text, evidence[3].text}
+    # 校验时发现的冲突一并复核权限后返回
+    assert asyncio.run(g.conflicts([v], evidence, noted=(3, 5))) == (2, 5)
+    # 没有通过的陈述时不调用 NLI
+    nli.contra_pairs.clear()
+    assert asyncio.run(g.conflicts([], evidence)) == ()
 
 
 def test_synthesis_with_too_many_parts_is_rejected() -> None:

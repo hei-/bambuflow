@@ -24,7 +24,7 @@ from google.protobuf.any_pb2 import Any as Any_
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from bambuflow.admin.v1 import golden_admin_pb2, golden_admin_pb2_grpc
-from bambuflow_evaluation import golden
+from bambuflow_evaluation import feedback, golden
 from bambuflow_evaluation.service import Ctx, abort
 from bambuflow_platform.grpc_server import current_principal
 
@@ -265,8 +265,13 @@ def _strs(v: Any, n: int, size: int, pattern: re.Pattern[str] | None = None) -> 
 
 
 class GoldenService(golden_admin_pb2_grpc.GoldenSetAdminServiceServicer):
-    def __init__(self, store: Store, sets: Callable[[], list[golden.GoldenSet]]) -> None:
-        self._store, self._sets = store, sets
+    def __init__(
+        self,
+        store: Store,
+        sets: Callable[[], list[golden.GoldenSet]],
+        cases: feedback.Store | None = None,
+    ) -> None:
+        self._store, self._sets, self._cases = store, sets, cases
 
     async def _roles(self, context: Ctx, allowed: set[str]) -> tuple[str, set[str]]:
         p = current_principal()
@@ -401,6 +406,73 @@ class GoldenService(golden_admin_pb2_grpc.GoldenSetAdminServiceServicer):
                 code, str(err), trailing_metadata=reason_metadata(code, str(err), err.reason)
             )
         return golden_admin_pb2.ReviewCandidateResponse(question=_candidate_proto(c))
+
+    async def ListFeedbackCases(
+        self, request: golden_admin_pb2.ListFeedbackCasesRequest, context: Ctx
+    ) -> golden_admin_pb2.ListFeedbackCasesResponse:
+        await self._roles(context, {PLATFORM_ADMIN, PLATFORM_OPERATOR, DATA_OWNER})
+        await self._tenant(context, request.tenant)
+        status = request.status or "open"
+        if status not in feedback.STATUSES:
+            await abort(context, grpc.StatusCode.INVALID_ARGUMENT, "status 不合法")
+        store = await self._cases_store(context)
+        try:
+            cases = await store.list(request.tenant, status)
+        except psycopg.Error:
+            await abort(context, grpc.StatusCode.UNAVAILABLE, "反馈案例暂时不可用")
+        return golden_admin_pb2.ListFeedbackCasesResponse(cases=[_case_proto(c) for c in cases])
+
+    async def ResolveFeedbackCase(
+        self, request: golden_admin_pb2.ResolveFeedbackCaseRequest, context: Ctx
+    ) -> golden_admin_pb2.ResolveFeedbackCaseResponse:
+        # 由出题与复核的人处理：业务专家（数据属主）或平台管理员
+        who, _ = await self._roles(context, {PLATFORM_ADMIN, DATA_OWNER})
+        await self._tenant(context, request.tenant)
+        note = request.note.strip()
+        if (
+            request.resolution not in feedback.RESOLUTIONS
+            or not request.answer_id.startswith("ans_")
+            or not note
+            or len(note) > 500
+        ):
+            await abort(
+                context, grpc.StatusCode.INVALID_ARGUMENT, "answer_id、resolution 或 note 不合法"
+            )
+        store = await self._cases_store(context)
+        try:
+            c = await store.resolve(
+                request.tenant, request.answer_id, request.resolution, who, note
+            )
+        except psycopg.Error:
+            await abort(context, grpc.StatusCode.UNAVAILABLE, "反馈案例暂时不可用")
+        if c is None:
+            await abort(context, grpc.StatusCode.NOT_FOUND, "没有待处理的这条反馈案例")
+        return golden_admin_pb2.ResolveFeedbackCaseResponse(case=_case_proto(c))
+
+    async def _cases_store(self, context: Ctx) -> feedback.Store:
+        if self._cases is None:
+            await abort(context, grpc.StatusCode.UNAVAILABLE, "没有配置反馈案例的存储")
+        return self._cases
+
+
+def _case_proto(c: feedback.Case) -> golden_admin_pb2.FeedbackCase:
+    out = golden_admin_pb2.FeedbackCase(
+        answer_id=c.answer_id,
+        tenant=c.tenant,
+        masked_question=c.masked_question,
+        answer_status=c.answer_status,
+        ratings=list(c.ratings),
+        comments=list(c.comments),
+        cited_doc_ids=list(c.cited_doc_ids),
+        cited_titles=list(c.cited_titles),
+        status=c.status,
+        resolved_by=c.resolved_by,
+        resolution_note=c.resolution_note,
+    )
+    out.answered_at.FromDatetime(c.answered_at)
+    if c.resolved_at is not None:
+        out.resolved_at.FromDatetime(c.resolved_at)
+    return out
 
 
 def _varint(n: int) -> bytes:

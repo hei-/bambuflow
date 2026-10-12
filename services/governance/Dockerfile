@@ -15,6 +15,8 @@ FROM debian:bookworm-slim AS runtime
 LABEL org.bambuflow.role=service
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/governance /usr/local/bin/governance
+# 检索权限策略包的全局基线（信息安全审批）：首次启动时作为初始版本导入（BF_POLICY_SEED_DIRS）
+COPY config/policies/global.rego /etc/bambuflow/policies-base/global.rego
 USER 65532:65532
 ENTRYPOINT ["governance"]
 CMD ["identity-sync"]
@@ -24,3 +26,4 @@ COPY tools/test-upstream/identity-sync.yaml /etc/bambuflow/identity-sync.yaml
 COPY tools/test-upstream/vocab.yaml /etc/bambuflow/vocab.yaml
 COPY tools/test-upstream/sources.yaml /etc/bambuflow/sources.yaml
 COPY tools/test-upstream/tenants /etc/bambuflow/tenants
+COPY tools/test-upstream/policies /etc/bambuflow/policies

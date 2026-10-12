@@ -32,6 +32,11 @@ class Question:
     must_cite: tuple[str, ...]
     must_not_cite: tuple[str, ...]
     notes: str = ""
+    # 来源（expert、feedback、online_sample、llm_generated，
+    # 及旧的 llm_generated_unreviewed）与审核人：逐题的 provenance 覆盖集合的
+    # provenance_default（评测详设 3.1：合成题占比、双人标注题数）
+    origin: str = ""
+    reviewers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,10 @@ def load(path: Path) -> GoldenSet:
             raise ValueError(f"题目 id 重复: {q['id']}")
         seen.add(q["id"])
         exp = q["expected"]
+        prov = {**doc["provenance_default"], **(q.get("provenance") or {})}
+        reviewed = prov.get("reviewed_by") or []
+        if isinstance(reviewed, str):
+            reviewed = [reviewed]
         questions.append(
             Question(
                 id=q["id"],
@@ -73,6 +82,8 @@ def load(path: Path) -> GoldenSet:
                 must_cite=_strs(exp.get("must_cite", [])),
                 must_not_cite=_strs(exp.get("must_not_cite", [])),
                 notes=str(q.get("notes", "")),
+                origin=str(prov.get("source") or ""),
+                reviewers=tuple(sorted({str(r) for r in reviewed if r})),
             )
         )
     return GoldenSet(doc["tenant_set"], str(doc["version"]), doc["provenance_default"], questions)

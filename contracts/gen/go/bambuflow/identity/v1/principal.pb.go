@@ -7,7 +7,7 @@
 package identityv1
 
 import (
-	v1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -47,7 +47,8 @@ type Principal struct {
 	Jti      string `protobuf:"bytes,13,opt,name=jti,proto3" json:"jti,omitempty"`
 	Aud      string `protobuf:"bytes,14,opt,name=aud,proto3" json:"aud,omitempty"`
 	// 平台角色（platform_admin、platform_operator、infosec、data_owner、auditor），只出现在管理接口的 Principal 里：
-	// gateway 按部署配置把平台身份库的群组映射成角色（gateway 详设 4.2）。管理接口的 Principal 没有 tenant，
+	// gateway 按部署配置把平台身份库的群组映射成角色（gateway 详设 4.2）。租户负责人按租户配置的 owner_groups 得出，
+	// 写成带租户的 tenant_owner:<租户>，每个负责的租户一项，按租户的范围由实现方校验。管理接口的 Principal 没有 tenant，
 	// 数据接口的 Principal 没有 roles，两类下游各自只接受自己那一类。
 	Roles         []string `protobuf:"bytes,15,rep,name=roles,proto3" json:"roles,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -211,8 +212,8 @@ const file_bambuflow_identity_v1_principal_proto_rawDesc = "" +
 	"\x03exp\x18\f \x01(\x03R\x03exp\x12\x10\n" +
 	"\x03jti\x18\r \x01(\tR\x03jti\x12\x10\n" +
 	"\x03aud\x18\x0e \x01(\tR\x03aud\x12\x14\n" +
-	"\x05roles\x18\x0f \x03(\tR\x05rolesB\xf2\x01\n" +
-	"\x19com.bambuflow.identity.v1B\x0ePrincipalProtoP\x01ZOgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\xa2\x02\x03BIX\xaa\x02\x15Bambuflow.Identity.V1\xca\x02\x15Bambuflow\\Identity\\V1\xe2\x02!Bambuflow\\Identity\\V1\\GPBMetadata\xea\x02\x17Bambuflow::Identity::V1b\x06proto3"
+	"\x05roles\x18\x0f \x03(\tR\x05rolesB\xee\x01\n" +
+	"\x19com.bambuflow.identity.v1B\x0ePrincipalProtoP\x01ZKgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\xa2\x02\x03BIX\xaa\x02\x15Bambuflow.Identity.V1\xca\x02\x15Bambuflow\\Identity\\V1\xe2\x02!Bambuflow\\Identity\\V1\\GPBMetadata\xea\x02\x17Bambuflow::Identity::V1b\x06proto3"
 
 var (
 	file_bambuflow_identity_v1_principal_proto_rawDescOnce sync.Once

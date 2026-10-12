@@ -508,9 +508,17 @@ type ReplayRequest struct {
 	// 点名重放，可以包括隔离文档；最多 500 个
 	DocIds []string `protobuf:"bytes,4,rep,name=doc_ids,json=docIds,proto3" json:"doc_ids,omitempty"`
 	// 原因必填，最多 500 字
-	Reason        string `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Reason string `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
+	// 时间段（入库管道详设第 11 节）：死信按最近一次失败的时间，已成功的文档按最近一次处理的时间；两端都可以只给一个
+	From *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=from,proto3" json:"from,omitempty"`
+	To   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=to,proto3" json:"to,omitempty"`
+	// 组件版本：只重放当时用这个入库管道版本（解析器、分块器等的组合版本，如 p3-3）处理的文档
+	PipelineVersion string `protobuf:"bytes,8,opt,name=pipeline_version,json=pipelineVersion,proto3" json:"pipeline_version,omitempty"`
+	// 也重新处理已成功入库的文档（修好组件后按组件版本或时间段重新入库），而不只是死信；须给 pipeline_version 或时间段，
+	// 一次最多 10000 份
+	IncludeSucceeded bool `protobuf:"varint,9,opt,name=include_succeeded,json=includeSucceeded,proto3" json:"include_succeeded,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ReplayRequest) Reset() {
@@ -578,6 +586,34 @@ func (x *ReplayRequest) GetReason() string {
 	return ""
 }
 
+func (x *ReplayRequest) GetFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.From
+	}
+	return nil
+}
+
+func (x *ReplayRequest) GetTo() *timestamppb.Timestamp {
+	if x != nil {
+		return x.To
+	}
+	return nil
+}
+
+func (x *ReplayRequest) GetPipelineVersion() string {
+	if x != nil {
+		return x.PipelineVersion
+	}
+	return ""
+}
+
+func (x *ReplayRequest) GetIncludeSucceeded() bool {
+	if x != nil {
+		return x.IncludeSucceeded
+	}
+	return false
+}
+
 type ReplayResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 入库批次，前缀 ing_；没有符合条件的死信时为空
@@ -585,8 +621,10 @@ type ReplayResponse struct {
 	Replayed      int32  `protobuf:"varint,2,opt,name=replayed,proto3" json:"replayed,omitempty"`
 	// 按条件匹配到但因隔离而跳过的
 	SkippedQuarantined int32 `protobuf:"varint,3,opt,name=skipped_quarantined,json=skippedQuarantined,proto3" json:"skipped_quarantined,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// replayed 中重新处理的已成功文档（include_succeeded 时）
+	Reprocessed   int32 `protobuf:"varint,4,opt,name=reprocessed,proto3" json:"reprocessed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ReplayResponse) Reset() {
@@ -640,6 +678,13 @@ func (x *ReplayResponse) GetSkippedQuarantined() int32 {
 	return 0
 }
 
+func (x *ReplayResponse) GetReprocessed() int32 {
+	if x != nil {
+		return x.Reprocessed
+	}
+	return 0
+}
+
 var File_bambuflow_admin_v1_ingest_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_ingest_admin_proto_rawDesc = "" +
@@ -687,23 +732,28 @@ const file_bambuflow_admin_v1_ingest_admin_proto_rawDesc = "" +
 	"page_token\x18\x06 \x01(\tR\tpageToken\"\x84\x01\n" +
 	"\x17ListDeadLettersResponse\x12A\n" +
 	"\fdead_letters\x18\x01 \x03(\v2\x1e.bambuflow.admin.v1.DeadLetterR\vdeadLetters\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x92\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xc6\x02\n" +
 	"\rReplayRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x14\n" +
 	"\x05stage\x18\x02 \x01(\tR\x05stage\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x03 \x01(\tR\terrorCode\x12\x17\n" +
 	"\adoc_ids\x18\x04 \x03(\tR\x06docIds\x12\x16\n" +
-	"\x06reason\x18\x05 \x01(\tR\x06reason\"\x85\x01\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\x12.\n" +
+	"\x04from\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
+	"\x02to\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12)\n" +
+	"\x10pipeline_version\x18\b \x01(\tR\x0fpipelineVersion\x12+\n" +
+	"\x11include_succeeded\x18\t \x01(\bR\x10includeSucceeded\"\xa7\x01\n" +
 	"\x0eReplayResponse\x12&\n" +
 	"\x0fingest_batch_id\x18\x01 \x01(\tR\ringestBatchId\x12\x1a\n" +
 	"\breplayed\x18\x02 \x01(\x05R\breplayed\x12/\n" +
-	"\x13skipped_quarantined\x18\x03 \x01(\x05R\x12skippedQuarantined2\xbd\x02\n" +
+	"\x13skipped_quarantined\x18\x03 \x01(\x05R\x12skippedQuarantined\x12 \n" +
+	"\vreprocessed\x18\x04 \x01(\x05R\vreprocessed2\xbd\x02\n" +
 	"\x12IngestAdminService\x12j\n" +
 	"\x0fGetIngestStatus\x12*.bambuflow.admin.v1.GetIngestStatusRequest\x1a+.bambuflow.admin.v1.GetIngestStatusResponse\x12j\n" +
 	"\x0fListDeadLetters\x12*.bambuflow.admin.v1.ListDeadLettersRequest\x1a+.bambuflow.admin.v1.ListDeadLettersResponse\x12O\n" +
-	"\x06Replay\x12!.bambuflow.admin.v1.ReplayRequest\x1a\".bambuflow.admin.v1.ReplayResponseB\xdf\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x10IngestAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x06Replay\x12!.bambuflow.admin.v1.ReplayRequest\x1a\".bambuflow.admin.v1.ReplayResponseB\xdb\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x10IngestAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_ingest_admin_proto_rawDescOnce sync.Once
@@ -730,23 +780,25 @@ var file_bambuflow_admin_v1_ingest_admin_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil),   // 8: google.protobuf.Timestamp
 }
 var file_bambuflow_admin_v1_ingest_admin_proto_depIdxs = []int32{
-	1, // 0: bambuflow.admin.v1.GetIngestStatusResponse.last_error:type_name -> bambuflow.admin.v1.IngestError
-	8, // 1: bambuflow.admin.v1.GetIngestStatusResponse.updated_at:type_name -> google.protobuf.Timestamp
-	1, // 2: bambuflow.admin.v1.DeadLetter.error:type_name -> bambuflow.admin.v1.IngestError
-	8, // 3: bambuflow.admin.v1.DeadLetter.first_failed_at:type_name -> google.protobuf.Timestamp
-	8, // 4: bambuflow.admin.v1.DeadLetter.last_failed_at:type_name -> google.protobuf.Timestamp
-	3, // 5: bambuflow.admin.v1.ListDeadLettersResponse.dead_letters:type_name -> bambuflow.admin.v1.DeadLetter
-	0, // 6: bambuflow.admin.v1.IngestAdminService.GetIngestStatus:input_type -> bambuflow.admin.v1.GetIngestStatusRequest
-	4, // 7: bambuflow.admin.v1.IngestAdminService.ListDeadLetters:input_type -> bambuflow.admin.v1.ListDeadLettersRequest
-	6, // 8: bambuflow.admin.v1.IngestAdminService.Replay:input_type -> bambuflow.admin.v1.ReplayRequest
-	2, // 9: bambuflow.admin.v1.IngestAdminService.GetIngestStatus:output_type -> bambuflow.admin.v1.GetIngestStatusResponse
-	5, // 10: bambuflow.admin.v1.IngestAdminService.ListDeadLetters:output_type -> bambuflow.admin.v1.ListDeadLettersResponse
-	7, // 11: bambuflow.admin.v1.IngestAdminService.Replay:output_type -> bambuflow.admin.v1.ReplayResponse
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	1,  // 0: bambuflow.admin.v1.GetIngestStatusResponse.last_error:type_name -> bambuflow.admin.v1.IngestError
+	8,  // 1: bambuflow.admin.v1.GetIngestStatusResponse.updated_at:type_name -> google.protobuf.Timestamp
+	1,  // 2: bambuflow.admin.v1.DeadLetter.error:type_name -> bambuflow.admin.v1.IngestError
+	8,  // 3: bambuflow.admin.v1.DeadLetter.first_failed_at:type_name -> google.protobuf.Timestamp
+	8,  // 4: bambuflow.admin.v1.DeadLetter.last_failed_at:type_name -> google.protobuf.Timestamp
+	3,  // 5: bambuflow.admin.v1.ListDeadLettersResponse.dead_letters:type_name -> bambuflow.admin.v1.DeadLetter
+	8,  // 6: bambuflow.admin.v1.ReplayRequest.from:type_name -> google.protobuf.Timestamp
+	8,  // 7: bambuflow.admin.v1.ReplayRequest.to:type_name -> google.protobuf.Timestamp
+	0,  // 8: bambuflow.admin.v1.IngestAdminService.GetIngestStatus:input_type -> bambuflow.admin.v1.GetIngestStatusRequest
+	4,  // 9: bambuflow.admin.v1.IngestAdminService.ListDeadLetters:input_type -> bambuflow.admin.v1.ListDeadLettersRequest
+	6,  // 10: bambuflow.admin.v1.IngestAdminService.Replay:input_type -> bambuflow.admin.v1.ReplayRequest
+	2,  // 11: bambuflow.admin.v1.IngestAdminService.GetIngestStatus:output_type -> bambuflow.admin.v1.GetIngestStatusResponse
+	5,  // 12: bambuflow.admin.v1.IngestAdminService.ListDeadLetters:output_type -> bambuflow.admin.v1.ListDeadLettersResponse
+	7,  // 13: bambuflow.admin.v1.IngestAdminService.Replay:output_type -> bambuflow.admin.v1.ReplayResponse
+	11, // [11:14] is the sub-list for method output_type
+	8,  // [8:11] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_ingest_admin_proto_init() }

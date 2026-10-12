@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
 )
 
 // 列举与计数的上限（K2 详设第 3 节）：计数超过 10,000 只报“不少于”，列表最多翻到第 10,000 条。
@@ -97,6 +97,10 @@ func (s *Server) ListDocuments(ctx context.Context, r *retrievalv1.ListDocuments
 	}
 	resp := &retrievalv1.ListDocumentsResponse{TotalCount: n, TotalIsExact: exact, IndexVersion: version, PolicyVersion: pv}
 	for _, d := range docs {
+		// 备用通道按文档的拒绝不在列举的 SQL 里，这里拦下（计数仍含它：只是数字，不暴露内容）
+		if f.DeniedDoc != nil && f.DeniedDoc(d.DocID) {
+			continue
+		}
 		resp.Documents = append(resp.Documents, &retrievalv1.DocumentSummary{
 			DocId: d.DocID, DocVersion: d.DocVersion, Title: d.Title, SourceId: d.SourceID,
 			SourceUri: d.SourceURI, SourceType: d.SourceType, Classification: d.Classification, Metadata: d.Metadata,

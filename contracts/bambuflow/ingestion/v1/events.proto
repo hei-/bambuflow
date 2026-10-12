@@ -2,12 +2,15 @@ syntax = "proto3";
 
 package bambuflow.ingestion.v1;
 
+import "bambuflow/common/v1/types.proto";
 import "google/protobuf/timestamp.proto";
 
 // 入库事件（入库管道详设 14.2）：只带 ID、版本、哈希和引用，不带正文；消息键为 doc_id；
 // 至少投递一次，消费方必须按 event_id 幂等。
 
-// DocumentChanged 由 connectors 发出，表示源系统中一份文档发生了变化。
+// DocumentChanged 由 connectors 发出，表示源系统中一份文档发生了变化。内容变更（upsert）发到 ingest:document-changed，
+// 由 processing 处理；仅权限变化（acl_only）与删除（delete）发到单独的 ingest:document-access，由 indexing 直接消费
+// （入库管道详设第 9 节：不与内容入库排队，processing 不可用时撤权照常生效）。
 message DocumentChanged {
   // 前缀 evt_。
   string event_id = 1;
@@ -24,6 +27,25 @@ message DocumentChanged {
   Detection detection = 9;
   // 原文在对象存储中的引用；delete 和 acl_only 时为空。
   string raw_ref = 10;
+  // 仅权限变化（acl_only）时带上归一化后的新权限与密级，indexing 直接据此更新、不读文档包；其他类型为空。
+  // 源端取不到权限时为空列表，按“无人可见”处理，不能当成公开。
+  repeated string acl_tokens = 11;
+  bambuflow.common.v1.Classification classification = 12;
+}
+
+// PartitionGrantChanged 由 connectors 发出（总体设计 ADR-14，入库管道详设第 5 节）：分区级数据源的一个分区的授权变了，
+// 带上这个分区现在的全部被授权方。与仅权限变化同在 ingest:document-access 上（消息字段 kind = partition_grant），
+// 由 indexing 的快速通道直接改分区授权表，不改索引、不经 processing。
+message PartitionGrantChanged {
+  // 前缀 evt_。
+  string event_id = 1;
+  string source_id = 2;
+  // 分区名（源系统的知识库或目录路径），文档的分区 token 为 part:<source_id>/<partition>
+  string partition = 3;
+  // 现在的全部被授权方（group:、dept:、user: 开头的 token）；为空表示这个分区不再授权给任何人
+  repeated string grantees = 4;
+  // 发现授权变化的时间；早于已记录的变化时视为乱序到达的旧事件，不生效
+  google.protobuf.Timestamp occurred_at = 5;
 }
 
 enum ChangeType {
@@ -41,6 +63,20 @@ enum Detection {
   DETECTION_LISTING = 3;
   DETECTION_RECONCILE = 4;
   DETECTION_PUSH = 5;
+}
+
+// DocumentPurged 表示一份文档在索引侧的全部副本已物理删除（技术设计文档 9.2，评估报告 K6），由 indexing 的
+// purge-deleted 产生，经事件流 ingest:document-purged 发出。connectors 据此删掉它持有的对象存储原文与文档包，
+// 再经 IndexWriterService.RecordPurge 把完成时间写进同一份删除凭证。
+message DocumentPurged {
+  // 前缀 evt_。
+  string event_id = 1;
+  // 前缀 src_。
+  string source_id = 2;
+  string doc_id = 3;
+  // 删除凭证，前缀 del_。
+  string receipt_id = 4;
+  google.protobuf.Timestamp occurred_at = 5;
 }
 
 // RefetchRequested 要求 connectors 重新从源系统拉取这些文档（入库管道详设第 5、14 节），由 indexing 产生，

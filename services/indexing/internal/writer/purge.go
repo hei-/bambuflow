@@ -12,7 +12,23 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+)
+
+// 索引之外由别的组件删除、补记进删除凭证的存储（RecordPurge）
+const storeObjectStore = "object_store"
+
+// PurgeStream 是 DocumentPurged 的事件流，connectors 消费。
+const PurgeStream = "ingest:document-purged"
+
+// PurgeOutboxSelectSQL、PurgeOutboxMarkSQL 供 outbox.Relay 转发 idx.purge_outbox。
+const (
+	PurgeOutboxSelectSQL = `SELECT event_id, payload FROM idx.purge_outbox WHERE sent_at IS NULL ORDER BY created_at LIMIT $1 FOR UPDATE SKIP LOCKED`
+	PurgeOutboxMarkSQL   = `UPDATE idx.purge_outbox SET sent_at = now() WHERE event_id = ANY($1)`
 )
 
 // DefaultPurgeGrace 是删除标记到物理删除之间的观察期：期间可以撤销误写的删除标记（Z6），也覆盖回滚的观察期。
@@ -35,7 +51,8 @@ var purgeSteps = []struct{ store, sql string }{
 
 // PurgeDeleted 物理删除删除标记已超过观察期的文档在索引侧的全部副本，每份文档写一份删除凭证。
 // 删除时间被撤销（Z6，tombstoned_at 为空）的文档等着重新拉取，不删。返回删除的文档数。
-func PurgeDeleted(ctx context.Context, pool *pgxpool.Pool, grace time.Duration, now time.Time) (int64, error) {
+// 每批写一条变更审计（document.purge，列出文档与删除凭证），与删除同一事务。
+func PurgeDeleted(ctx context.Context, pool *pgxpool.Pool, grace time.Duration, now time.Time, audit Auditor) (int64, error) {
 	var total int64
 	for done := false; !done; {
 		err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
@@ -57,6 +74,7 @@ func PurgeDeleted(ctx context.Context, pool *pgxpool.Pool, grace time.Duration, 
 			if err != nil {
 				return err
 			}
+			var receipts []map[string]string
 			for _, d := range docs {
 				stores := map[string]time.Time{}
 				for _, step := range purgeSteps {
@@ -69,11 +87,28 @@ func PurgeDeleted(ctx context.Context, pool *pgxpool.Pool, grace time.Duration, 
 				if err != nil {
 					return err
 				}
+				receipt := "del_" + strings.TrimPrefix(newOperationID(), "op_")
 				if _, err := tx.Exec(ctx, `INSERT INTO idx.deletion_receipts (receipt_id, doc_id, source_id, tombstoned_at, stores)
-					VALUES ($1, $2, $3, $4, $5)`, "del_"+strings.TrimPrefix(newOperationID(), "op_"), d.doc, d.source, d.at, b); err != nil {
+					VALUES ($1, $2, $3, $4, $5)`, receipt, d.doc, d.source, d.at, b); err != nil {
+					return err
+				}
+				receipts = append(receipts, map[string]string{"doc_id": d.doc, "source_id": d.source, "receipt_id": receipt})
+				// 对象存储里的原文与文档包在 connectors 那边：同一事务发出 DocumentPurged，删完后补记进这份凭证
+				evt := &ingestionv1.DocumentPurged{EventId: newEventID(), SourceId: d.source, DocId: d.doc, ReceiptId: receipt,
+					OccurredAt: timestamppb.New(now)}
+				pb, err := proto.Marshal(evt)
+				if err != nil {
+					return err
+				}
+				if _, err := tx.Exec(ctx, `INSERT INTO idx.purge_outbox (event_id, payload) VALUES ($1, $2)`, evt.GetEventId(), pb); err != nil {
 					return err
 				}
 				if _, err := tx.Exec(ctx, `UPDATE idx.doc_acl SET purged_at = now() WHERE doc_id = $1`, d.doc); err != nil {
+					return err
+				}
+			}
+			if len(docs) > 0 {
+				if err := audit.Write(ctx, "document.purge", "", map[string]any{"documents": receipts, "grace_hours": grace.Hours()}); err != nil {
 					return err
 				}
 			}
@@ -103,7 +138,7 @@ func (a *Admin) PurgeDeleted(ctx context.Context, r *adminv1.PurgeDeletedRequest
 	if r.GetGraceHours() > 0 {
 		grace = time.Duration(r.GetGraceHours()) * time.Hour
 	}
-	n, err := PurgeDeleted(ctx, a.Pool, grace, time.Now())
+	n, err := PurgeDeleted(ctx, a.Pool, grace, time.Now(), a.Audit)
 	if err != nil {
 		a.Log.ErrorContext(ctx, "物理删除失败", slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "暂时不可用")

@@ -40,6 +40,10 @@ class ConnectorAdminServiceStub:
     PauseSource: _grpc.UnaryUnaryMultiCallable[_connector_admin_pb2.PauseSourceRequest, _connector_admin_pb2.PauseSourceResponse]
     """暂停：之后的每轮同步整轮跳过，包括撤权与删除，直到恢复。平台运维"""
     ResumeSource: _grpc.UnaryUnaryMultiCallable[_connector_admin_pb2.ResumeSourceRequest, _connector_admin_pb2.ResumeSourceResponse]
+    SyncNow: _grpc.UnaryUnaryMultiCallable[_connector_admin_pb2.SyncNowRequest, _connector_admin_pb2.SyncNowResponse]
+    """立即同步：马上拉起一轮同步，不等下一次定时。平台运维。数据源暂停或已撤销时拒绝；
+    部署没有接入调度（BF_SYNC_TRIGGER 未配置）时返回 FAILED_PRECONDITION
+    """
     ListPendingDeletions: _grpc.UnaryUnaryMultiCallable[_connector_admin_pb2.ListPendingDeletionsRequest, _connector_admin_pb2.ListPendingDeletionsResponse]
     """删除保护拦下的待删批次（入库管道详设第 5 节）：数据属主查看、确认或丢弃。
     确认需两位不同的数据属主：第一位确认后待复核，第二位确认后下一轮同步执行（只删其中源端仍不存在的）
@@ -60,6 +64,10 @@ class ConnectorAdminServiceAsyncStub(ConnectorAdminServiceStub):
     PauseSource: _aio.UnaryUnaryMultiCallable[_connector_admin_pb2.PauseSourceRequest, _connector_admin_pb2.PauseSourceResponse]  # type: ignore[assignment]
     """暂停：之后的每轮同步整轮跳过，包括撤权与删除，直到恢复。平台运维"""
     ResumeSource: _aio.UnaryUnaryMultiCallable[_connector_admin_pb2.ResumeSourceRequest, _connector_admin_pb2.ResumeSourceResponse]  # type: ignore[assignment]
+    SyncNow: _aio.UnaryUnaryMultiCallable[_connector_admin_pb2.SyncNowRequest, _connector_admin_pb2.SyncNowResponse]  # type: ignore[assignment]
+    """立即同步：马上拉起一轮同步，不等下一次定时。平台运维。数据源暂停或已撤销时拒绝；
+    部署没有接入调度（BF_SYNC_TRIGGER 未配置）时返回 FAILED_PRECONDITION
+    """
     ListPendingDeletions: _aio.UnaryUnaryMultiCallable[_connector_admin_pb2.ListPendingDeletionsRequest, _connector_admin_pb2.ListPendingDeletionsResponse]  # type: ignore[assignment]
     """删除保护拦下的待删批次（入库管道详设第 5 节）：数据属主查看、确认或丢弃。
     确认需两位不同的数据属主：第一位确认后待复核，第二位确认后下一轮同步执行（只删其中源端仍不存在的）
@@ -95,6 +103,16 @@ class ConnectorAdminServiceServicer(metaclass=_abc_1.ABCMeta):
         request: _connector_admin_pb2.ResumeSourceRequest,
         context: _ServicerContext,
     ) -> _typing.Union[_connector_admin_pb2.ResumeSourceResponse, _abc.Awaitable[_connector_admin_pb2.ResumeSourceResponse]]: ...
+
+    @_abc_1.abstractmethod
+    def SyncNow(
+        self,
+        request: _connector_admin_pb2.SyncNowRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_connector_admin_pb2.SyncNowResponse, _abc.Awaitable[_connector_admin_pb2.SyncNowResponse]]:
+        """立即同步：马上拉起一轮同步，不等下一次定时。平台运维。数据源暂停或已撤销时拒绝；
+        部署没有接入调度（BF_SYNC_TRIGGER 未配置）时返回 FAILED_PRECONDITION
+        """
 
     @_abc_1.abstractmethod
     def ListPendingDeletions(

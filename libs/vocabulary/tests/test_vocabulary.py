@@ -44,3 +44,19 @@ def test_without_names_blocks_overlap() -> None:
     dept = Vocabulary([Term("D-CREDIT", ("信贷部", "信贷管理部"))])
     assert TOPIC.contained(dept.without_names("信贷管理部的贷款制度")) == ["T-CREDIT"]
     assert TOPIC.contained(dept.without_names("信贷部有哪些制度")) == []
+
+
+def test_canonical_replaces_synonyms_with_standard_names() -> None:
+    v = Vocabulary(
+        [
+            Term("DEPT-CREDIT", ("信贷管理部", "信贷部", "信贷条线")),
+            Term("DEPT-OLD", ("授信部",), replaced_by="DEPT-CREDIT"),
+        ]
+    )
+    assert v.canonical("信贷部的授信制度") == "信贷管理部的授信制度"
+    # 停用的说法换成替代编码的名称；已经是规范名的不重复替换
+    assert v.canonical("授信部发布的办法") == "信贷管理部发布的办法"
+    assert v.canonical("信贷管理部的制度") == "信贷管理部的制度"
+    assert v.canonical("没有可换的说法") == "没有可换的说法"
+    # 更长的词条整体匹配：“住房贷款”不会被拆出“贷款”换成“信贷”
+    assert TOPIC.canonical("住房贷款和个人贷款") == "住房贷款和零售信贷"

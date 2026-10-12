@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
 )
 
 // 口径句的措辞与 orchestrator 清单路径（bambuflow_orchestrator/listing.py）一致：列表项删掉后按同一模板重写，

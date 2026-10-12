@@ -5,6 +5,8 @@ member_groups: [credit-l2]
 pilot_groups: []
 # 审计岗：可以回放本租户任何人的回答（gateway 详设 4.1）
 auditor_groups: [credit-audit]
+# 租户负责人：只读本租户的配置版本、评测门禁与质量趋势（governance 详设 9.1）
+owner_groups: [credit-owners]
 bound_clients: []
 # 测试用 MCP agent：e2e 经 Keycloak 管理 API 建同名客户端（tools/e2e/e2e_tests/test_mcp.py）；
 # e2e-agent-unregistered 只在 Keycloak 里有，没有在这里登记，用来验证“未登记即拒绝”

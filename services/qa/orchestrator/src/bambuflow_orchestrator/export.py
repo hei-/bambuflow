@@ -78,7 +78,12 @@ class RecordService(records_pb2_grpc.AnswerRecordServiceServicer):
                         r.latency_ms, r.prompt_tokens, r.completion_tokens,
                         COALESCE((SELECT array_agg(f.rating ORDER BY f.created_at)
                                     FROM orchestrator.answer_feedback f
-                                   WHERE f.answer_id = r.answer_id), '{}')
+                                   WHERE f.answer_id = r.answer_id), '{}'),
+                        r.question,
+                        COALESCE((SELECT array_agg(f.comment ORDER BY f.created_at)
+                                    FROM orchestrator.answer_feedback f
+                                   WHERE f.answer_id = r.answer_id AND f.comment <> ''), '{}'),
+                        r.access_denied
                    FROM orchestrator.answer_records r
                   WHERE r.tenant = %s AND r.created_at >= %s AND r.created_at < %s"""
         args: list[Any] = [request.tenant, since, until]
@@ -97,7 +102,20 @@ class RecordService(records_pb2_grpc.AnswerRecordServiceServicer):
         out = records_pb2.ListAnswerRecordsResponse()
         if len(rows) > size:
             rows, out.next_page_token = rows[:size], _token(offset + size)
-        for answer_id, asker, created, raw, withheld, latency, prompt, completion, fb in rows:
+        for (
+            answer_id,
+            asker,
+            created,
+            raw,
+            withheld,
+            latency,
+            prompt,
+            completion,
+            fb,
+            question,
+            comments,
+            denied,
+        ) in rows:
             ans = answer_pb2.AnswerResponse.FromString(raw)
             rec = out.records.add(
                 answer_id=answer_id,
@@ -109,8 +127,15 @@ class RecordService(records_pb2_grpc.AnswerRecordServiceServicer):
                 usage=answer_pb2.TokenUsage(prompt_tokens=prompt, completion_tokens=completion),
                 feedback=fb,
                 body_withheld=withheld,
+                coverage=ans.confidence.coverage,
+                access_denied=denied,
+                canary_releases=ans.why.canary_releases,
             )
             rec.created_at.FromDatetime(created)
-            if request.include_answer and not withheld:
-                rec.answer.CopyFrom(ans)
+            if request.include_answer:
+                # 问题与反馈说明存的都是掩码后的文本（受限级的回答也存掩码问题）
+                rec.masked_question = question
+                rec.feedback_comments.extend(comments)
+                if not withheld:
+                    rec.answer.CopyFrom(ans)
         return out

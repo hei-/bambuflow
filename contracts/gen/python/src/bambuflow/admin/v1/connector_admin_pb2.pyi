@@ -10,7 +10,7 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class SyncRun(_message.Message):
-    __slots__ = ("command", "started_at", "finished_at", "result", "error", "documents", "upserts", "acl_only", "deletes", "deletes_paused", "deletes_paused_reason", "refetched")
+    __slots__ = ("command", "started_at", "finished_at", "result", "error", "documents", "upserts", "acl_only", "deletes", "deletes_paused", "deletes_paused_reason", "refetched", "reconciliation", "skipped", "skipped_items")
     COMMAND_FIELD_NUMBER: _ClassVar[int]
     STARTED_AT_FIELD_NUMBER: _ClassVar[int]
     FINISHED_AT_FIELD_NUMBER: _ClassVar[int]
@@ -23,6 +23,9 @@ class SyncRun(_message.Message):
     DELETES_PAUSED_FIELD_NUMBER: _ClassVar[int]
     DELETES_PAUSED_REASON_FIELD_NUMBER: _ClassVar[int]
     REFETCHED_FIELD_NUMBER: _ClassVar[int]
+    RECONCILIATION_FIELD_NUMBER: _ClassVar[int]
+    SKIPPED_FIELD_NUMBER: _ClassVar[int]
+    SKIPPED_ITEMS_FIELD_NUMBER: _ClassVar[int]
     command: str
     started_at: _timestamp_pb2.Timestamp
     finished_at: _timestamp_pb2.Timestamp
@@ -35,7 +38,26 @@ class SyncRun(_message.Message):
     deletes_paused: bool
     deletes_paused_reason: str
     refetched: int
-    def __init__(self, command: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., finished_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., result: _Optional[str] = ..., error: _Optional[str] = ..., documents: _Optional[int] = ..., upserts: _Optional[int] = ..., acl_only: _Optional[int] = ..., deletes: _Optional[int] = ..., deletes_paused: _Optional[bool] = ..., deletes_paused_reason: _Optional[str] = ..., refetched: _Optional[int] = ...) -> None: ...
+    reconciliation: Reconciliation
+    skipped: int
+    skipped_items: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, command: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., finished_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., result: _Optional[str] = ..., error: _Optional[str] = ..., documents: _Optional[int] = ..., upserts: _Optional[int] = ..., acl_only: _Optional[int] = ..., deletes: _Optional[int] = ..., deletes_paused: _Optional[bool] = ..., deletes_paused_reason: _Optional[str] = ..., refetched: _Optional[int] = ..., reconciliation: _Optional[_Union[Reconciliation, _Mapping]] = ..., skipped: _Optional[int] = ..., skipped_items: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class Reconciliation(_message.Message):
+    __slots__ = ("missing", "content_mismatch", "acl_mismatch", "orphaned", "tombstoned_in_source", "indexed")
+    MISSING_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_MISMATCH_FIELD_NUMBER: _ClassVar[int]
+    ACL_MISMATCH_FIELD_NUMBER: _ClassVar[int]
+    ORPHANED_FIELD_NUMBER: _ClassVar[int]
+    TOMBSTONED_IN_SOURCE_FIELD_NUMBER: _ClassVar[int]
+    INDEXED_FIELD_NUMBER: _ClassVar[int]
+    missing: int
+    content_mismatch: int
+    acl_mismatch: int
+    orphaned: int
+    tombstoned_in_source: int
+    indexed: int
+    def __init__(self, missing: _Optional[int] = ..., content_mismatch: _Optional[int] = ..., acl_mismatch: _Optional[int] = ..., orphaned: _Optional[int] = ..., tombstoned_in_source: _Optional[int] = ..., indexed: _Optional[int] = ...) -> None: ...
 
 class Pause(_message.Message):
     __slots__ = ("paused_by", "paused_at", "reason")
@@ -54,18 +76,26 @@ class GetSyncStatusRequest(_message.Message):
     def __init__(self, source_id: _Optional[str] = ...) -> None: ...
 
 class GetSyncStatusResponse(_message.Message):
-    __slots__ = ("source_id", "last_run", "last_success", "freshness_seconds", "pause")
+    __slots__ = ("source_id", "last_run", "last_success", "freshness_seconds", "pause", "last_reconcile", "revoked_at", "listing_interval_seconds", "next_round_at")
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     LAST_RUN_FIELD_NUMBER: _ClassVar[int]
     LAST_SUCCESS_FIELD_NUMBER: _ClassVar[int]
     FRESHNESS_SECONDS_FIELD_NUMBER: _ClassVar[int]
     PAUSE_FIELD_NUMBER: _ClassVar[int]
+    LAST_RECONCILE_FIELD_NUMBER: _ClassVar[int]
+    REVOKED_AT_FIELD_NUMBER: _ClassVar[int]
+    LISTING_INTERVAL_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    NEXT_ROUND_AT_FIELD_NUMBER: _ClassVar[int]
     source_id: str
     last_run: SyncRun
     last_success: SyncRun
     freshness_seconds: int
     pause: Pause
-    def __init__(self, source_id: _Optional[str] = ..., last_run: _Optional[_Union[SyncRun, _Mapping]] = ..., last_success: _Optional[_Union[SyncRun, _Mapping]] = ..., freshness_seconds: _Optional[int] = ..., pause: _Optional[_Union[Pause, _Mapping]] = ...) -> None: ...
+    last_reconcile: SyncRun
+    revoked_at: _timestamp_pb2.Timestamp
+    listing_interval_seconds: int
+    next_round_at: _timestamp_pb2.Timestamp
+    def __init__(self, source_id: _Optional[str] = ..., last_run: _Optional[_Union[SyncRun, _Mapping]] = ..., last_success: _Optional[_Union[SyncRun, _Mapping]] = ..., freshness_seconds: _Optional[int] = ..., pause: _Optional[_Union[Pause, _Mapping]] = ..., last_reconcile: _Optional[_Union[SyncRun, _Mapping]] = ..., revoked_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., listing_interval_seconds: _Optional[int] = ..., next_round_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class PauseSourceRequest(_message.Message):
     __slots__ = ("source_id", "reason")
@@ -82,6 +112,22 @@ class PauseSourceResponse(_message.Message):
     pause: Pause
     changed: bool
     def __init__(self, pause: _Optional[_Union[Pause, _Mapping]] = ..., changed: _Optional[bool] = ...) -> None: ...
+
+class SyncNowRequest(_message.Message):
+    __slots__ = ("source_id", "reason")
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    source_id: str
+    reason: str
+    def __init__(self, source_id: _Optional[str] = ..., reason: _Optional[str] = ...) -> None: ...
+
+class SyncNowResponse(_message.Message):
+    __slots__ = ("job", "requested_at")
+    JOB_FIELD_NUMBER: _ClassVar[int]
+    REQUESTED_AT_FIELD_NUMBER: _ClassVar[int]
+    job: str
+    requested_at: _timestamp_pb2.Timestamp
+    def __init__(self, job: _Optional[str] = ..., requested_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class ResumeSourceRequest(_message.Message):
     __slots__ = ("source_id",)

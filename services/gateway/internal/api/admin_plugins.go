@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 插件登记（governance 详设 3.1、7.2）：GET/POST /v1/admin/plugins，POST .../{plugin_id}/security-review（Tool 插件）。

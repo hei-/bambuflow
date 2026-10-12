@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 全量重建（入库管道详设第 10 节、14.4）：POST /v1/admin/index-rebuilds 只创建待复核的操作，

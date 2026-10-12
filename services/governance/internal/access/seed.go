@@ -16,6 +16,7 @@ type SeedSource struct {
 	Type                  string   `yaml:"type"`
 	OwnerDept             string   `yaml:"owner_dept"`
 	DefaultClassification int      `yaml:"default_classification"`
+	Description           string   `yaml:"description"`
 	Grants                []string `yaml:"grants"`
 }
 
@@ -49,10 +50,13 @@ func (s *PG) Seed(ctx context.Context, sources []SeedSource) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		for _, src := range sources {
 			tag, err := tx.Exec(ctx, `
-				INSERT INTO governance.sources (source_id, type, owner_dept, default_classification, status, created_by,
-					approved_by, approved_at, approval_basis)
-				VALUES ($1, $2, $3, $4, 'active', 'seed', 'seed', now(), '开发与 CI 的种子数据')
-				ON CONFLICT (source_id) DO NOTHING`, src.SourceID, src.Type, src.OwnerDept, src.DefaultClassification)
+				INSERT INTO governance.sources (source_id, type, owner_dept, default_classification, description, status, created_by,
+					approved_by, approved_at, approval_basis, security_approved_by, security_approved_at, security_approval_basis)
+				SELECT $1, $2, $3, $4, $5, 'active', 'seed', 'seed', now(), '开发与 CI 的种子数据', x.sec_by, x.sec_at, x.sec_basis
+				FROM (SELECT CASE WHEN $4 = 4 THEN 'seed-infosec' ELSE '' END AS sec_by,
+					CASE WHEN $4 = 4 THEN now() END AS sec_at,
+					CASE WHEN $4 = 4 THEN '开发与 CI 的种子数据' ELSE '' END AS sec_basis) x
+				ON CONFLICT (source_id) DO NOTHING`, src.SourceID, src.Type, src.OwnerDept, src.DefaultClassification, src.Description)
 			if err != nil {
 				return err
 			}

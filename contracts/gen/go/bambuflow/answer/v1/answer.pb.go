@@ -7,7 +7,7 @@
 package answerv1
 
 import (
-	v1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -545,6 +545,87 @@ func (ConfidenceLevel) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{8}
 }
 
+type DeleteConversationRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// conv_ 前缀。
+	ConversationId string `protobuf:"bytes,1,opt,name=conversation_id,json=conversationId,proto3" json:"conversation_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *DeleteConversationRequest) Reset() {
+	*x = DeleteConversationRequest{}
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteConversationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteConversationRequest) ProtoMessage() {}
+
+func (x *DeleteConversationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteConversationRequest.ProtoReflect.Descriptor instead.
+func (*DeleteConversationRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *DeleteConversationRequest) GetConversationId() string {
+	if x != nil {
+		return x.ConversationId
+	}
+	return ""
+}
+
+type DeleteConversationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteConversationResponse) Reset() {
+	*x = DeleteConversationResponse{}
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteConversationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteConversationResponse) ProtoMessage() {}
+
+func (x *DeleteConversationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteConversationResponse.ProtoReflect.Descriptor instead.
+func (*DeleteConversationResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{1}
+}
+
 type AnswerRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 不超过 2000 字。
@@ -561,7 +642,7 @@ type AnswerRequest struct {
 
 func (x *AnswerRequest) Reset() {
 	*x = AnswerRequest{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[0]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -573,7 +654,7 @@ func (x *AnswerRequest) String() string {
 func (*AnswerRequest) ProtoMessage() {}
 
 func (x *AnswerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[0]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -586,7 +667,7 @@ func (x *AnswerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerRequest.ProtoReflect.Descriptor instead.
 func (*AnswerRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{0}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *AnswerRequest) GetQuestion() string {
@@ -627,7 +708,7 @@ type StreamAnswerRequest struct {
 
 func (x *StreamAnswerRequest) Reset() {
 	*x = StreamAnswerRequest{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[1]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -639,7 +720,7 @@ func (x *StreamAnswerRequest) String() string {
 func (*StreamAnswerRequest) ProtoMessage() {}
 
 func (x *StreamAnswerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[1]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -652,7 +733,7 @@ func (x *StreamAnswerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamAnswerRequest.ProtoReflect.Descriptor instead.
 func (*StreamAnswerRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StreamAnswerRequest) GetRequest() *AnswerRequest {
@@ -678,7 +759,7 @@ type StreamAnswerResponse struct {
 
 func (x *StreamAnswerResponse) Reset() {
 	*x = StreamAnswerResponse{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[2]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -690,7 +771,7 @@ func (x *StreamAnswerResponse) String() string {
 func (*StreamAnswerResponse) ProtoMessage() {}
 
 func (x *StreamAnswerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[2]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -703,7 +784,7 @@ func (x *StreamAnswerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamAnswerResponse.ProtoReflect.Descriptor instead.
 func (*StreamAnswerResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *StreamAnswerResponse) GetEvent() isStreamAnswerResponse_Event {
@@ -788,7 +869,7 @@ type AnswerMeta struct {
 
 func (x *AnswerMeta) Reset() {
 	*x = AnswerMeta{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[3]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -800,7 +881,7 @@ func (x *AnswerMeta) String() string {
 func (*AnswerMeta) ProtoMessage() {}
 
 func (x *AnswerMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[3]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -813,7 +894,7 @@ func (x *AnswerMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerMeta.ProtoReflect.Descriptor instead.
 func (*AnswerMeta) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AnswerMeta) GetAnswerId() string {
@@ -851,7 +932,7 @@ type SentenceEvent struct {
 
 func (x *SentenceEvent) Reset() {
 	*x = SentenceEvent{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[4]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -863,7 +944,7 @@ func (x *SentenceEvent) String() string {
 func (*SentenceEvent) ProtoMessage() {}
 
 func (x *SentenceEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[4]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -876,7 +957,7 @@ func (x *SentenceEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SentenceEvent.ProtoReflect.Descriptor instead.
 func (*SentenceEvent) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SentenceEvent) GetSentence() *Sentence {
@@ -918,7 +999,7 @@ type AnswerFinal struct {
 
 func (x *AnswerFinal) Reset() {
 	*x = AnswerFinal{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[5]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -930,7 +1011,7 @@ func (x *AnswerFinal) String() string {
 func (*AnswerFinal) ProtoMessage() {}
 
 func (x *AnswerFinal) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[5]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -943,7 +1024,7 @@ func (x *AnswerFinal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerFinal.ProtoReflect.Descriptor instead.
 func (*AnswerFinal) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *AnswerFinal) GetStatus() Status {
@@ -1005,7 +1086,7 @@ type AuditBlocks struct {
 
 func (x *AuditBlocks) Reset() {
 	*x = AuditBlocks{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[6]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1017,7 +1098,7 @@ func (x *AuditBlocks) String() string {
 func (*AuditBlocks) ProtoMessage() {}
 
 func (x *AuditBlocks) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[6]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1030,7 +1111,7 @@ func (x *AuditBlocks) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditBlocks.ProtoReflect.Descriptor instead.
 func (*AuditBlocks) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AuditBlocks) GetCandidateChunkIds() []string {
@@ -1079,7 +1160,7 @@ type TokenUsage struct {
 
 func (x *TokenUsage) Reset() {
 	*x = TokenUsage{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[7]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1091,7 +1172,7 @@ func (x *TokenUsage) String() string {
 func (*TokenUsage) ProtoMessage() {}
 
 func (x *TokenUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[7]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1104,7 +1185,7 @@ func (x *TokenUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenUsage.ProtoReflect.Descriptor instead.
 func (*TokenUsage) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TokenUsage) GetPromptTokens() int64 {
@@ -1147,7 +1228,7 @@ type AnswerResponse struct {
 
 func (x *AnswerResponse) Reset() {
 	*x = AnswerResponse{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[8]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1159,7 +1240,7 @@ func (x *AnswerResponse) String() string {
 func (*AnswerResponse) ProtoMessage() {}
 
 func (x *AnswerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[8]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1172,7 +1253,7 @@ func (x *AnswerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerResponse.ProtoReflect.Descriptor instead.
 func (*AnswerResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{8}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *AnswerResponse) GetAnswerId() string {
@@ -1292,7 +1373,7 @@ type Sentence struct {
 
 func (x *Sentence) Reset() {
 	*x = Sentence{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[9]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1304,7 +1385,7 @@ func (x *Sentence) String() string {
 func (*Sentence) ProtoMessage() {}
 
 func (x *Sentence) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[9]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1317,7 +1398,7 @@ func (x *Sentence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Sentence.ProtoReflect.Descriptor instead.
 func (*Sentence) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{9}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Sentence) GetText() string {
@@ -1391,19 +1472,21 @@ func (x *Sentence) GetDocument() *ListedDocument {
 }
 
 type ListedDocument struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DocId         string                 `protobuf:"bytes,1,opt,name=doc_id,json=docId,proto3" json:"doc_id,omitempty"`
-	DocVersion    int64                  `protobuf:"varint,2,opt,name=doc_version,json=docVersion,proto3" json:"doc_version,omitempty"`
-	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
-	SourceUri     string                 `protobuf:"bytes,4,opt,name=source_uri,json=sourceUri,proto3" json:"source_uri,omitempty"`
-	Metadata      *v1.DocMetadata        `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	DocId      string                 `protobuf:"bytes,1,opt,name=doc_id,json=docId,proto3" json:"doc_id,omitempty"`
+	DocVersion int64                  `protobuf:"varint,2,opt,name=doc_version,json=docVersion,proto3" json:"doc_version,omitempty"`
+	Title      string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	SourceUri  string                 `protobuf:"bytes,4,opt,name=source_uri,json=sourceUri,proto3" json:"source_uri,omitempty"`
+	Metadata   *v1.DocMetadata        `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	// 文档密级：gateway 据此在推送受限级列表项之前单独写审计（技术设计文档 8.6），不进对外 JSON。
+	Classification v1.Classification `protobuf:"varint,6,opt,name=classification,proto3,enum=bambuflow.common.v1.Classification" json:"classification,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListedDocument) Reset() {
 	*x = ListedDocument{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[10]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1415,7 +1498,7 @@ func (x *ListedDocument) String() string {
 func (*ListedDocument) ProtoMessage() {}
 
 func (x *ListedDocument) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[10]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1428,7 +1511,7 @@ func (x *ListedDocument) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListedDocument.ProtoReflect.Descriptor instead.
 func (*ListedDocument) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListedDocument) GetDocId() string {
@@ -1466,6 +1549,13 @@ func (x *ListedDocument) GetMetadata() *v1.DocMetadata {
 	return nil
 }
 
+func (x *ListedDocument) GetClassification() v1.Classification {
+	if x != nil {
+		return x.Classification
+	}
+	return v1.Classification(0)
+}
+
 type Calculation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Inputs        []*CalcInput           `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
@@ -1476,7 +1566,7 @@ type Calculation struct {
 
 func (x *Calculation) Reset() {
 	*x = Calculation{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[11]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1488,7 +1578,7 @@ func (x *Calculation) String() string {
 func (*Calculation) ProtoMessage() {}
 
 func (x *Calculation) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[11]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1501,7 +1591,7 @@ func (x *Calculation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Calculation.ProtoReflect.Descriptor instead.
 func (*Calculation) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{11}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Calculation) GetInputs() []*CalcInput {
@@ -1531,7 +1621,7 @@ type CalcInput struct {
 
 func (x *CalcInput) Reset() {
 	*x = CalcInput{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[12]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1543,7 +1633,7 @@ func (x *CalcInput) String() string {
 func (*CalcInput) ProtoMessage() {}
 
 func (x *CalcInput) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[12]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1556,7 +1646,7 @@ func (x *CalcInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CalcInput.ProtoReflect.Descriptor instead.
 func (*CalcInput) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{12}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CalcInput) GetVar() string {
@@ -1600,7 +1690,7 @@ type CalcResult struct {
 
 func (x *CalcResult) Reset() {
 	*x = CalcResult{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[13]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1612,7 +1702,7 @@ func (x *CalcResult) String() string {
 func (*CalcResult) ProtoMessage() {}
 
 func (x *CalcResult) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[13]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1625,7 +1715,7 @@ func (x *CalcResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CalcResult.ProtoReflect.Descriptor instead.
 func (*CalcResult) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{13}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CalcResult) GetName() string {
@@ -1659,7 +1749,7 @@ type RefQuote struct {
 
 func (x *RefQuote) Reset() {
 	*x = RefQuote{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[14]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1671,7 +1761,7 @@ func (x *RefQuote) String() string {
 func (*RefQuote) ProtoMessage() {}
 
 func (x *RefQuote) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[14]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1684,7 +1774,7 @@ func (x *RefQuote) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefQuote.ProtoReflect.Descriptor instead.
 func (*RefQuote) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{14}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RefQuote) GetRefId() int32 {
@@ -1718,7 +1808,7 @@ type Block struct {
 
 func (x *Block) Reset() {
 	*x = Block{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[15]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1730,7 +1820,7 @@ func (x *Block) String() string {
 func (*Block) ProtoMessage() {}
 
 func (x *Block) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[15]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1743,7 +1833,7 @@ func (x *Block) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Block.ProtoReflect.Descriptor instead.
 func (*Block) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{15}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Block) GetBlockId() string {
@@ -1808,7 +1898,7 @@ type Scope struct {
 
 func (x *Scope) Reset() {
 	*x = Scope{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[16]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1820,7 +1910,7 @@ func (x *Scope) String() string {
 func (*Scope) ProtoMessage() {}
 
 func (x *Scope) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[16]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1833,7 +1923,7 @@ func (x *Scope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Scope.ProtoReflect.Descriptor instead.
 func (*Scope) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{16}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Scope) GetFiltersText() string {
@@ -1901,7 +1991,7 @@ type Citation struct {
 
 func (x *Citation) Reset() {
 	*x = Citation{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[17]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1913,7 +2003,7 @@ func (x *Citation) String() string {
 func (*Citation) ProtoMessage() {}
 
 func (x *Citation) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[17]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1926,7 +2016,7 @@ func (x *Citation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Citation.ProtoReflect.Descriptor instead.
 func (*Citation) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{17}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Citation) GetRefId() int32 {
@@ -2046,13 +2136,24 @@ type Why struct {
 	// 请求所在的 A/B 实验与分组（orchestrator 详设 12.3）；租户没有运行中的实验时为空。
 	ExperimentId  string        `protobuf:"bytes,17,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
 	ExperimentArm ExperimentArm `protobuf:"varint,18,opt,name=experiment_arm,json=experimentArm,proto3,enum=bambuflow.answer.v1.ExperimentArm" json:"experiment_arm,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// 被引用证据的召回解释（retrieval 详设 7.5）：命中它的召回路与名次、各路分数。每个引用一条，按 ref_id 排序。
+	EvidenceScores []*EvidenceScore `protobuf:"bytes,19,rep,name=evidence_scores,json=evidenceScores,proto3" json:"evidence_scores,omitempty"`
+	// 多跳路径里用 LLM 从精排后的候选中挑选证据（orchestrator 详设 6.5）时的模型与提示词版本，
+	// 如 chat@1+rerank@1；没有做 LLM 重排时为空。
+	LlmRerank string `protobuf:"bytes,20,opt,name=llm_rerank,json=llmRerank,proto3" json:"llm_rerank,omitempty"`
+	// 本次使用的租户 pipeline 与全局 routing 版本（governance 详设 3.3，cfv_ 前缀）；没有生效版本时为空、用默认值。
+	PipelineVersion string `protobuf:"bytes,21,opt,name=pipeline_version,json=pipelineVersion,proto3" json:"pipeline_version,omitempty"`
+	RoutingVersion  string `protobuf:"bytes,22,opt,name=routing_version,json=routingVersion,proto3" json:"routing_version,omitempty"`
+	// 提问人落在哪些灰度里（rel_ 前缀，governance 详设 4.1）：按 sha256(release_id + 用户) 分桶，与处理路径无关，
+	// 灰度观察据此分出候选组；对应对象的候选版本只在用到它的路径上生效（如 pipeline 只影响检索与回答阈值）
+	CanaryReleases []string `protobuf:"bytes,23,rep,name=canary_releases,json=canaryReleases,proto3" json:"canary_releases,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Why) Reset() {
 	*x = Why{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[18]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2064,7 +2165,7 @@ func (x *Why) String() string {
 func (*Why) ProtoMessage() {}
 
 func (x *Why) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[18]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2077,7 +2178,7 @@ func (x *Why) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Why.ProtoReflect.Descriptor instead.
 func (*Why) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{18}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Why) GetRetrievers() []string {
@@ -2206,6 +2307,264 @@ func (x *Why) GetExperimentArm() ExperimentArm {
 	return ExperimentArm_EXPERIMENT_ARM_UNSPECIFIED
 }
 
+func (x *Why) GetEvidenceScores() []*EvidenceScore {
+	if x != nil {
+		return x.EvidenceScores
+	}
+	return nil
+}
+
+func (x *Why) GetLlmRerank() string {
+	if x != nil {
+		return x.LlmRerank
+	}
+	return ""
+}
+
+func (x *Why) GetPipelineVersion() string {
+	if x != nil {
+		return x.PipelineVersion
+	}
+	return ""
+}
+
+func (x *Why) GetRoutingVersion() string {
+	if x != nil {
+		return x.RoutingVersion
+	}
+	return ""
+}
+
+func (x *Why) GetCanaryReleases() []string {
+	if x != nil {
+		return x.CanaryReleases
+	}
+	return nil
+}
+
+// EvidenceScore 与检索契约里的 ScoreDetails、RouteMatch 字段相同：对外的回答契约不引用内部服务契约，所以单独定义。
+type EvidenceScore struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RefId         int32                  `protobuf:"varint,1,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	ChunkId       string                 `protobuf:"bytes,2,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	MatchedBy     []*EvidenceMatch       `protobuf:"bytes,3,rep,name=matched_by,json=matchedBy,proto3" json:"matched_by,omitempty"`
+	ScoreDetails  *EvidenceScoreDetails  `protobuf:"bytes,4,opt,name=score_details,json=scoreDetails,proto3" json:"score_details,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvidenceScore) Reset() {
+	*x = EvidenceScore{}
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvidenceScore) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvidenceScore) ProtoMessage() {}
+
+func (x *EvidenceScore) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvidenceScore.ProtoReflect.Descriptor instead.
+func (*EvidenceScore) Descriptor() ([]byte, []int) {
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *EvidenceScore) GetRefId() int32 {
+	if x != nil {
+		return x.RefId
+	}
+	return 0
+}
+
+func (x *EvidenceScore) GetChunkId() string {
+	if x != nil {
+		return x.ChunkId
+	}
+	return ""
+}
+
+func (x *EvidenceScore) GetMatchedBy() []*EvidenceMatch {
+	if x != nil {
+		return x.MatchedBy
+	}
+	return nil
+}
+
+func (x *EvidenceScore) GetScoreDetails() *EvidenceScoreDetails {
+	if x != nil {
+		return x.ScoreDetails
+	}
+	return nil
+}
+
+type EvidenceMatch struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// keyword / dense / graph / identifier
+	Route         string `protobuf:"bytes,1,opt,name=route,proto3" json:"route,omitempty"`
+	QueryId       string `protobuf:"bytes,2,opt,name=query_id,json=queryId,proto3" json:"query_id,omitempty"`
+	Rank          int32  `protobuf:"varint,3,opt,name=rank,proto3" json:"rank,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvidenceMatch) Reset() {
+	*x = EvidenceMatch{}
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvidenceMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvidenceMatch) ProtoMessage() {}
+
+func (x *EvidenceMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvidenceMatch.ProtoReflect.Descriptor instead.
+func (*EvidenceMatch) Descriptor() ([]byte, []int) {
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *EvidenceMatch) GetRoute() string {
+	if x != nil {
+		return x.Route
+	}
+	return ""
+}
+
+func (x *EvidenceMatch) GetQueryId() string {
+	if x != nil {
+		return x.QueryId
+	}
+	return ""
+}
+
+func (x *EvidenceMatch) GetRank() int32 {
+	if x != nil {
+		return x.Rank
+	}
+	return 0
+}
+
+// 各路分数归一化到 0–1，该路没有命中时不设。
+type EvidenceScoreDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keyword       *float64               `protobuf:"fixed64,1,opt,name=keyword,proto3,oneof" json:"keyword,omitempty"`
+	Dense         *float64               `protobuf:"fixed64,2,opt,name=dense,proto3,oneof" json:"dense,omitempty"`
+	Graph         *float64               `protobuf:"fixed64,3,opt,name=graph,proto3,oneof" json:"graph,omitempty"`
+	Identifier    *float64               `protobuf:"fixed64,4,opt,name=identifier,proto3,oneof" json:"identifier,omitempty"`
+	Rrf           float64                `protobuf:"fixed64,5,opt,name=rrf,proto3" json:"rrf,omitempty"`
+	Rerank        *float64               `protobuf:"fixed64,6,opt,name=rerank,proto3,oneof" json:"rerank,omitempty"`
+	Sparse        *float64               `protobuf:"fixed64,7,opt,name=sparse,proto3,oneof" json:"sparse,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvidenceScoreDetails) Reset() {
+	*x = EvidenceScoreDetails{}
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvidenceScoreDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvidenceScoreDetails) ProtoMessage() {}
+
+func (x *EvidenceScoreDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvidenceScoreDetails.ProtoReflect.Descriptor instead.
+func (*EvidenceScoreDetails) Descriptor() ([]byte, []int) {
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *EvidenceScoreDetails) GetKeyword() float64 {
+	if x != nil && x.Keyword != nil {
+		return *x.Keyword
+	}
+	return 0
+}
+
+func (x *EvidenceScoreDetails) GetDense() float64 {
+	if x != nil && x.Dense != nil {
+		return *x.Dense
+	}
+	return 0
+}
+
+func (x *EvidenceScoreDetails) GetGraph() float64 {
+	if x != nil && x.Graph != nil {
+		return *x.Graph
+	}
+	return 0
+}
+
+func (x *EvidenceScoreDetails) GetIdentifier() float64 {
+	if x != nil && x.Identifier != nil {
+		return *x.Identifier
+	}
+	return 0
+}
+
+func (x *EvidenceScoreDetails) GetRrf() float64 {
+	if x != nil {
+		return x.Rrf
+	}
+	return 0
+}
+
+func (x *EvidenceScoreDetails) GetRerank() float64 {
+	if x != nil && x.Rerank != nil {
+		return *x.Rerank
+	}
+	return 0
+}
+
+func (x *EvidenceScoreDetails) GetSparse() float64 {
+	if x != nil && x.Sparse != nil {
+		return *x.Sparse
+	}
+	return 0
+}
+
 type GraphPath struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	RefId   int32                  `protobuf:"varint,1,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
@@ -2218,7 +2577,7 @@ type GraphPath struct {
 
 func (x *GraphPath) Reset() {
 	*x = GraphPath{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[19]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2230,7 +2589,7 @@ func (x *GraphPath) String() string {
 func (*GraphPath) ProtoMessage() {}
 
 func (x *GraphPath) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[19]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2243,7 +2602,7 @@ func (x *GraphPath) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphPath.ProtoReflect.Descriptor instead.
 func (*GraphPath) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{19}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GraphPath) GetRefId() int32 {
@@ -2282,7 +2641,7 @@ type GraphEdge struct {
 
 func (x *GraphEdge) Reset() {
 	*x = GraphEdge{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[20]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2294,7 +2653,7 @@ func (x *GraphEdge) String() string {
 func (*GraphEdge) ProtoMessage() {}
 
 func (x *GraphEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[20]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2307,7 +2666,7 @@ func (x *GraphEdge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphEdge.ProtoReflect.Descriptor instead.
 func (*GraphEdge) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{20}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GraphEdge) GetFromEntity() string {
@@ -2356,7 +2715,7 @@ type AgentRound struct {
 
 func (x *AgentRound) Reset() {
 	*x = AgentRound{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[21]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2368,7 +2727,7 @@ func (x *AgentRound) String() string {
 func (*AgentRound) ProtoMessage() {}
 
 func (x *AgentRound) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[21]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2381,7 +2740,7 @@ func (x *AgentRound) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentRound.ProtoReflect.Descriptor instead.
 func (*AgentRound) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{21}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *AgentRound) GetRound() int32 {
@@ -2415,7 +2774,7 @@ type AgentCall struct {
 
 func (x *AgentCall) Reset() {
 	*x = AgentCall{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[22]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2427,7 +2786,7 @@ func (x *AgentCall) String() string {
 func (*AgentCall) ProtoMessage() {}
 
 func (x *AgentCall) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[22]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2440,7 +2799,7 @@ func (x *AgentCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentCall.ProtoReflect.Descriptor instead.
 func (*AgentCall) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{22}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *AgentCall) GetSubQuestionId() string {
@@ -2497,7 +2856,7 @@ type GetAnswerRequest struct {
 
 func (x *GetAnswerRequest) Reset() {
 	*x = GetAnswerRequest{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[23]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2509,7 +2868,7 @@ func (x *GetAnswerRequest) String() string {
 func (*GetAnswerRequest) ProtoMessage() {}
 
 func (x *GetAnswerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[23]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2522,7 +2881,7 @@ func (x *GetAnswerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAnswerRequest.ProtoReflect.Descriptor instead.
 func (*GetAnswerRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{23}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetAnswerRequest) GetAnswerId() string {
@@ -2557,7 +2916,7 @@ type GetAnswerResponse struct {
 
 func (x *GetAnswerResponse) Reset() {
 	*x = GetAnswerResponse{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[24]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2569,7 +2928,7 @@ func (x *GetAnswerResponse) String() string {
 func (*GetAnswerResponse) ProtoMessage() {}
 
 func (x *GetAnswerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[24]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2582,7 +2941,7 @@ func (x *GetAnswerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAnswerResponse.ProtoReflect.Descriptor instead.
 func (*GetAnswerResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{24}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetAnswerResponse) GetAnswer() *AnswerResponse {
@@ -2636,7 +2995,7 @@ type CreateFeedbackRequest struct {
 
 func (x *CreateFeedbackRequest) Reset() {
 	*x = CreateFeedbackRequest{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[25]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2648,7 +3007,7 @@ func (x *CreateFeedbackRequest) String() string {
 func (*CreateFeedbackRequest) ProtoMessage() {}
 
 func (x *CreateFeedbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[25]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2661,7 +3020,7 @@ func (x *CreateFeedbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFeedbackRequest.ProtoReflect.Descriptor instead.
 func (*CreateFeedbackRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{25}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CreateFeedbackRequest) GetAnswerId() string {
@@ -2708,7 +3067,7 @@ type CreateFeedbackResponse struct {
 
 func (x *CreateFeedbackResponse) Reset() {
 	*x = CreateFeedbackResponse{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[26]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2720,7 +3079,7 @@ func (x *CreateFeedbackResponse) String() string {
 func (*CreateFeedbackResponse) ProtoMessage() {}
 
 func (x *CreateFeedbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[26]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2733,7 +3092,7 @@ func (x *CreateFeedbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFeedbackResponse.ProtoReflect.Descriptor instead.
 func (*CreateFeedbackResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{26}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CreateFeedbackResponse) GetFeedback() *Feedback {
@@ -2757,7 +3116,7 @@ type Feedback struct {
 
 func (x *Feedback) Reset() {
 	*x = Feedback{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[27]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2769,7 +3128,7 @@ func (x *Feedback) String() string {
 func (*Feedback) ProtoMessage() {}
 
 func (x *Feedback) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[27]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2782,7 +3141,7 @@ func (x *Feedback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Feedback.ProtoReflect.Descriptor instead.
 func (*Feedback) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{27}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *Feedback) GetFeedbackId() string {
@@ -2845,7 +3204,7 @@ type Confidence struct {
 
 func (x *Confidence) Reset() {
 	*x = Confidence{}
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[28]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2857,7 +3216,7 @@ func (x *Confidence) String() string {
 func (*Confidence) ProtoMessage() {}
 
 func (x *Confidence) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[28]
+	mi := &file_bambuflow_answer_v1_answer_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2870,7 +3229,7 @@ func (x *Confidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Confidence.ProtoReflect.Descriptor instead.
 func (*Confidence) Descriptor() ([]byte, []int) {
-	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{28}
+	return file_bambuflow_answer_v1_answer_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Confidence) GetScore() float64 {
@@ -2933,7 +3292,10 @@ var File_bambuflow_answer_v1_answer_proto protoreflect.FileDescriptor
 
 const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\n" +
-	" bambuflow/answer/v1/answer.proto\x12\x13bambuflow.answer.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb1\x01\n" +
+	" bambuflow/answer/v1/answer.proto\x12\x13bambuflow.answer.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"D\n" +
+	"\x19DeleteConversationRequest\x12'\n" +
+	"\x0fconversation_id\x18\x01 \x01(\tR\x0econversationId\"\x1c\n" +
+	"\x1aDeleteConversationResponse\"\xb1\x01\n" +
 	"\rAnswerRequest\x12\x1a\n" +
 	"\bquestion\x18\x01 \x01(\tR\bquestion\x126\n" +
 	"\afilters\x18\x02 \x01(\v2\x1c.bambuflow.common.v1.FiltersR\afilters\x12#\n" +
@@ -3008,7 +3370,7 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\x06quotes\x18\b \x03(\v2\x1d.bambuflow.answer.v1.RefQuoteR\x06quotes\x124\n" +
 	"\x04calc\x18\t \x01(\v2 .bambuflow.answer.v1.CalculationR\x04calc\x12?\n" +
 	"\bdocument\x18\n" +
-	" \x01(\v2#.bambuflow.answer.v1.ListedDocumentR\bdocument\"\xbb\x01\n" +
+	" \x01(\v2#.bambuflow.answer.v1.ListedDocumentR\bdocument\"\x88\x02\n" +
 	"\x0eListedDocument\x12\x15\n" +
 	"\x06doc_id\x18\x01 \x01(\tR\x05docId\x12\x1f\n" +
 	"\vdoc_version\x18\x02 \x01(\x03R\n" +
@@ -3016,7 +3378,8 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12\x1d\n" +
 	"\n" +
 	"source_uri\x18\x04 \x01(\tR\tsourceUri\x12<\n" +
-	"\bmetadata\x18\x05 \x01(\v2 .bambuflow.common.v1.DocMetadataR\bmetadata\"\x80\x01\n" +
+	"\bmetadata\x18\x05 \x01(\v2 .bambuflow.common.v1.DocMetadataR\bmetadata\x12K\n" +
+	"\x0eclassification\x18\x06 \x01(\x0e2#.bambuflow.common.v1.ClassificationR\x0eclassification\"\x80\x01\n" +
 	"\vCalculation\x126\n" +
 	"\x06inputs\x18\x01 \x03(\v2\x1e.bambuflow.answer.v1.CalcInputR\x06inputs\x129\n" +
 	"\aresults\x18\x02 \x03(\v2\x1f.bambuflow.answer.v1.CalcResultR\aresults\"^\n" +
@@ -3065,7 +3428,7 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	" \x01(\x0e2#.bambuflow.common.v1.ClassificationR\x0eclassification\x12@\n" +
 	"\vsource_type\x18\v \x01(\x0e2\x1f.bambuflow.common.v1.SourceTypeR\n" +
 	"sourceType\x12%\n" +
-	"\x0einjection_flag\x18\f \x01(\bR\rinjectionFlag\"\xe5\x06\n" +
+	"\x0einjection_flag\x18\f \x01(\bR\rinjectionFlag\"\xce\b\n" +
 	"\x03Why\x12\x1e\n" +
 	"\n" +
 	"retrievers\x18\x01 \x03(\tR\n" +
@@ -3088,7 +3451,40 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"graph_path\x18\x0f \x03(\v2\x1e.bambuflow.answer.v1.GraphPathR\tgraphPath\x12,\n" +
 	"\x12based_on_summaries\x18\x10 \x01(\bR\x10basedOnSummaries\x12#\n" +
 	"\rexperiment_id\x18\x11 \x01(\tR\fexperimentId\x12I\n" +
-	"\x0eexperiment_arm\x18\x12 \x01(\x0e2\".bambuflow.answer.v1.ExperimentArmR\rexperimentArm\"s\n" +
+	"\x0eexperiment_arm\x18\x12 \x01(\x0e2\".bambuflow.answer.v1.ExperimentArmR\rexperimentArm\x12K\n" +
+	"\x0fevidence_scores\x18\x13 \x03(\v2\".bambuflow.answer.v1.EvidenceScoreR\x0eevidenceScores\x12\x1d\n" +
+	"\n" +
+	"llm_rerank\x18\x14 \x01(\tR\tllmRerank\x12)\n" +
+	"\x10pipeline_version\x18\x15 \x01(\tR\x0fpipelineVersion\x12'\n" +
+	"\x0frouting_version\x18\x16 \x01(\tR\x0eroutingVersion\x12'\n" +
+	"\x0fcanary_releases\x18\x17 \x03(\tR\x0ecanaryReleases\"\xd4\x01\n" +
+	"\rEvidenceScore\x12\x15\n" +
+	"\x06ref_id\x18\x01 \x01(\x05R\x05refId\x12\x19\n" +
+	"\bchunk_id\x18\x02 \x01(\tR\achunkId\x12A\n" +
+	"\n" +
+	"matched_by\x18\x03 \x03(\v2\".bambuflow.answer.v1.EvidenceMatchR\tmatchedBy\x12N\n" +
+	"\rscore_details\x18\x04 \x01(\v2).bambuflow.answer.v1.EvidenceScoreDetailsR\fscoreDetails\"T\n" +
+	"\rEvidenceMatch\x12\x14\n" +
+	"\x05route\x18\x01 \x01(\tR\x05route\x12\x19\n" +
+	"\bquery_id\x18\x02 \x01(\tR\aqueryId\x12\x12\n" +
+	"\x04rank\x18\x03 \x01(\x05R\x04rank\"\xa1\x02\n" +
+	"\x14EvidenceScoreDetails\x12\x1d\n" +
+	"\akeyword\x18\x01 \x01(\x01H\x00R\akeyword\x88\x01\x01\x12\x19\n" +
+	"\x05dense\x18\x02 \x01(\x01H\x01R\x05dense\x88\x01\x01\x12\x19\n" +
+	"\x05graph\x18\x03 \x01(\x01H\x02R\x05graph\x88\x01\x01\x12#\n" +
+	"\n" +
+	"identifier\x18\x04 \x01(\x01H\x03R\n" +
+	"identifier\x88\x01\x01\x12\x10\n" +
+	"\x03rrf\x18\x05 \x01(\x01R\x03rrf\x12\x1b\n" +
+	"\x06rerank\x18\x06 \x01(\x01H\x04R\x06rerank\x88\x01\x01\x12\x1b\n" +
+	"\x06sparse\x18\a \x01(\x01H\x05R\x06sparse\x88\x01\x01B\n" +
+	"\n" +
+	"\b_keywordB\b\n" +
+	"\x06_denseB\b\n" +
+	"\x06_graphB\r\n" +
+	"\v_identifierB\t\n" +
+	"\a_rerankB\t\n" +
+	"\a_sparse\"s\n" +
 	"\tGraphPath\x12\x15\n" +
 	"\x06ref_id\x18\x01 \x01(\x05R\x05refId\x12\x19\n" +
 	"\bchunk_id\x18\x02 \x01(\tR\achunkId\x124\n" +
@@ -3207,13 +3603,14 @@ const file_bambuflow_answer_v1_answer_proto_rawDesc = "" +
 	"\x1cCONFIDENCE_LEVEL_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CONFIDENCE_LEVEL_LOW\x10\x01\x12\x1b\n" +
 	"\x17CONFIDENCE_LEVEL_MEDIUM\x10\x02\x12\x19\n" +
-	"\x15CONFIDENCE_LEVEL_HIGH\x10\x032\x90\x03\n" +
+	"\x15CONFIDENCE_LEVEL_HIGH\x10\x032\x87\x04\n" +
 	"\rAnswerService\x12Q\n" +
 	"\x06Answer\x12\".bambuflow.answer.v1.AnswerRequest\x1a#.bambuflow.answer.v1.AnswerResponse\x12e\n" +
 	"\fStreamAnswer\x12(.bambuflow.answer.v1.StreamAnswerRequest\x1a).bambuflow.answer.v1.StreamAnswerResponse0\x01\x12Z\n" +
 	"\tGetAnswer\x12%.bambuflow.answer.v1.GetAnswerRequest\x1a&.bambuflow.answer.v1.GetAnswerResponse\x12i\n" +
-	"\x0eCreateFeedback\x12*.bambuflow.answer.v1.CreateFeedbackRequest\x1a+.bambuflow.answer.v1.CreateFeedbackResponseB\xe1\x01\n" +
-	"\x17com.bambuflow.answer.v1B\vAnswerProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1;answerv1\xa2\x02\x03BAX\xaa\x02\x13Bambuflow.Answer.V1\xca\x02\x13Bambuflow\\Answer\\V1\xe2\x02\x1fBambuflow\\Answer\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Answer::V1b\x06proto3"
+	"\x0eCreateFeedback\x12*.bambuflow.answer.v1.CreateFeedbackRequest\x1a+.bambuflow.answer.v1.CreateFeedbackResponse\x12u\n" +
+	"\x12DeleteConversation\x12..bambuflow.answer.v1.DeleteConversationRequest\x1a/.bambuflow.answer.v1.DeleteConversationResponseB\xdd\x01\n" +
+	"\x17com.bambuflow.answer.v1B\vAnswerProtoP\x01ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1;answerv1\xa2\x02\x03BAX\xaa\x02\x13Bambuflow.Answer.V1\xca\x02\x13Bambuflow\\Answer\\V1\xe2\x02\x1fBambuflow\\Answer\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Answer::V1b\x06proto3"
 
 var (
 	file_bambuflow_answer_v1_answer_proto_rawDescOnce sync.Once
@@ -3228,125 +3625,136 @@ func file_bambuflow_answer_v1_answer_proto_rawDescGZIP() []byte {
 }
 
 var file_bambuflow_answer_v1_answer_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_bambuflow_answer_v1_answer_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_bambuflow_answer_v1_answer_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_bambuflow_answer_v1_answer_proto_goTypes = []any{
-	(AnswerKind)(0),                // 0: bambuflow.answer.v1.AnswerKind
-	(Status)(0),                    // 1: bambuflow.answer.v1.Status
-	(ClaimType)(0),                 // 2: bambuflow.answer.v1.ClaimType
-	(BlockType)(0),                 // 3: bambuflow.answer.v1.BlockType
-	(ExperimentArm)(0),             // 4: bambuflow.answer.v1.ExperimentArm
-	(Intent)(0),                    // 5: bambuflow.answer.v1.Intent
-	(ReplayAccess)(0),              // 6: bambuflow.answer.v1.ReplayAccess
-	(FeedbackRating)(0),            // 7: bambuflow.answer.v1.FeedbackRating
-	(ConfidenceLevel)(0),           // 8: bambuflow.answer.v1.ConfidenceLevel
-	(*AnswerRequest)(nil),          // 9: bambuflow.answer.v1.AnswerRequest
-	(*StreamAnswerRequest)(nil),    // 10: bambuflow.answer.v1.StreamAnswerRequest
-	(*StreamAnswerResponse)(nil),   // 11: bambuflow.answer.v1.StreamAnswerResponse
-	(*AnswerMeta)(nil),             // 12: bambuflow.answer.v1.AnswerMeta
-	(*SentenceEvent)(nil),          // 13: bambuflow.answer.v1.SentenceEvent
-	(*AnswerFinal)(nil),            // 14: bambuflow.answer.v1.AnswerFinal
-	(*AuditBlocks)(nil),            // 15: bambuflow.answer.v1.AuditBlocks
-	(*TokenUsage)(nil),             // 16: bambuflow.answer.v1.TokenUsage
-	(*AnswerResponse)(nil),         // 17: bambuflow.answer.v1.AnswerResponse
-	(*Sentence)(nil),               // 18: bambuflow.answer.v1.Sentence
-	(*ListedDocument)(nil),         // 19: bambuflow.answer.v1.ListedDocument
-	(*Calculation)(nil),            // 20: bambuflow.answer.v1.Calculation
-	(*CalcInput)(nil),              // 21: bambuflow.answer.v1.CalcInput
-	(*CalcResult)(nil),             // 22: bambuflow.answer.v1.CalcResult
-	(*RefQuote)(nil),               // 23: bambuflow.answer.v1.RefQuote
-	(*Block)(nil),                  // 24: bambuflow.answer.v1.Block
-	(*Scope)(nil),                  // 25: bambuflow.answer.v1.Scope
-	(*Citation)(nil),               // 26: bambuflow.answer.v1.Citation
-	(*Why)(nil),                    // 27: bambuflow.answer.v1.Why
-	(*GraphPath)(nil),              // 28: bambuflow.answer.v1.GraphPath
-	(*GraphEdge)(nil),              // 29: bambuflow.answer.v1.GraphEdge
-	(*AgentRound)(nil),             // 30: bambuflow.answer.v1.AgentRound
-	(*AgentCall)(nil),              // 31: bambuflow.answer.v1.AgentCall
-	(*GetAnswerRequest)(nil),       // 32: bambuflow.answer.v1.GetAnswerRequest
-	(*GetAnswerResponse)(nil),      // 33: bambuflow.answer.v1.GetAnswerResponse
-	(*CreateFeedbackRequest)(nil),  // 34: bambuflow.answer.v1.CreateFeedbackRequest
-	(*CreateFeedbackResponse)(nil), // 35: bambuflow.answer.v1.CreateFeedbackResponse
-	(*Feedback)(nil),               // 36: bambuflow.answer.v1.Feedback
-	(*Confidence)(nil),             // 37: bambuflow.answer.v1.Confidence
-	(*v1.Filters)(nil),             // 38: bambuflow.common.v1.Filters
-	(*v1.DocMetadata)(nil),         // 39: bambuflow.common.v1.DocMetadata
-	(*v1.Span)(nil),                // 40: bambuflow.common.v1.Span
-	(v1.Classification)(0),         // 41: bambuflow.common.v1.Classification
-	(v1.SourceType)(0),             // 42: bambuflow.common.v1.SourceType
-	(*v1.Degradation)(nil),         // 43: bambuflow.common.v1.Degradation
-	(v1.EntityType)(0),             // 44: bambuflow.common.v1.EntityType
-	(v1.RelationType)(0),           // 45: bambuflow.common.v1.RelationType
-	(*timestamppb.Timestamp)(nil),  // 46: google.protobuf.Timestamp
+	(AnswerKind)(0),                    // 0: bambuflow.answer.v1.AnswerKind
+	(Status)(0),                        // 1: bambuflow.answer.v1.Status
+	(ClaimType)(0),                     // 2: bambuflow.answer.v1.ClaimType
+	(BlockType)(0),                     // 3: bambuflow.answer.v1.BlockType
+	(ExperimentArm)(0),                 // 4: bambuflow.answer.v1.ExperimentArm
+	(Intent)(0),                        // 5: bambuflow.answer.v1.Intent
+	(ReplayAccess)(0),                  // 6: bambuflow.answer.v1.ReplayAccess
+	(FeedbackRating)(0),                // 7: bambuflow.answer.v1.FeedbackRating
+	(ConfidenceLevel)(0),               // 8: bambuflow.answer.v1.ConfidenceLevel
+	(*DeleteConversationRequest)(nil),  // 9: bambuflow.answer.v1.DeleteConversationRequest
+	(*DeleteConversationResponse)(nil), // 10: bambuflow.answer.v1.DeleteConversationResponse
+	(*AnswerRequest)(nil),              // 11: bambuflow.answer.v1.AnswerRequest
+	(*StreamAnswerRequest)(nil),        // 12: bambuflow.answer.v1.StreamAnswerRequest
+	(*StreamAnswerResponse)(nil),       // 13: bambuflow.answer.v1.StreamAnswerResponse
+	(*AnswerMeta)(nil),                 // 14: bambuflow.answer.v1.AnswerMeta
+	(*SentenceEvent)(nil),              // 15: bambuflow.answer.v1.SentenceEvent
+	(*AnswerFinal)(nil),                // 16: bambuflow.answer.v1.AnswerFinal
+	(*AuditBlocks)(nil),                // 17: bambuflow.answer.v1.AuditBlocks
+	(*TokenUsage)(nil),                 // 18: bambuflow.answer.v1.TokenUsage
+	(*AnswerResponse)(nil),             // 19: bambuflow.answer.v1.AnswerResponse
+	(*Sentence)(nil),                   // 20: bambuflow.answer.v1.Sentence
+	(*ListedDocument)(nil),             // 21: bambuflow.answer.v1.ListedDocument
+	(*Calculation)(nil),                // 22: bambuflow.answer.v1.Calculation
+	(*CalcInput)(nil),                  // 23: bambuflow.answer.v1.CalcInput
+	(*CalcResult)(nil),                 // 24: bambuflow.answer.v1.CalcResult
+	(*RefQuote)(nil),                   // 25: bambuflow.answer.v1.RefQuote
+	(*Block)(nil),                      // 26: bambuflow.answer.v1.Block
+	(*Scope)(nil),                      // 27: bambuflow.answer.v1.Scope
+	(*Citation)(nil),                   // 28: bambuflow.answer.v1.Citation
+	(*Why)(nil),                        // 29: bambuflow.answer.v1.Why
+	(*EvidenceScore)(nil),              // 30: bambuflow.answer.v1.EvidenceScore
+	(*EvidenceMatch)(nil),              // 31: bambuflow.answer.v1.EvidenceMatch
+	(*EvidenceScoreDetails)(nil),       // 32: bambuflow.answer.v1.EvidenceScoreDetails
+	(*GraphPath)(nil),                  // 33: bambuflow.answer.v1.GraphPath
+	(*GraphEdge)(nil),                  // 34: bambuflow.answer.v1.GraphEdge
+	(*AgentRound)(nil),                 // 35: bambuflow.answer.v1.AgentRound
+	(*AgentCall)(nil),                  // 36: bambuflow.answer.v1.AgentCall
+	(*GetAnswerRequest)(nil),           // 37: bambuflow.answer.v1.GetAnswerRequest
+	(*GetAnswerResponse)(nil),          // 38: bambuflow.answer.v1.GetAnswerResponse
+	(*CreateFeedbackRequest)(nil),      // 39: bambuflow.answer.v1.CreateFeedbackRequest
+	(*CreateFeedbackResponse)(nil),     // 40: bambuflow.answer.v1.CreateFeedbackResponse
+	(*Feedback)(nil),                   // 41: bambuflow.answer.v1.Feedback
+	(*Confidence)(nil),                 // 42: bambuflow.answer.v1.Confidence
+	(*v1.Filters)(nil),                 // 43: bambuflow.common.v1.Filters
+	(*v1.DocMetadata)(nil),             // 44: bambuflow.common.v1.DocMetadata
+	(v1.Classification)(0),             // 45: bambuflow.common.v1.Classification
+	(*v1.Span)(nil),                    // 46: bambuflow.common.v1.Span
+	(v1.SourceType)(0),                 // 47: bambuflow.common.v1.SourceType
+	(*v1.Degradation)(nil),             // 48: bambuflow.common.v1.Degradation
+	(v1.EntityType)(0),                 // 49: bambuflow.common.v1.EntityType
+	(v1.RelationType)(0),               // 50: bambuflow.common.v1.RelationType
+	(*timestamppb.Timestamp)(nil),      // 51: google.protobuf.Timestamp
 }
 var file_bambuflow_answer_v1_answer_proto_depIdxs = []int32{
-	38, // 0: bambuflow.answer.v1.AnswerRequest.filters:type_name -> bambuflow.common.v1.Filters
-	9,  // 1: bambuflow.answer.v1.StreamAnswerRequest.request:type_name -> bambuflow.answer.v1.AnswerRequest
-	12, // 2: bambuflow.answer.v1.StreamAnswerResponse.meta:type_name -> bambuflow.answer.v1.AnswerMeta
-	26, // 3: bambuflow.answer.v1.StreamAnswerResponse.citation:type_name -> bambuflow.answer.v1.Citation
-	13, // 4: bambuflow.answer.v1.StreamAnswerResponse.sentence:type_name -> bambuflow.answer.v1.SentenceEvent
-	14, // 5: bambuflow.answer.v1.StreamAnswerResponse.final:type_name -> bambuflow.answer.v1.AnswerFinal
-	18, // 6: bambuflow.answer.v1.SentenceEvent.sentence:type_name -> bambuflow.answer.v1.Sentence
+	43, // 0: bambuflow.answer.v1.AnswerRequest.filters:type_name -> bambuflow.common.v1.Filters
+	11, // 1: bambuflow.answer.v1.StreamAnswerRequest.request:type_name -> bambuflow.answer.v1.AnswerRequest
+	14, // 2: bambuflow.answer.v1.StreamAnswerResponse.meta:type_name -> bambuflow.answer.v1.AnswerMeta
+	28, // 3: bambuflow.answer.v1.StreamAnswerResponse.citation:type_name -> bambuflow.answer.v1.Citation
+	15, // 4: bambuflow.answer.v1.StreamAnswerResponse.sentence:type_name -> bambuflow.answer.v1.SentenceEvent
+	16, // 5: bambuflow.answer.v1.StreamAnswerResponse.final:type_name -> bambuflow.answer.v1.AnswerFinal
+	20, // 6: bambuflow.answer.v1.SentenceEvent.sentence:type_name -> bambuflow.answer.v1.Sentence
 	3,  // 7: bambuflow.answer.v1.SentenceEvent.block_type:type_name -> bambuflow.answer.v1.BlockType
-	25, // 8: bambuflow.answer.v1.SentenceEvent.scope:type_name -> bambuflow.answer.v1.Scope
+	27, // 8: bambuflow.answer.v1.SentenceEvent.scope:type_name -> bambuflow.answer.v1.Scope
 	1,  // 9: bambuflow.answer.v1.AnswerFinal.status:type_name -> bambuflow.answer.v1.Status
-	27, // 10: bambuflow.answer.v1.AnswerFinal.why:type_name -> bambuflow.answer.v1.Why
-	15, // 11: bambuflow.answer.v1.AnswerFinal.audit:type_name -> bambuflow.answer.v1.AuditBlocks
+	29, // 10: bambuflow.answer.v1.AnswerFinal.why:type_name -> bambuflow.answer.v1.Why
+	17, // 11: bambuflow.answer.v1.AnswerFinal.audit:type_name -> bambuflow.answer.v1.AuditBlocks
 	0,  // 12: bambuflow.answer.v1.AnswerFinal.answer_kind:type_name -> bambuflow.answer.v1.AnswerKind
-	16, // 13: bambuflow.answer.v1.AnswerFinal.usage:type_name -> bambuflow.answer.v1.TokenUsage
-	37, // 14: bambuflow.answer.v1.AnswerFinal.confidence:type_name -> bambuflow.answer.v1.Confidence
+	18, // 13: bambuflow.answer.v1.AnswerFinal.usage:type_name -> bambuflow.answer.v1.TokenUsage
+	42, // 14: bambuflow.answer.v1.AnswerFinal.confidence:type_name -> bambuflow.answer.v1.Confidence
 	1,  // 15: bambuflow.answer.v1.AnswerResponse.status:type_name -> bambuflow.answer.v1.Status
-	18, // 16: bambuflow.answer.v1.AnswerResponse.sentences:type_name -> bambuflow.answer.v1.Sentence
-	24, // 17: bambuflow.answer.v1.AnswerResponse.blocks:type_name -> bambuflow.answer.v1.Block
-	26, // 18: bambuflow.answer.v1.AnswerResponse.citations:type_name -> bambuflow.answer.v1.Citation
-	27, // 19: bambuflow.answer.v1.AnswerResponse.why:type_name -> bambuflow.answer.v1.Why
-	15, // 20: bambuflow.answer.v1.AnswerResponse.audit:type_name -> bambuflow.answer.v1.AuditBlocks
+	20, // 16: bambuflow.answer.v1.AnswerResponse.sentences:type_name -> bambuflow.answer.v1.Sentence
+	26, // 17: bambuflow.answer.v1.AnswerResponse.blocks:type_name -> bambuflow.answer.v1.Block
+	28, // 18: bambuflow.answer.v1.AnswerResponse.citations:type_name -> bambuflow.answer.v1.Citation
+	29, // 19: bambuflow.answer.v1.AnswerResponse.why:type_name -> bambuflow.answer.v1.Why
+	17, // 20: bambuflow.answer.v1.AnswerResponse.audit:type_name -> bambuflow.answer.v1.AuditBlocks
 	0,  // 21: bambuflow.answer.v1.AnswerResponse.answer_kind:type_name -> bambuflow.answer.v1.AnswerKind
-	16, // 22: bambuflow.answer.v1.AnswerResponse.usage:type_name -> bambuflow.answer.v1.TokenUsage
-	37, // 23: bambuflow.answer.v1.AnswerResponse.confidence:type_name -> bambuflow.answer.v1.Confidence
+	18, // 22: bambuflow.answer.v1.AnswerResponse.usage:type_name -> bambuflow.answer.v1.TokenUsage
+	42, // 23: bambuflow.answer.v1.AnswerResponse.confidence:type_name -> bambuflow.answer.v1.Confidence
 	2,  // 24: bambuflow.answer.v1.Sentence.claim_type:type_name -> bambuflow.answer.v1.ClaimType
-	23, // 25: bambuflow.answer.v1.Sentence.quotes:type_name -> bambuflow.answer.v1.RefQuote
-	20, // 26: bambuflow.answer.v1.Sentence.calc:type_name -> bambuflow.answer.v1.Calculation
-	19, // 27: bambuflow.answer.v1.Sentence.document:type_name -> bambuflow.answer.v1.ListedDocument
-	39, // 28: bambuflow.answer.v1.ListedDocument.metadata:type_name -> bambuflow.common.v1.DocMetadata
-	21, // 29: bambuflow.answer.v1.Calculation.inputs:type_name -> bambuflow.answer.v1.CalcInput
-	22, // 30: bambuflow.answer.v1.Calculation.results:type_name -> bambuflow.answer.v1.CalcResult
-	3,  // 31: bambuflow.answer.v1.Block.block_type:type_name -> bambuflow.answer.v1.BlockType
-	25, // 32: bambuflow.answer.v1.Block.scope:type_name -> bambuflow.answer.v1.Scope
-	40, // 33: bambuflow.answer.v1.Citation.span:type_name -> bambuflow.common.v1.Span
-	41, // 34: bambuflow.answer.v1.Citation.classification:type_name -> bambuflow.common.v1.Classification
-	42, // 35: bambuflow.answer.v1.Citation.source_type:type_name -> bambuflow.common.v1.SourceType
-	43, // 36: bambuflow.answer.v1.Why.degraded:type_name -> bambuflow.common.v1.Degradation
-	38, // 37: bambuflow.answer.v1.Why.inferred_filters:type_name -> bambuflow.common.v1.Filters
-	5,  // 38: bambuflow.answer.v1.Why.intent:type_name -> bambuflow.answer.v1.Intent
-	30, // 39: bambuflow.answer.v1.Why.agent_rounds:type_name -> bambuflow.answer.v1.AgentRound
-	28, // 40: bambuflow.answer.v1.Why.graph_path:type_name -> bambuflow.answer.v1.GraphPath
-	4,  // 41: bambuflow.answer.v1.Why.experiment_arm:type_name -> bambuflow.answer.v1.ExperimentArm
-	29, // 42: bambuflow.answer.v1.GraphPath.edges:type_name -> bambuflow.answer.v1.GraphEdge
-	44, // 43: bambuflow.answer.v1.GraphEdge.from_type:type_name -> bambuflow.common.v1.EntityType
-	45, // 44: bambuflow.answer.v1.GraphEdge.relation_type:type_name -> bambuflow.common.v1.RelationType
-	44, // 45: bambuflow.answer.v1.GraphEdge.to_type:type_name -> bambuflow.common.v1.EntityType
-	31, // 46: bambuflow.answer.v1.AgentRound.calls:type_name -> bambuflow.answer.v1.AgentCall
-	17, // 47: bambuflow.answer.v1.GetAnswerResponse.answer:type_name -> bambuflow.answer.v1.AnswerResponse
-	46, // 48: bambuflow.answer.v1.GetAnswerResponse.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 49: bambuflow.answer.v1.GetAnswerResponse.access:type_name -> bambuflow.answer.v1.ReplayAccess
-	7,  // 50: bambuflow.answer.v1.CreateFeedbackRequest.rating:type_name -> bambuflow.answer.v1.FeedbackRating
-	36, // 51: bambuflow.answer.v1.CreateFeedbackResponse.feedback:type_name -> bambuflow.answer.v1.Feedback
-	7,  // 52: bambuflow.answer.v1.Feedback.rating:type_name -> bambuflow.answer.v1.FeedbackRating
-	46, // 53: bambuflow.answer.v1.Feedback.created_at:type_name -> google.protobuf.Timestamp
-	8,  // 54: bambuflow.answer.v1.Confidence.level:type_name -> bambuflow.answer.v1.ConfidenceLevel
-	9,  // 55: bambuflow.answer.v1.AnswerService.Answer:input_type -> bambuflow.answer.v1.AnswerRequest
-	10, // 56: bambuflow.answer.v1.AnswerService.StreamAnswer:input_type -> bambuflow.answer.v1.StreamAnswerRequest
-	32, // 57: bambuflow.answer.v1.AnswerService.GetAnswer:input_type -> bambuflow.answer.v1.GetAnswerRequest
-	34, // 58: bambuflow.answer.v1.AnswerService.CreateFeedback:input_type -> bambuflow.answer.v1.CreateFeedbackRequest
-	17, // 59: bambuflow.answer.v1.AnswerService.Answer:output_type -> bambuflow.answer.v1.AnswerResponse
-	11, // 60: bambuflow.answer.v1.AnswerService.StreamAnswer:output_type -> bambuflow.answer.v1.StreamAnswerResponse
-	33, // 61: bambuflow.answer.v1.AnswerService.GetAnswer:output_type -> bambuflow.answer.v1.GetAnswerResponse
-	35, // 62: bambuflow.answer.v1.AnswerService.CreateFeedback:output_type -> bambuflow.answer.v1.CreateFeedbackResponse
-	59, // [59:63] is the sub-list for method output_type
-	55, // [55:59] is the sub-list for method input_type
-	55, // [55:55] is the sub-list for extension type_name
-	55, // [55:55] is the sub-list for extension extendee
-	0,  // [0:55] is the sub-list for field type_name
+	25, // 25: bambuflow.answer.v1.Sentence.quotes:type_name -> bambuflow.answer.v1.RefQuote
+	22, // 26: bambuflow.answer.v1.Sentence.calc:type_name -> bambuflow.answer.v1.Calculation
+	21, // 27: bambuflow.answer.v1.Sentence.document:type_name -> bambuflow.answer.v1.ListedDocument
+	44, // 28: bambuflow.answer.v1.ListedDocument.metadata:type_name -> bambuflow.common.v1.DocMetadata
+	45, // 29: bambuflow.answer.v1.ListedDocument.classification:type_name -> bambuflow.common.v1.Classification
+	23, // 30: bambuflow.answer.v1.Calculation.inputs:type_name -> bambuflow.answer.v1.CalcInput
+	24, // 31: bambuflow.answer.v1.Calculation.results:type_name -> bambuflow.answer.v1.CalcResult
+	3,  // 32: bambuflow.answer.v1.Block.block_type:type_name -> bambuflow.answer.v1.BlockType
+	27, // 33: bambuflow.answer.v1.Block.scope:type_name -> bambuflow.answer.v1.Scope
+	46, // 34: bambuflow.answer.v1.Citation.span:type_name -> bambuflow.common.v1.Span
+	45, // 35: bambuflow.answer.v1.Citation.classification:type_name -> bambuflow.common.v1.Classification
+	47, // 36: bambuflow.answer.v1.Citation.source_type:type_name -> bambuflow.common.v1.SourceType
+	48, // 37: bambuflow.answer.v1.Why.degraded:type_name -> bambuflow.common.v1.Degradation
+	43, // 38: bambuflow.answer.v1.Why.inferred_filters:type_name -> bambuflow.common.v1.Filters
+	5,  // 39: bambuflow.answer.v1.Why.intent:type_name -> bambuflow.answer.v1.Intent
+	35, // 40: bambuflow.answer.v1.Why.agent_rounds:type_name -> bambuflow.answer.v1.AgentRound
+	33, // 41: bambuflow.answer.v1.Why.graph_path:type_name -> bambuflow.answer.v1.GraphPath
+	4,  // 42: bambuflow.answer.v1.Why.experiment_arm:type_name -> bambuflow.answer.v1.ExperimentArm
+	30, // 43: bambuflow.answer.v1.Why.evidence_scores:type_name -> bambuflow.answer.v1.EvidenceScore
+	31, // 44: bambuflow.answer.v1.EvidenceScore.matched_by:type_name -> bambuflow.answer.v1.EvidenceMatch
+	32, // 45: bambuflow.answer.v1.EvidenceScore.score_details:type_name -> bambuflow.answer.v1.EvidenceScoreDetails
+	34, // 46: bambuflow.answer.v1.GraphPath.edges:type_name -> bambuflow.answer.v1.GraphEdge
+	49, // 47: bambuflow.answer.v1.GraphEdge.from_type:type_name -> bambuflow.common.v1.EntityType
+	50, // 48: bambuflow.answer.v1.GraphEdge.relation_type:type_name -> bambuflow.common.v1.RelationType
+	49, // 49: bambuflow.answer.v1.GraphEdge.to_type:type_name -> bambuflow.common.v1.EntityType
+	36, // 50: bambuflow.answer.v1.AgentRound.calls:type_name -> bambuflow.answer.v1.AgentCall
+	19, // 51: bambuflow.answer.v1.GetAnswerResponse.answer:type_name -> bambuflow.answer.v1.AnswerResponse
+	51, // 52: bambuflow.answer.v1.GetAnswerResponse.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 53: bambuflow.answer.v1.GetAnswerResponse.access:type_name -> bambuflow.answer.v1.ReplayAccess
+	7,  // 54: bambuflow.answer.v1.CreateFeedbackRequest.rating:type_name -> bambuflow.answer.v1.FeedbackRating
+	41, // 55: bambuflow.answer.v1.CreateFeedbackResponse.feedback:type_name -> bambuflow.answer.v1.Feedback
+	7,  // 56: bambuflow.answer.v1.Feedback.rating:type_name -> bambuflow.answer.v1.FeedbackRating
+	51, // 57: bambuflow.answer.v1.Feedback.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 58: bambuflow.answer.v1.Confidence.level:type_name -> bambuflow.answer.v1.ConfidenceLevel
+	11, // 59: bambuflow.answer.v1.AnswerService.Answer:input_type -> bambuflow.answer.v1.AnswerRequest
+	12, // 60: bambuflow.answer.v1.AnswerService.StreamAnswer:input_type -> bambuflow.answer.v1.StreamAnswerRequest
+	37, // 61: bambuflow.answer.v1.AnswerService.GetAnswer:input_type -> bambuflow.answer.v1.GetAnswerRequest
+	39, // 62: bambuflow.answer.v1.AnswerService.CreateFeedback:input_type -> bambuflow.answer.v1.CreateFeedbackRequest
+	9,  // 63: bambuflow.answer.v1.AnswerService.DeleteConversation:input_type -> bambuflow.answer.v1.DeleteConversationRequest
+	19, // 64: bambuflow.answer.v1.AnswerService.Answer:output_type -> bambuflow.answer.v1.AnswerResponse
+	13, // 65: bambuflow.answer.v1.AnswerService.StreamAnswer:output_type -> bambuflow.answer.v1.StreamAnswerResponse
+	38, // 66: bambuflow.answer.v1.AnswerService.GetAnswer:output_type -> bambuflow.answer.v1.GetAnswerResponse
+	40, // 67: bambuflow.answer.v1.AnswerService.CreateFeedback:output_type -> bambuflow.answer.v1.CreateFeedbackResponse
+	10, // 68: bambuflow.answer.v1.AnswerService.DeleteConversation:output_type -> bambuflow.answer.v1.DeleteConversationResponse
+	64, // [64:69] is the sub-list for method output_type
+	59, // [59:64] is the sub-list for method input_type
+	59, // [59:59] is the sub-list for extension type_name
+	59, // [59:59] is the sub-list for extension extendee
+	0,  // [0:59] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_answer_v1_answer_proto_init() }
@@ -3354,21 +3762,22 @@ func file_bambuflow_answer_v1_answer_proto_init() {
 	if File_bambuflow_answer_v1_answer_proto != nil {
 		return
 	}
-	file_bambuflow_answer_v1_answer_proto_msgTypes[2].OneofWrappers = []any{
+	file_bambuflow_answer_v1_answer_proto_msgTypes[4].OneofWrappers = []any{
 		(*StreamAnswerResponse_Meta)(nil),
 		(*StreamAnswerResponse_Citation)(nil),
 		(*StreamAnswerResponse_Sentence)(nil),
 		(*StreamAnswerResponse_Final)(nil),
 	}
-	file_bambuflow_answer_v1_answer_proto_msgTypes[25].OneofWrappers = []any{}
-	file_bambuflow_answer_v1_answer_proto_msgTypes[27].OneofWrappers = []any{}
+	file_bambuflow_answer_v1_answer_proto_msgTypes[23].OneofWrappers = []any{}
+	file_bambuflow_answer_v1_answer_proto_msgTypes[30].OneofWrappers = []any{}
+	file_bambuflow_answer_v1_answer_proto_msgTypes[32].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_answer_v1_answer_proto_rawDesc), len(file_bambuflow_answer_v1_answer_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   29,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

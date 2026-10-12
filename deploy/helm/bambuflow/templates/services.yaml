@@ -4,20 +4,24 @@
 由 Vault Secrets Operator 从 Vault 的 <kvMount>/bambuflow/<组件> 同步到名为 <release>-<组件> 的 Secret，
 以 envFrom 注入，密钥轮换后自动滚动重启（vault.yaml，部署配置清单）。服务间 mTLS 由服务网格提供（技术设计文档 12.6）。
 values 的 tenants 渲染成 ConfigMap 挂给 governance，只作为还没有版本的租户的初始版本导入；之后租户配置经变更单与发布修改，
-由 governance 的配置快照推给 gateway（governance 详设 3、4）。授权策略数据（policyData）同样渲染成 ConfigMap（config.yaml），
+由 governance 的配置快照推给 gateway（governance 详设 3、4）。策略包的数据源层与租户层（policyLayers）同样渲染成 ConfigMap（config.yaml），只作 governance 首次启动的初始版本，
 改动后经 checksum 注解滚动重启。
 gateway 用 StatefulSet：每个实例的入口审计本地队列放在自己的持久卷上，重启后接着把没送出的审计段送往审计桶
 （技术设计文档 8.3）；对象键以实例名为前缀，实例名稳定，送出记录才能对上。
 governance 的管理接口把变更审计写进与 gateway 入口审计同一个审计桶（gateway.audit），凭证同样经 Vault 注入
 （bambuflow/governance 的 BF_AUDIT_S3_ACCESS_KEY/SECRET_KEY）；紧急拒绝规则经入库平面的 indexing（indexing.addr）写进拒绝名单。
-evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob。
+evaluation 的护栏检查与在线抽样评审是 cronjobs.yaml 里的 CronJob。evaluation 的评测门禁（索引发布前由入库平面的 indexing 调用）
+在评测副本 retrieval-eval、orchestrator-eval 上跑，门禁结论写进审计桶（凭证同样放在 Vault 的 bambuflow/evaluation）。评测身份由 evaluation 用自己的签名密钥（Vault 的 evaluation/principal-signing）签发，
+签发方 bambuflow-evaluation：评测副本只信任它（验签公钥取自 evaluation:8081 的内部 JWKS），线上实例只信任 gateway，评测身份在线上无效。
 存活探针只看进程是否在，就绪探针才检查依赖：依赖故障时摘流量，不重启。
+gateway、retrieval、orchestrator 把加载成功的配置快照写在 /tmp/snapshots（emptyDir）：容器重启时 governance 不可用也能用上一份启动，
+Pod 重新调度后为空，按新实例处理（拿不到快照不接流量，governance 详设 8.1）。
 运行期要直接读写 Vault 的组件（gateway 读 Principal 签名密钥，webhook 读写订阅的签名密钥，
 retrieval 经 transit 解开 PII 原值的数据密钥，orchestrator 经 transit 加密回答记录的问题原文与受限级快照，
 governance 读快照签名私钥）带 vaultRole，
 由 Vault Agent 注入令牌；两者用不同的 Vault 角色，各自只能访问自己的路径。
 平台事件流（Redis Streams platform:events）由 qa/batch、indexing、governance 写入、webhook 消费，必须指向同一个 Redis（events.redisAddr）。
-租户可访问的数据源由 governance 下发给 retrieval（ConfigService，每 10 秒拉取），policyData 只放租户策略（禁止的数据源、地域、可看 PII 的群组）。
+租户可访问的数据源由 governance 下发给 retrieval（ConfigService，每 10 秒拉取）；检索权限策略包也在这份快照里（governance 合成、签名，retrieval 验签后编译加载）。
 */ -}}
 {{- $v := .Values -}}
 {{- $jwks := printf "http://%s-gateway:8081/internal/jwks.json" .Release.Name -}}
@@ -26,10 +30,21 @@ governance 读快照签名私钥）带 vaultRole，
 {{- range $t, $_ := $v.tenants -}}
 {{- $tenantItems = append $tenantItems (dict "key" (printf "%s.yaml" $t) "path" (printf "%s/tenant.yaml" $t)) -}}
 {{- end -}}
+{{- /* console 修改 Git 类配置对象时 governance 写合并请求的去处（governance.gitForge）；gitlab 的令牌从 Vault 的
+bambuflow/governance-git（键 token）以文件挂载，不进环境变量 */ -}}
+{{- $git := $v.governance.gitForge -}}
+{{- $governanceVolumes := list
+  (dict "name" "tenants" "mountPath" "/etc/bambuflow/tenants" "source" (dict "configMap" (dict "name" (printf "%s-tenants" .Release.Name) "items" $tenantItems)))
+  (dict "name" "policy-layers" "mountPath" "/etc/bambuflow/policies" "source" (dict "configMap" (dict "name" (printf "%s-policy-layers" .Release.Name)))) -}}
+{{- $gitEnv := dict "BF_GIT_FORGE" $git.kind -}}
+{{- if eq $git.kind "gitlab" -}}
+{{- $governanceVolumes = append $governanceVolumes (dict "name" "gitlab-token" "mountPath" "/run/secrets/gitlab_token" "subPath" "token" "source" (dict "secret" (dict "secretName" (printf "%s-governance-git" .Release.Name)))) -}}
+{{- $gitEnv = merge $gitEnv (dict "BF_GITLAB_URL" $git.gitlabUrl "BF_GITLAB_PROJECT" $git.gitlabProject "BF_GIT_TARGET_BRANCH" $git.targetBranch "BF_GITLAB_TOKEN_FILE" "/run/secrets/gitlab_token") -}}
+{{- end -}}
 {{- $configSum := include (print $.Template.BasePath "/config.yaml") . | sha256sum -}}
 {{- $components := dict
   "gateway" (dict
-    "image" "gateway" "values" $v.gateway "kind" "StatefulSet" "vaultRole" $v.vault.role
+    "image" "gateway" "values" $v.gateway "kind" "StatefulSet" "vaultRole" $v.vault.gatewayRole
     "volumes" (list
       (dict "name" "admin-roles" "mountPath" "/etc/bambuflow/admin-roles.yaml" "subPath" "admin-roles.yaml" "source" (dict "configMap" (dict "name" (printf "%s-admin-roles" .Release.Name)))))
     "claims" (list (dict "name" "audit" "mountPath" "/var/lib/gateway/audit" "size" $v.gateway.audit.storageSize))
@@ -41,10 +56,13 @@ governance 读快照签名私钥）带 vaultRole，
       "BF_PLATFORM_ISSUER" $v.gateway.platformIssuer
       "BF_PLATFORM_CLIENTS" $v.gateway.platformClients
       "BF_ADMIN_ROLES_FILE" "/etc/bambuflow/admin-roles.yaml"
+      "BF_STEP_UP_ACR" $v.gateway.stepUp.acrValues
+      "BF_STEP_UP_MAX_AGE" $v.gateway.stepUp.maxAge
       "BF_RETRIEVAL_ADDR" (printf "%s-retrieval:9090" .Release.Name)
       "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)
       "BF_BATCH_ADDR" (printf "%s-batch:9090" .Release.Name)
       "BF_GOVERNANCE_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_SNAPSHOT_CACHE_DIR" "/tmp/snapshots"
       "BF_EVALUATION_ADDR" (printf "%s-evaluation:9090" .Release.Name)
       "BF_INDEXING_ADDR" $v.indexing.addr
       "BF_PROCESSING_ADMIN_ADDR" $v.processingAdmin.addr
@@ -57,11 +75,13 @@ governance 读快照签名私钥）带 vaultRole，
       "BF_AUDIT_BUCKET" $v.gateway.audit.bucket
       "BF_AUDIT_RETENTION_DAYS" (toString $v.gateway.audit.retentionDays)
       "BF_SIGNING_KEY_MOUNT" $v.vault.kvMount
+      "BF_SIGNING_KEY_ROTATE_EVERY" $v.gateway.signingKeyRotateEvery
+      "BF_CLIENT_CERT_HEADER" $v.gateway.clientCertHeader
       "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "retrieval" (dict
     "image" "retrieval" "values" $v.retrieval "kind" "Deployment" "vaultRole" $v.vault.role
     "volumes" (list
-      (dict "name" "policy-data" "mountPath" "/etc/bambuflow/policy/data.json" "subPath" "data.json" "source" (dict "configMap" (dict "name" (printf "%s-policy-data" .Release.Name)))))
+      (dict "name" "emergency-denials" "mountPath" "/etc/bambuflow/emergency-denials" "source" (dict "configMap" (dict "name" (printf "%s-emergency-denials" .Release.Name)))))
     "ports" (list (dict "name" "grpc" "port" 9090) (dict "name" "internal" "port" 8081))
     "readiness" (dict "httpGet" (dict "path" "/readyz" "port" "internal"))
     "liveness" (dict "httpGet" (dict "path" "/healthz" "port" "internal"))
@@ -69,16 +89,19 @@ governance 读快照签名私钥）带 vaultRole，
       "BF_PRINCIPAL_JWKS_URL" $jwks
       "BF_EMBEDDER_URL" $v.retrieval.embedderUrl
       "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_SNAPSHOT_CACHE_DIR" "/tmp/snapshots"
       "BF_RERANKER_URL" $v.retrieval.rerankerUrl
+      "BF_REDIS_ADDR" $v.events.redisAddr
+      "BF_CACHE_REDIS_ADDR" ($v.retrieval.cacheRedisAddr | default "")
+      "BF_EMERGENCY_DENY_DIR" "/etc/bambuflow/emergency-denials"
       "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "governance" (dict
     "image" "governance" "values" $v.governance "kind" "Deployment" "args" (list "serve") "vaultRole" $v.vault.role
-    "volumes" (list
-      (dict "name" "tenants" "mountPath" "/etc/bambuflow/tenants" "source" (dict "configMap" (dict "name" (printf "%s-tenants" .Release.Name) "items" $tenantItems))))
+    "volumes" $governanceVolumes
     "ports" (list (dict "name" "grpc" "port" 9090))
     "readiness" (dict "exec" (dict "command" (list "governance" "serve-healthcheck")))
     "liveness" (dict "tcpSocket" (dict "port" "grpc"))
-    "env" (dict
+    "env" (merge (dict
       "BF_PRINCIPAL_JWKS_URL" $jwks
       "BF_INDEXING_ADDR" $v.indexing.addr
       "BF_AUDIT_S3_ENDPOINT" $v.gateway.audit.s3Endpoint
@@ -86,9 +109,11 @@ governance 读快照签名私钥）带 vaultRole，
       "BF_AUDIT_RETENTION_DAYS" (toString $v.gateway.audit.retentionDays)
       "BF_REDIS_ADDR" $v.events.redisAddr
       "BF_TENANTS_SEED_DIR" "/etc/bambuflow/tenants"
+      "BF_POLICY_SEED_DIRS" "/etc/bambuflow/policies-base,/etc/bambuflow/policies"
       "BF_PLATFORM_CLIENTS" $v.gateway.platformClients
       "BF_EVALUATION_ADDR" (printf "%s-evaluation:9090" .Release.Name)
-      "VAULT_TOKEN_FILE" "/vault/secrets/token"))
+      "BF_EVAL_JWKS_URL" (printf "http://%s-evaluation:8081/internal/jwks.json" .Release.Name)
+      "VAULT_TOKEN_FILE" "/vault/secrets/token") $gitEnv))
   "orchestrator" (dict
     "image" "orchestrator" "values" $v.orchestrator "kind" "Deployment" "vaultRole" $v.vault.role
     "volumes" (list
@@ -102,9 +127,14 @@ governance 读快照签名私钥）带 vaultRole，
       "BF_RETRIEVAL_ADDR" (printf "%s-retrieval:9090" .Release.Name)
       "BF_LLM_URL" $v.orchestrator.llmUrl
       "BF_LLM_MODEL" $v.orchestrator.llmModel
+      "BF_LLM_KIND" $v.orchestrator.llmKind
+      "BF_LLM_RESTRICTED_URL" $v.orchestrator.llmRestrictedUrl
+      "BF_LLM_RESTRICTED_MODEL" $v.orchestrator.llmRestrictedModel
+      "BF_LLM_ALT_MODELS" $v.orchestrator.llmAltModels
       "BF_NLI_URL" $v.orchestrator.nliUrl
       "BF_LLM_EXTRA_BODY" $v.orchestrator.llmExtraBody
       "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
+      "BF_SNAPSHOT_CACHE_DIR" "/tmp/snapshots"
       "BF_REDIS_ADDR" $v.orchestrator.redisAddr
       "BF_MAX_CONCURRENCY" (toString $v.orchestrator.maxConcurrency)
       "BF_SQL_CATALOG" (ternary "" "/etc/bambuflow/sql-catalog.yaml" (empty $v.orchestrator.sqlCatalog))
@@ -123,14 +153,24 @@ governance 读快照签名私钥）带 vaultRole，
       "BF_RETRIEVAL_ADDR" (printf "%s-retrieval:9090" .Release.Name)
       "BF_REDIS_ADDR" $v.events.redisAddr))
   "evaluation" (dict
-    "image" "evaluation" "values" $v.evaluation "kind" "Deployment" "args" (list "serve")
-    "ports" (list (dict "name" "grpc" "port" 9090))
+    "image" "evaluation" "values" $v.evaluation "kind" "Deployment" "args" (list "serve") "vaultRole" $v.vault.role
+    "ports" (list (dict "name" "grpc" "port" 9090) (dict "name" "internal" "port" 8081))
     "readiness" (dict "tcpSocket" (dict "port" "grpc"))
     "liveness" (dict "tcpSocket" (dict "port" "grpc"))
     "env" (dict
       "BF_PRINCIPAL_JWKS_URL" $jwks
       "BF_CONFIG_ADDR" (printf "%s-governance:9090" .Release.Name)
-      "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)))
+      "BF_ORCHESTRATOR_ADDR" (printf "%s-orchestrator:9090" .Release.Name)
+      "BF_EVAL_RETRIEVAL_ADDR" (printf "%s-retrieval-eval:9090" .Release.Name)
+      "BF_EVAL_ORCHESTRATOR_ADDR" (printf "%s-orchestrator-eval:9090" .Release.Name)
+      "BF_NLI_URL" $v.evaluation.nliUrl
+      "BF_EVAL_NLI_MODEL" $v.evaluation.judgeModel
+      "BF_JUDGE_URL" $v.evaluation.llmJudgeUrl
+      "BF_JUDGE_MODEL" $v.evaluation.llmJudgeModel
+      "BF_AUDIT_S3_ENDPOINT" $v.gateway.audit.s3Endpoint
+      "BF_AUDIT_BUCKET" $v.gateway.audit.bucket
+      "BF_AUDIT_RETENTION_DAYS" (toString $v.gateway.audit.retentionDays)
+      "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "webhook" (dict
     "image" "governance" "values" $v.webhook "kind" "Deployment" "args" (list "webhook") "vaultRole" $v.vault.webhookRole
     "ports" (list (dict "name" "grpc" "port" 9090))
@@ -141,6 +181,21 @@ governance 读快照签名私钥）带 vaultRole，
       "BF_WEBHOOK_SECRET_MOUNT" $v.vault.kvMount
       "VAULT_TOKEN_FILE" "/vault/secrets/token"))
 -}}
+{{- /* 评测副本（evaluation 详设 4.2）：与线上同一镜像、同一配置，BF_EVAL_MODE=1 时接受评测指定的索引版本，
+不接 gateway 的流量（网络策略只放行 evaluation）；索引发布前的门禁在它们上面跑。密钥与线上实例共用同一个 Secret。 */ -}}
+{{- $re := deepCopy (get $components "retrieval") -}}
+{{- $_ := set $re "values" $v.evalReplicas -}}
+{{- $_ := set $re "secret" "retrieval" -}}
+{{- $_ := set $re.env "BF_EVAL_MODE" "1" -}}
+{{- $_ := set $re.env "BF_PRINCIPAL_JWKS_URL" (printf "http://%s-evaluation:8081/internal/jwks.json" .Release.Name) -}}
+{{- $_ := set $components "retrieval-eval" $re -}}
+{{- $oe := deepCopy (get $components "orchestrator") -}}
+{{- $_ := set $oe "values" $v.evalReplicas -}}
+{{- $_ := set $oe "secret" "orchestrator" -}}
+{{- $_ := set $oe.env "BF_EVAL_MODE" "1" -}}
+{{- $_ := set $oe.env "BF_PRINCIPAL_JWKS_URL" (printf "http://%s-evaluation:8081/internal/jwks.json" .Release.Name) -}}
+{{- $_ := set $oe.env "BF_RETRIEVAL_ADDR" (printf "%s-retrieval-eval:9090" .Release.Name) -}}
+{{- $_ := set $components "orchestrator-eval" $oe -}}
 {{- range $name, $c := $components }}
 {{- $ctx := dict "root" $ "component" $name }}
 {{- $runtimeVault := hasKey $c "vaultRole" }}
@@ -223,7 +278,7 @@ spec:
               value: {{ $v.otel.endpoint | quote }}
           envFrom:
             - secretRef:
-                name: {{ include "bambuflow.name" $ctx }}
+                name: {{ include "bambuflow.name" (dict "root" $ "component" ($c.secret | default $name)) }}
           startupProbe:
             {{- toYaml $c.liveness | nindent 12 }}
             periodSeconds: 2

@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
 )
 
 // 运行时保护（gateway 详设 5.1、5.2、第 6 节）：租户并发与每日 token 配额、每用户并发 SSE 流、全局自适应并发。

@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
 )
 
 // Dim 是 P0 嵌入模型（bge-m3 或其模拟服务）的向量维度，与表结构 vector(1024) 一致。

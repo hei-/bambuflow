@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/outbox"
+	"github.com/hei-/bambuflow/libs/platform-go/outbox"
 )
 
 func TestFinalStatusAndEvent(t *testing.T) {

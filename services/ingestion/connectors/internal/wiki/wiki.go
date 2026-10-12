@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/docmeta"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/docmeta"
 )
 
 type Page struct {
@@ -42,29 +42,35 @@ func Parse(raw []byte) (*Page, error) {
 	return &Page{Meta: *meta, Body: body, ContentHash: hex.EncodeToString(sum[:])}, nil
 }
 
-// List 读取目录下的全部 .md 页面；任一页面不合法就整体失败，不发出半批事件。
-func List(dir string) ([]*Page, error) {
+// List 读取目录下的全部 .md 页面。单个页面不合法（缺 front matter、元数据错、id 重复）时跳过并记进 skipped，
+// 其余照常返回；读不了目录才返回错误。
+func List(dir string) ([]*Page, []docmeta.Skipped, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.md"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sort.Strings(paths)
 	seen := map[string]string{}
 	var out []*Page
+	var skipped []docmeta.Skipped
 	for _, p := range paths {
+		name := filepath.Base(p)
 		raw, err := os.ReadFile(filepath.Clean(p))
 		if err != nil {
-			return nil, err
+			skipped = append(skipped, docmeta.Skipped{Name: name, Reason: err.Error()})
+			continue
 		}
 		page, err := Parse(raw)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", filepath.Base(p), err)
+			skipped = append(skipped, docmeta.Skipped{Name: name, Reason: err.Error()})
+			continue
 		}
 		if prev, dup := seen[page.DocID]; dup {
-			return nil, fmt.Errorf("%s 与 %s 的 id 重复", filepath.Base(p), prev)
+			skipped = append(skipped, docmeta.Skipped{Name: name, Reason: fmt.Sprintf("与 %s 的 id 重复", prev)})
+			continue
 		}
-		seen[page.DocID] = filepath.Base(p)
+		seen[page.DocID] = name
 		out = append(out, page)
 	}
-	return out, nil
+	return out, skipped, nil
 }

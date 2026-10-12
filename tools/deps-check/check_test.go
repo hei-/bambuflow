@@ -15,7 +15,7 @@ func tree(files map[string]string) fstest.MapFS {
 	return fsys
 }
 
-const mod = "github.com/bambu-ai/bambuflow"
+const mod = "github.com/hei-/bambuflow"
 
 func goMod(path string) string { return "module " + mod + "/" + path + "\n\ngo 1.26.0\n" }
 

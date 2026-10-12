@@ -43,7 +43,7 @@ class _Arm:
         self.per_user: dict[str, list[int]] = defaultdict(lambda: [0, 0])
 
 
-def _p95(values: list[int]) -> int:
+def p95(values: list[int]) -> int:
     if not values:
         return 0
     s = sorted(values)
@@ -73,7 +73,7 @@ def _summary(name: str, arm: _Arm) -> experiment_analysis_pb2.ArmSummary:
         metric_users=len(values),
         metric_mean=mean,
         refused_rate=arm.refused / arm.answers if arm.answers else 0.0,
-        p95_latency_ms=_p95(arm.latencies),
+        p95_latency_ms=p95(arm.latencies),
         mean_tokens=arm.tokens / arm.answers if arm.answers else 0.0,
     )
 

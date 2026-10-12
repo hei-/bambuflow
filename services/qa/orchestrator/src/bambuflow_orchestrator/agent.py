@@ -32,8 +32,8 @@ from bambuflow.answer.v1 import answer_pb2
 from bambuflow.common.v1 import types_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2
 from bambuflow_grounding import Grounder
-from bambuflow_orchestrator import flow, prompt, structured
-from bambuflow_orchestrator.budget import Deadline
+from bambuflow_orchestrator import flow, llm_rerank, prompt, structured
+from bambuflow_orchestrator.budget import GENERATION_RESERVE, Deadline
 from bambuflow_orchestrator.llm import LLMUnavailableError
 from bambuflow_orchestrator.parse import load_json_line
 from bambuflow_orchestrator.session import StoreUnavailableError
@@ -43,8 +43,6 @@ _log = logging.getLogger(__name__)
 MAX_ROUNDS = 3
 MAX_SUB_QUESTIONS = 4  # 也是每轮的工具调用上限
 MAX_EVIDENCE = 30  # 跨轮合并后的候选证据上限
-# 生成与校验的预留（详设 11.1，评估报告 K10）：剩余时间不超过它就不再开新一轮
-GENERATION_RESERVE = 3.0
 AGENT_PHASE = 8.0  # agent 阶段的上限，从进入 agent 路径起算
 PLAN_BUDGET = 1.5
 # 每次 doc_search 的上限。详设为 400 ms；开发环境的检索与精排跑在 CPU 上，与单跳一样放宽到 1.5 s
@@ -52,6 +50,8 @@ SEARCH_BUDGET = 1.5
 MIN_CALL_SECONDS = 0.1  # 剩余预算不够一次调用时不发起
 TOP_K = 10
 # 充分性判断（详设 6.2）：精排分达到 COVERED 算覆盖，没有一条高于 RELEVANT 算无证据
+# 多跳路径的候选超过这么多条时做 LLM 重排（详设 6.5，llm_rerank.py）
+RERANK_MIN = 20
 COVERED_SCORE = 0.5
 RELEVANT_SCORE = 0.2
 UNRESOLVED_NOTE = "部分子问题没有检索到依据，以上回答可能不完整。"
@@ -74,7 +74,14 @@ class Search(Protocol):
 
 
 class PlanLLM(Protocol):
-    def generate(self, system: str, user: str, timeout: float | None = None) -> flow.Generation: ...
+    def generate(
+        self,
+        system: str,
+        user: str,
+        timeout: float | None = None,
+        *,
+        level: int = types_pb2.CLASSIFICATION_INTERNAL,
+    ) -> flow.Generation: ...
 
 
 class SqlTool(Protocol):
@@ -123,6 +130,8 @@ class Gathered:
     sub_questions: list[SubQuestion]
     rounds: list[answer_pb2.AgentRound]
     gave_up: bool  # 没有一个子问题有证据：found.hits 为空，不调用生成
+    # 做了 LLM 重排时的模型与提示词版本（写进 why.llm_rerank）；没做时为空
+    llm_rerank: str = ""
 
     @property
     def unresolved(self) -> list[str]:
@@ -142,8 +151,16 @@ class Agent:
         state: StateSink,
         clock: Callable[[], float] = time.monotonic,
         sql: SqlTool | None = None,
+        summary: str = "",
+        max_rounds: int | None = None,
+        max_sub_questions: int | None = None,
     ) -> None:
         self._question, self._filters, self._history = question, filters, list(history)
+        # agent 预算（pipeline 可在平台上限内调小，详设第 6 节）
+        self._max_rounds = min(max_rounds or MAX_ROUNDS, MAX_ROUNDS)
+        self._max_subs = min(max_sub_questions or MAX_SUB_QUESTIONS, MAX_SUB_QUESTIONS)
+        # 会话摘要：与之前的问题一样只给规划器理解指代（详设 10.2）
+        self._summary = summary
         self._sql = sql
         self._search, self._llm, self._deadline, self._state = search, llm, deadline, state
         self._clock = clock
@@ -152,6 +169,9 @@ class Agent:
         self._rounds: list[answer_pb2.AgentRound] = []
         self._degraded: list[types_pb2.Degradation] = []
         self._responses: list[retrieval_pb2.SearchResponse] = []
+        # LLM 重排后的证据顺序；没做重排时为 None，按子问题轮流的顺序
+        self._reranked: list[retrieval_pb2.Hit] | None = None
+        self._llm_rerank = ""
 
     @property
     def uses_sql(self) -> bool:
@@ -166,7 +186,7 @@ class Agent:
             self._degraded.append(types_pb2.Degradation(stage=stage, reason=reason))
 
     async def run(self) -> Gathered:
-        for round_no in range(1, MAX_ROUNDS + 1):
+        for round_no in range(1, self._max_rounds + 1):
             # sql_query 的子问题不改写重查：参数由规划器一次给定，失败多半是无权或参数不对
             pending = [s for s in self._subs if not s.covered and s.tool == TOOL]
             if round_no > 1 and (not pending or self._budget(SEARCH_BUDGET) < MIN_CALL_SECONDS):
@@ -179,6 +199,7 @@ class Agent:
             if not proceed:
                 break
         await self._drop()
+        await self._rerank()
         return self._gathered()
 
     # ---- PLAN ----
@@ -187,14 +208,17 @@ class Agent:
         """第 1 轮：拆子问题。规划失败时退回把原问题当作唯一的子问题（与单跳相同的检索）。"""
         if self._sql is not None:
             system = prompt.PLAN_SQL_SYSTEM
-            user = prompt.render_plan(self._question, self._history, self._sql.catalog.describe())
+            user = prompt.render_plan(
+                self._question, self._history, self._sql.catalog.describe(), self._summary
+            )
         else:
-            system, user = prompt.PLAN_SYSTEM, prompt.render_plan(self._question, self._history)
+            system = prompt.PLAN_SYSTEM
+            user = prompt.render_plan(self._question, self._history, summary=self._summary)
         lines = await self._ask(system, user)
         subs: list[SubQuestion] = []
         for obj in lines or []:
             text = obj.get("text")
-            if isinstance(text, str) and text.strip() and len(subs) < MAX_SUB_QUESTIONS:
+            if isinstance(text, str) and text.strip() and len(subs) < self._max_subs:
                 sid = f"q{len(subs) + 1}"
                 sub = SubQuestion(sid, text.strip(), text.strip())
                 args = obj.get("args")
@@ -234,7 +258,9 @@ class Agent:
             return None
         out: list[dict[str, Any]] = []
         try:
-            async for raw in self._llm.generate(system, user, timeout):
+            # 规划器看到已取得证据的标题与摘要：按其中的最高密级选模型（orchestrator 详设 8.1）
+            level = flow.level_of(self._merged())
+            async for raw in self._llm.generate(system, user, timeout, level=level):
                 if (obj := load_json_line(raw)) is not None:
                     out.append(obj)
         except LLMUnavailableError as e:
@@ -353,6 +379,7 @@ class Agent:
             found.policy_version = first.policy_version
             found.embedding_model = first.embedding_model
             found.rerank_model = first.rerank_model
+            found.plan_version = first.plan_version
             for r in self._responses:
                 for d in r.degraded:
                     self._degrade(d.stage, d.reason)
@@ -363,9 +390,30 @@ class Agent:
                     self._degrade("policy_version", r.policy_version)
         relevant = any(s.covered or s.relevant for s in self._subs)
         if relevant:
-            found.hits.extend(self._merged())
+            found.hits.extend(self._merged() if self._reranked is None else self._reranked)
         found.degraded.extend(self._degraded)
-        return Gathered(found, self._subs, self._rounds, gave_up=not relevant)
+        return Gathered(
+            found, self._subs, self._rounds, gave_up=not relevant, llm_rerank=self._llm_rerank
+        )
+
+    # ---- LLM 重排 ----
+
+    async def _rerank(self) -> None:
+        merged = self._merged()
+        if len(merged) <= RERANK_MIN:
+            return
+        r = await llm_rerank.rerank(
+            self._llm,
+            self._question,
+            [s.text for s in self._subs],
+            merged,
+            self._deadline.remaining,
+        )
+        if r.degraded:
+            self._degrade("llm_rerank", r.degraded)
+        if r.degraded != "skipped_deadline":
+            self._reranked = r.hits
+        self._llm_rerank = r.version
 
     # ---- 中间状态 ----
 
@@ -400,7 +448,7 @@ class _Evidence:
         self.result: Gathered | None = None
 
     async def search(
-        self, question: str, filters: types_pb2.Filters | None
+        self, question: str, filters: types_pb2.Filters | None, variants: Sequence[str] = ()
     ) -> retrieval_pb2.SearchResponse:
         self.result = await self._agent.run()
         return self.result.found
@@ -409,14 +457,16 @@ class _Evidence:
 class AgentAnswer(flow.Answer):
     """agent 路径的一次回答：取证据换成多轮检索，提示词带子问题；生成与逐句校验与单跳相同。"""
 
-    prompt_version = prompt.AGENT_PROMPT_VERSION
+    template_scope = "agent-answer"
+    builtin = prompt.AGENT
 
     def __init__(self, req: flow.Request, agent: Agent, llm: flow.LLM, grounder: Grounder) -> None:
         self._evidence_source = _Evidence(agent)
         super().__init__(req, self._evidence_source, llm, grounder)
         if agent.uses_sql:
             # 规划器换成带视图目录的模板，版本号随之区分（回放据此还原）
-            self.prompt_version = prompt.AGENT_SQL_PROMPT_VERSION
+            self._prompt_suffix = "+" + prompt.SQL_PLAN_VERSION
+            self._use_template()
 
     @property
     def _gathered(self) -> Gathered:
@@ -428,14 +478,18 @@ class AgentAnswer(flow.Answer):
     async def _gather(self) -> retrieval_pb2.SearchResponse:
         found = await super()._gather()
         self.why.agent_rounds.extend(self._gathered.rounds)
+        self.why.llm_rerank = self._gathered.llm_rerank
         return found
 
     def _render(self, evidence: list[tuple[int, retrieval_pb2.Hit]]) -> tuple[str, str]:
         g = self._gathered
-        user = prompt.render_agent(
-            self._req.question, evidence, [s.text for s in g.sub_questions], g.unresolved
+        return self._fill(
+            {
+                "evidence": prompt.render_evidence(evidence),
+                "subquestions": prompt.render_subquestions([s.text for s in g.sub_questions]),
+                "unresolved": prompt.render_unresolved(g.unresolved),
+            }
         )
-        return prompt.AGENT_SYSTEM, user
 
     def _notes(self) -> list[tuple[str, answer_pb2.BlockType, str]]:
         notes = super()._notes()

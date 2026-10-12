@@ -35,13 +35,13 @@ def test_assignment_is_stable_and_follows_traffic() -> None:
     )
 
 
-def test_treatment_carries_only_given_overrides() -> None:
+def test_only_treatment_carries_the_variant() -> None:
     user = next(u for u in (f"u{i}" for i in range(1000)) if bucket("exp_1", u) < 20)
     a = assign(exp(), user)
-    assert a.treatment and a.support_threshold == 0.4 and a.min_coverage is None
+    assert a.treatment and a.variant is not None and a.variant.support_threshold == 0.4
     other = next(u for u in (f"u{i}" for i in range(1000)) if bucket("exp_1", u) >= 20)
     b = assign(exp(), other)
-    assert not b.treatment and b.support_threshold is None
+    assert not b.treatment and b.variant is None
 
 
 def test_experiments_by_tenant() -> None:

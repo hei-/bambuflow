@@ -5,9 +5,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
 )
 
 // ---- GET /v1/documents/{doc_id}/preview ----
@@ -62,6 +62,7 @@ func (s *Server) preview(_ http.ResponseWriter, r *http.Request, c *call) (any, 
 	}
 	// 用户看到了这块的正文：按展示的块写审计
 	c.blocks = &answerv1.AuditBlocks{ShownChunkIds: []string{e.GetChunkId()}}
+	c.restrictedChunk(e.GetClassification(), e.GetChunkId())
 	return previewResult{
 		TraceID: c.traceID, IndexVersion: e.GetIndexVersion(), DocID: e.GetDocId(), DocVersion: e.GetDocVersion(),
 		ChunkID: e.GetChunkId(), Title: e.GetTitle(), HeadingPath: nonNil(e.GetHeadingPath()), Text: e.GetText(),

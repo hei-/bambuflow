@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// DeletionReceiptAdminService 查询删除凭证（技术设计文档 9.2，评估报告 K6），由 indexing 实现，
+// gateway 的 /v1/admin/deletion-receipts 调用；审计岗与信息安全可看。删除标记过了观察期、索引侧的全部副本物理删除后
+// 生成一份凭证，记各存储完成删除的时间；对象存储里的原文由 connectors 删除后补记。
+service DeletionReceiptAdminService {
+  rpc ListDeletionReceipts(ListDeletionReceiptsRequest) returns (ListDeletionReceiptsResponse);
+}
+
+message ListDeletionReceiptsRequest {
+  // doc_id 与 source_id 至少给一个
+  string doc_id = 1;
+  string source_id = 2;
+  // 默认 50，最多 200
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message StoreDeletion {
+  // chunks（含关键词与向量索引）、sections、graph、manifests、metadata、object_store
+  string store = 1;
+  google.protobuf.Timestamp completed_at = 2;
+}
+
+message DeletionReceipt {
+  // del_ 前缀
+  string receipt_id = 1;
+  string doc_id = 2;
+  string source_id = 3;
+  // 删除标记的时间（删除事件的发生时间）
+  google.protobuf.Timestamp tombstoned_at = 4;
+  repeated StoreDeletion stores = 5;
+  // 还没有完成删除的存储（如 connectors 还没删完对象存储里的原文）
+  repeated string pending_stores = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListDeletionReceiptsResponse {
+  // 最近的在前
+  repeated DeletionReceipt receipts = 1;
+  string next_page_token = 2;
+}

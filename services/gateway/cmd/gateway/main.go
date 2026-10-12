@@ -25,28 +25,29 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/snapshot"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/telemetry"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/vault"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/worm"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/api"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/audit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/authn"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/idempotency"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/identity"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/ratelimit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/tenantsync"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	batchv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/batch/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/libs/platform-go/snapshot"
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
+	"github.com/hei-/bambuflow/libs/platform-go/vault"
+	"github.com/hei-/bambuflow/libs/platform-go/worm"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
+	"github.com/hei-/bambuflow/services/gateway/internal/api"
+	"github.com/hei-/bambuflow/services/gateway/internal/audit"
+	"github.com/hei-/bambuflow/services/gateway/internal/authn"
+	"github.com/hei-/bambuflow/services/gateway/internal/idempotency"
+	"github.com/hei-/bambuflow/services/gateway/internal/identity"
+	"github.com/hei-/bambuflow/services/gateway/internal/issuer"
+	"github.com/hei-/bambuflow/services/gateway/internal/ratelimit"
+	"github.com/hei-/bambuflow/services/gateway/internal/roles"
+	"github.com/hei-/bambuflow/services/gateway/internal/tenantsync"
 )
 
 func main() {
@@ -107,7 +108,7 @@ func auditShipper(ctx context.Context, w *audit.Writer, log *slog.Logger) (*audi
 	if err != nil {
 		return nil, 0, err
 	}
-	return &audit.Shipper{W: w, Store: store, Prefix: "gateway/" + host + "/", Log: log}, every, nil
+	return &audit.Shipper{W: w, Store: store, Instance: host, Log: log}, every, nil
 }
 
 func envOr(name, def string) string {
@@ -131,14 +132,21 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	secret, err := vc.ReadKV(ctx, envOr("BF_SIGNING_KEY_MOUNT", "secret"), envOr("BF_SIGNING_KEY_PATH", "gateway/principal-signing"))
+	// 定期轮换（部署配置清单 P10，默认 30 天）：gateway 自己生成下一把写回 Vault，所以它的 Vault 角色要能写这个路径
+	rotateEvery, err := time.ParseDuration(envOr("BF_SIGNING_KEY_ROTATE_EVERY", "720h"))
 	if err != nil {
-		return fmt.Errorf("读取 Principal 签名密钥: %w", err)
+		return fmt.Errorf("BF_SIGNING_KEY_ROTATE_EVERY 不合法: %q", os.Getenv("BF_SIGNING_KEY_ROTATE_EVERY"))
 	}
-	iss, err := issuer.FromPEM(secret["private_key"])
-	if err != nil {
+	iss := issuer.Empty()
+	rotator := &issuer.Rotator{KV: vc, Mount: envOr("BF_SIGNING_KEY_MOUNT", "secret"),
+		Path: envOr("BF_SIGNING_KEY_PATH", "gateway/principal-signing"), Issuer: iss, Every: rotateEvery, Log: log, Now: time.Now}
+	if err := rotator.Validate(); err != nil {
 		return err
 	}
+	if err := rotator.Sync(ctx); err != nil {
+		return err
+	}
+	go rotator.Run(ctx, time.Minute)
 
 	dsn, err := env("BF_PG_DSN")
 	if err != nil {
@@ -171,6 +179,15 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	publicURL = strings.TrimSuffix(publicURL, "/")
+	// 审批类管理操作的加强认证（部署配置清单 P7，默认强制）：acr 的取值随平台授权服务的配置而定，没给就不启动
+	stepUpACR, err := env("BF_STEP_UP_ACR")
+	if err != nil {
+		return err
+	}
+	stepUpMaxAge, err := time.ParseDuration(envOr("BF_STEP_UP_MAX_AGE", "10m"))
+	if err != nil || stepUpMaxAge <= 0 {
+		return fmt.Errorf("BF_STEP_UP_MAX_AGE 不合法: %q", os.Getenv("BF_STEP_UP_MAX_AGE"))
+	}
 
 	auditW, err := audit.Open(envOr("BF_AUDIT_FILE", "/var/lib/gateway/audit/audit.jsonl"))
 	if err != nil {
@@ -225,10 +242,16 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	tenants := &tenantsync.Watcher{Client: configClient, Open: (&snapshot.Verifier{Client: configClient, Now: time.Now}).Open,
+	snapshotVerifier := &snapshot.Verifier{Client: configClient, Now: time.Now}
+	tenants := &tenantsync.Watcher{Client: configClient, Open: snapshotVerifier.Open,
 		PlatformClients: strings.Split(envOr("BF_PLATFORM_CLIENTS", "console"), ","), Instance: host, Log: log}
+	if dir := os.Getenv("BF_SNAPSHOT_CACHE_DIR"); dir != "" {
+		tenants.Cache = &snapshot.Cache{Dir: dir, Service: "gateway", Keys: snapshotVerifier, Now: time.Now}
+	}
 	if err := tenants.Refresh(ctx); err != nil {
-		return fmt.Errorf("取租户配置快照: %w", err)
+		if rerr := tenants.Restore(ctx); rerr != nil {
+			return fmt.Errorf("取租户配置快照: %w（本地快照: %w）", err, rerr)
+		}
 	}
 	go tenants.Watch(ctx)
 	go tenants.Run(ctx, time.Minute)
@@ -286,35 +309,41 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	instances := limits["BF_GATEWAY_INSTANCES"]
 
 	srv := &api.Server{
-		Verifier:      authn.NewVerifier(principal.NewJWKS(jwksURL, nil), platformIssuer, envOr("BF_SERVICE_ACCOUNT_PREFIX", "service-account-")),
-		Identities:    identity.NewPGStore(pool),
-		Tenants:       tenants.Registry,
-		Issuer:        iss,
-		Retrieval:     retrievalv1.NewRetrievalServiceClient(retrievalConn),
-		Orchestrator:  answerv1.NewAnswerServiceClient(orchestratorConn),
-		Batches:       batches,
-		Denials:       adminv1.NewEmergencyDenialAdminServiceClient(governanceConn),
-		IndexVersions: adminv1.NewIndexVersionAdminServiceClient(indexingConn),
-		Tombstones:    adminv1.NewTombstoneAdminServiceClient(indexingConn),
-		Rebuilds:      adminv1.NewRebuildAdminServiceClient(indexingConn),
-		AuditQuery:    adminv1.NewAuditAdminServiceClient(governanceConn),
-		Sources:       adminv1.NewSourceAdminServiceClient(governanceConn),
-		Experiments:   adminv1.NewExperimentAdminServiceClient(governanceConn),
-		Vocabularies:  adminv1.NewVocabularyAdminServiceClient(governanceConn),
-		Plugins:       adminv1.NewPluginAdminServiceClient(governanceConn),
-		Configs:       adminv1.NewConfigAdminServiceClient(governanceConn),
-		Ingest:        adminv1.NewIngestAdminServiceClient(processingConn),
-		Connectors:    adminv1.NewConnectorAdminServiceClient(connectorsConn),
-		Analysis:      adminv1.NewExperimentAnalysisServiceClient(evaluationConn),
-		Trends:        adminv1.NewQualityTrendServiceClient(evaluationConn),
-		Gates:         adminv1.NewEvalGateAdminServiceClient(evaluationConn),
-		Golden:        adminv1.NewGoldenSetAdminServiceClient(evaluationConn),
-		Audit:         auditW,
-		Limits:        &ratelimit.Limiter{Redis: rdb, Instances: instances, Log: log},
-		Slots:         &admission.Slots{Redis: rdb, Instances: instances, Lease: admission.DefaultLease, Log: log},
-		Quota:         &admission.Quota{Redis: rdb, Instances: instances, Location: tz, Log: log, Now: time.Now},
-		Overload:      admission.NewAdaptive(limits["BF_MAX_INFLIGHT"], time.Now),
-		UserStreams:   limits["BF_USER_STREAMS"],
+		Verifier:   authn.NewVerifier(principal.NewJWKS(jwksURL, nil), platformIssuer, envOr("BF_SERVICE_ACCOUNT_PREFIX", "service-account-")),
+		Identities: identity.NewPGStore(pool),
+		Tenants:    tenants.Registry,
+		Issuer:     iss,
+		// 业务系统代用户调用时的服务身份（gateway 详设 3.1）：入口代理校验客户端证书后把主题 DN 放在这个头里
+		ClientCertHeader: os.Getenv("BF_CLIENT_CERT_HEADER"),
+		Retrieval:        retrievalv1.NewRetrievalServiceClient(retrievalConn),
+		Orchestrator:     answerv1.NewAnswerServiceClient(orchestratorConn),
+		Batches:          batches,
+		Denials:          adminv1.NewEmergencyDenialAdminServiceClient(governanceConn),
+		IndexVersions:    adminv1.NewIndexVersionAdminServiceClient(indexingConn),
+		Tombstones:       adminv1.NewTombstoneAdminServiceClient(indexingConn),
+		Receipts:         adminv1.NewDeletionReceiptAdminServiceClient(indexingConn),
+		SnapshotSync:     adminv1.NewSnapshotSyncAdminServiceClient(governanceConn),
+		Rebuilds:         adminv1.NewRebuildAdminServiceClient(indexingConn),
+		AuditQuery:       adminv1.NewAuditAdminServiceClient(governanceConn),
+		Sources:          adminv1.NewSourceAdminServiceClient(governanceConn),
+		Experiments:      adminv1.NewExperimentAdminServiceClient(governanceConn),
+		Vocabularies:     adminv1.NewVocabularyAdminServiceClient(governanceConn),
+		Plugins:          adminv1.NewPluginAdminServiceClient(governanceConn),
+		Configs:          adminv1.NewConfigAdminServiceClient(governanceConn),
+		Ingest:           adminv1.NewIngestAdminServiceClient(processingConn),
+		Connectors:       adminv1.NewConnectorAdminServiceClient(connectorsConn),
+		Push:             ingestionv1.NewPushServiceClient(connectorsConn),
+		PushSources:      tenants.PushSource,
+		Analysis:         adminv1.NewExperimentAnalysisServiceClient(evaluationConn),
+		Trends:           adminv1.NewQualityTrendServiceClient(evaluationConn),
+		Gates:            adminv1.NewEvalGateAdminServiceClient(evaluationConn),
+		Golden:           adminv1.NewGoldenSetAdminServiceClient(evaluationConn),
+		Audit:            auditW,
+		Limits:           &ratelimit.Limiter{Redis: rdb, Instances: instances, Log: log},
+		Slots:            &admission.Slots{Redis: rdb, Instances: instances, Lease: admission.DefaultLease, Log: log},
+		Quota:            &admission.Quota{Redis: rdb, Instances: instances, Location: tz, Log: log, Now: time.Now},
+		Overload:         admission.NewAdaptive(limits["BF_MAX_INFLIGHT"], time.Now),
+		UserStreams:      limits["BF_USER_STREAMS"],
 		ClientRule: ratelimit.Rule{
 			Name: "client", Rate: float64(limits["BF_CLIENT_RPS"]), Burst: limits["BF_CLIENT_RPS"],
 		},
@@ -322,6 +351,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 			Name: "user-answers", Rate: float64(limits["BF_USER_ANSWER_RPS"]), Burst: limits["BF_USER_ANSWER_BURST"],
 		},
 		PublicURL: publicURL, AuthorizationServer: platformIssuer,
+		StepUp:     api.StepUp{ACR: strings.Split(stepUpACR, ","), MaxAge: stepUpMaxAge},
 		AdminRoles: adminRoles, Idempotency: &idempotency.Store{Redis: rdb},
 		Log: log,
 		Now: time.Now,

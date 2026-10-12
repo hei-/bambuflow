@@ -17,8 +17,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/outbox"
+	batchv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/batch/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/outbox"
 )
 
 // Retention 是批次结束后结果的保留时间（技术设计文档 13.5）。

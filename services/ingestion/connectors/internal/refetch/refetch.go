@@ -8,11 +8,13 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
 
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/streams"
 )
 
 // StreamKey 是 indexing 发出 RefetchRequested 的事件流。
@@ -92,6 +94,10 @@ func (r *RedisStream) Read(ctx context.Context, pending bool) ([]redis.XMessage,
 	if !r.started {
 		err := r.Client.XGroupCreateMkStream(ctx, StreamKey, r.group(), "0").Err()
 		if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+			return nil, err
+		}
+		// 每轮同步是新的 Pod、新的主机名：上一轮读了没确认的请求先认领过来（空闲 30 分钟以上，大于一轮同步的时长）
+		if _, err := streams.ClaimIdle(ctx, r.Client, StreamKey, r.group(), r.Consumer, 30*time.Minute); err != nil {
 			return nil, err
 		}
 		r.started = true

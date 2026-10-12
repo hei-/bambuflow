@@ -24,3 +24,16 @@ message PlatformEvent {
 //   batch.failed         批次结束，没有一条成功
 //   index.version.live   索引新版本上线
 //   source.revoked       数据源被撤销（object_id 为 src_）：connectors 据此对该源全部文档写删除标记
+
+// ChunkAclChanged 由 indexing 在文档权限变化或写删除标记后发出（retrieval 详设 3.5），发到 Redis 流 retrieval:chunk-acl，
+// retrieval 的每个副本各自读取（不用消费组），按文档 → 缓存键的反向索引删除检索结果缓存。缓存只用于提速，组装时还会按最新
+// 权限复核，所以这个事件丢了也不会越权，只是缓存里多留一会儿过时的结果（最多 10 分钟）。
+message ChunkAclChanged {
+  // 前缀 evt_
+  string event_id = 1;
+  // 权限变了或写了删除标记的文档；这些文档的全部块都按变化处理
+  repeated string doc_ids = 2;
+  // acl 或 tombstone
+  string change_type = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}

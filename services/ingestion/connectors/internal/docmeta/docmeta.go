@@ -31,6 +31,9 @@ type Meta struct {
 	Source         *SourceFields
 	// 源端字段的摘要：源系统只改了结构化字段（如把制度标为已废止）也要重新入库，元数据才会更新
 	SourceFingerprint string
+	// Partition 是文档所在的分区（知识库或目录），分区级数据源用它（总体设计 ADR-14）；ExplicitACL 表示源端给了单文档 ACL
+	Partition   string
+	ExplicitACL bool
 }
 
 // SourceFields 是源系统给出的结构化字段（入库管道详设第 7 节：来源优先级最高）。原样传给 processing，
@@ -42,6 +45,8 @@ type SourceFields struct {
 	EffectiveDate string   `json:"effective_date,omitempty" yaml:"effective_date"`
 	// effective / pending / repealed
 	Status string `json:"status,omitempty" yaml:"status"`
+	// 这份文档替代的文档（同一数据源里的 doc_id），入库管道详设第 7 节效力信息
+	Supersedes []string `json:"supersedes,omitempty" yaml:"supersedes"`
 }
 
 type fields struct {
@@ -51,6 +56,7 @@ type fields struct {
 	Classification string    `yaml:"classification"`
 	ACL            []string  `yaml:"acl"`
 	UpdatedAt      time.Time `yaml:"updated_at"`
+	Partition      string    `yaml:"partition"`
 	SourceFields   `yaml:",inline"`
 }
 
@@ -78,12 +84,16 @@ func Decode(raw []byte) (*Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	fp := sha256.Sum256([]byte(strings.Join(tokens, "\n") + "\n" + f.Classification))
 	m := &Meta{
 		DocID: f.ID, Title: f.Title, Owner: f.Owner, Classification: f.Classification, ACLTokens: tokens,
-		UpdatedAt: f.UpdatedAt, ACLFingerprint: hex.EncodeToString(fp[:]),
+		UpdatedAt: f.UpdatedAt, ACLFingerprint: Fingerprint(tokens, f.Classification), Partition: strings.TrimSpace(f.Partition), ExplicitACL: len(f.ACL) > 0,
 	}
-	if f.DocType != "" || f.Dept != "" || len(f.Topics) > 0 || f.EffectiveDate != "" || f.Status != "" {
+	for _, id := range f.Supersedes {
+		if !idPattern.MatchString(id) || id == f.ID {
+			return nil, fmt.Errorf("supersedes 里的 %q 不合法", id)
+		}
+	}
+	if f.DocType != "" || f.Dept != "" || len(f.Topics) > 0 || f.EffectiveDate != "" || f.Status != "" || len(f.Supersedes) > 0 {
 		if f.EffectiveDate != "" {
 			if _, err := time.Parse(time.DateOnly, f.EffectiveDate); err != nil {
 				return nil, fmt.Errorf("effective_date 应为 YYYY-MM-DD: %q", f.EffectiveDate)
@@ -125,4 +135,15 @@ func aclTokens(acl []string, owner string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// Fingerprint 是权限摘要：归一化 ACL 与密级的哈希。
+func Fingerprint(tokens []string, classification string) string {
+	fp := sha256.Sum256([]byte(strings.Join(tokens, "\n") + "\n" + classification))
+	return hex.EncodeToString(fp[:])
+}
+
+// Skipped 是清单里没能读出的一项（文件名与原因）：同步跳过它、照常处理其余文档，这一轮不推断删除（入库管道详设第 11 节）。
+type Skipped struct {
+	Name, Reason string
 }

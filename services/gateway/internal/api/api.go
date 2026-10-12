@@ -24,19 +24,21 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/audit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/authn"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/idempotency"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/identity"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/ratelimit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	batchv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/batch/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
+	"github.com/hei-/bambuflow/services/gateway/internal/audit"
+	"github.com/hei-/bambuflow/services/gateway/internal/authn"
+	"github.com/hei-/bambuflow/services/gateway/internal/idempotency"
+	"github.com/hei-/bambuflow/services/gateway/internal/identity"
+	"github.com/hei-/bambuflow/services/gateway/internal/issuer"
+	"github.com/hei-/bambuflow/services/gateway/internal/ratelimit"
+	"github.com/hei-/bambuflow/services/gateway/internal/roles"
 )
 
 const (
@@ -59,6 +61,8 @@ const (
 type IdentityStore interface {
 	Lookup(ctx context.Context, username string) (identity.User, bool, error)
 	LastSync(ctx context.Context) (time.Time, error)
+	// Unknown 返回平台身份库里不存在的用户与群组
+	Unknown(ctx context.Context, users, groups []string) ([]string, []string, error)
 }
 
 type AuditWriter interface {
@@ -90,14 +94,19 @@ type Server struct {
 	Configs       adminv1.ConfigAdminServiceClient
 	Ingest        adminv1.IngestAdminServiceClient
 	Tombstones    adminv1.TombstoneAdminServiceClient
+	Receipts      adminv1.DeletionReceiptAdminServiceClient
+	SnapshotSync  adminv1.SnapshotSyncAdminServiceClient
 	Rebuilds      adminv1.RebuildAdminServiceClient
 	Connectors    adminv1.ConnectorAdminServiceClient
-	Analysis      adminv1.ExperimentAnalysisServiceClient
-	Trends        adminv1.QualityTrendServiceClient
-	Gates         adminv1.EvalGateAdminServiceClient
-	Golden        adminv1.GoldenSetAdminServiceClient
-	Audit         AuditWriter
-	Limits        RateLimiter
+	// Push 是 connectors 的推送入库（push.go）；PushSources 按数据源取推送登记（与租户配置同一份快照，internal/tenantsync）
+	Push        ingestionv1.PushServiceClient
+	PushSources func(sourceID string) (*configv1.PushSource, bool)
+	Analysis    adminv1.ExperimentAnalysisServiceClient
+	Trends      adminv1.QualityTrendServiceClient
+	Gates       adminv1.EvalGateAdminServiceClient
+	Golden      adminv1.GoldenSetAdminServiceClient
+	Audit       AuditWriter
+	Limits      RateLimiter
 	// 限流规则（gateway 详设 5.1，部署配置清单）：每个调用方应用一个桶；用户的问答一个桶
 	ClientRule, UserAnswerRule ratelimit.Rule
 	// 租户并发与每用户并发 SSE 流（gateway 详设 5.1、第 6 节）
@@ -111,8 +120,12 @@ type Server struct {
 	// PublicURL 是 gateway 对外的根地址（如 https://rag.corp.example），MCP 的资源标识为 PublicURL + "/mcp"；
 	// AuthorizationServer 是平台授权服务的签发方地址，写进受保护资源元数据（gateway 详设 7.2）
 	PublicURL, AuthorizationServer string
+	// ClientCertHeader 是入口代理放校验过的客户端证书主题 DN 的请求头（部署配置）；为空时不接受业务系统代用户调用
+	ClientCertHeader string
 	// AdminRoles 把平台身份库的群组映射成平台角色，管理接口按它做 RBAC（gateway 详设 4.2）
 	AdminRoles roles.Map
+	// StepUp 是审批类管理操作要求的加强认证（governance 详设 9.1，部署配置清单 P7）
+	StepUp StepUp
 	// Idempotency 记管理写操作的幂等键（gateway 详设 4.3）
 	Idempotency *idempotency.Store
 	Log         *slog.Logger
@@ -127,12 +140,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/answers", s.wrap("answers", maxBody, s.answers))
 	mux.HandleFunc("POST /v1/compat/chat/completions", s.wrap("compat_chat_completions", maxBody, s.compatChatCompletions))
 	mux.HandleFunc("POST /mcp", s.wrap("mcp", maxBody, s.mcp))
+	// 推送入库（push.go）：只接受登记过的推送客户端的服务身份
+	mux.HandleFunc("PUT /v1/sources/{source_id}/documents/{doc_id}", s.wrap("push_document", maxPushBody, s.putDocument))
+	mux.HandleFunc("DELETE /v1/sources/{source_id}/documents/{doc_id}", s.wrap("push_delete", maxBody, s.deletePushedDocument))
+	mux.HandleFunc("POST /v1/sources/{source_id}/documents/batch", s.wrap("push_batch", maxPushBatchBody, s.batchPush))
 	mux.HandleFunc("GET /mcp", mcpMethodNotAllowed)
 	mux.HandleFunc("DELETE /mcp", mcpMethodNotAllowed)
 	mux.HandleFunc("GET "+mcpResourcePath, s.resourceMetadata)
 	mux.HandleFunc("GET /v1/documents/{doc_id}/preview", s.wrap("preview", maxBody, s.preview))
 	mux.HandleFunc("GET /v1/answers/{answer_id}", s.wrap("answer-replay", maxBody, s.getAnswer))
 	mux.HandleFunc("POST /v1/answers/{answer_id}/feedback", s.wrap("answer-feedback", maxBody, s.createFeedback))
+	mux.HandleFunc("DELETE /v1/conversations/{conversation_id}", s.wrap("conversation-delete", maxBody, s.deleteConversation))
 	mux.HandleFunc("POST /v1/batches", s.wrap("batches", maxBatchBody, s.createBatch))
 	mux.HandleFunc("GET /v1/batches/{batch_id}", s.wrap("batches", maxBody, s.getBatch))
 	mux.HandleFunc("POST /v1/batches/{batch_id}/cancel", s.wrap("batches", maxBody, s.cancelBatch))
@@ -157,6 +175,14 @@ type call struct {
 	access   string
 	question string
 	blocks   *answerv1.AuditBlocks // 问答的三类块，只进审计
+	// 将要发出、还没写单独访问记录的受限级块与文档（restricted.go）
+	restricted *answerv1.AuditBlocks
+	// 问答或检索用到的版本、问答的状态与已推送句子的摘要，只进审计
+	versions     *audit.Versions
+	answerStatus string
+	answerSHA    string
+	// 流式问答已推送的句子，算回答摘要用
+	pushed   []string
 	endpoint string
 	start    time.Time
 	ctx      context.Context
@@ -195,10 +221,12 @@ var (
 	problemUnauth       = problem{http.StatusUnauthorized, "unauthenticated", "令牌缺失或无效"}
 	problemUserRequired = problem{http.StatusUnauthorized, "user_identity_required", "需要代表终端用户的令牌"}
 	problemForbidden    = problem{http.StatusForbidden, "forbidden", "无权使用该租户或功能"}
-	problemNotEnabled   = problem{http.StatusForbidden, "answers_not_enabled", "该租户的问答尚未对你开放"}
-	problemNotFound     = problem{http.StatusNotFound, "not_found", "资源不存在"}
-	problemTooLarge     = problem{http.StatusRequestEntityTooLarge, "payload_too_large", "请求超出上限"}
-	problemRateLimited  = problem{http.StatusTooManyRequests, "rate_limited", "请求过于频繁，请稍后重试"}
+	// 审批类管理操作要求最近做过加强认证（RFC 9470），响应带 WWW-Authenticate 告诉客户端要求的 acr 与时限
+	problemStepUp      = problem{http.StatusUnauthorized, "insufficient_user_authentication", "该操作需要重新认证"}
+	problemNotEnabled  = problem{http.StatusForbidden, "answers_not_enabled", "该租户的问答尚未对你开放"}
+	problemNotFound    = problem{http.StatusNotFound, "not_found", "资源不存在"}
+	problemTooLarge    = problem{http.StatusRequestEntityTooLarge, "payload_too_large", "请求超出上限"}
+	problemRateLimited = problem{http.StatusTooManyRequests, "rate_limited", "请求过于频繁，请稍后重试"}
 	// 不带 Retry-After：当日不会恢复，调用方不应自动重试（技术设计文档 13.10）
 	problemQuota       = problem{http.StatusTooManyRequests, "quota_exceeded", "租户当日的问答配额已用尽，仅检索照常可用"}
 	problemOverloaded  = problem{http.StatusServiceUnavailable, "service_unavailable", "服务繁忙，请稍后重试"}
@@ -225,6 +253,13 @@ func (s *Server) wrap(endpoint string, limit int64, h handlerFunc) http.HandlerF
 		body, err := h(w, r, c)
 		if c.streamed {
 			return
+		}
+		if err == nil {
+			// 受限级内容先写单独的访问记录，写不进去就不返回（fail-closed）
+			if rerr := s.writeRestricted(c); rerr != nil {
+				s.Log.ErrorContext(ctx, "受限级访问记录写入失败", slog.Any("err", rerr))
+				err = problemUnavailable
+			}
 		}
 
 		status := http.StatusOK
@@ -277,6 +312,7 @@ func (s *Server) writeAudit(c *call, status int, reason, stream string) error {
 		CandidateChunkIDs: c.blocks.GetCandidateChunkIds(), ContextChunkIDs: c.blocks.GetContextChunkIds(),
 		ShownChunkIDs: c.blocks.GetShownChunkIds(), ListedDocIDs: c.blocks.GetListedDocIds(), TotalCount: c.blocks.GetTotalCount(),
 		PromptTokens: c.usage.GetPromptTokens(), CompletionTokens: c.usage.GetCompletionTokens(),
+		Versions: c.versions, AnswerStatus: c.answerStatus, AnswerSHA: c.answerSHA,
 		Access: c.access, Admin: c.admin,
 	})
 }
@@ -361,8 +397,15 @@ func (s *Server) authorize(r *http.Request, c *call, a access) (string, *tenancy
 		return "", nil, problemUnauth
 	}
 	c.sub, c.actor, c.authTime = caller.Username, caller.ClientID, caller.AuthTime
+	if err := s.checkOnBehalf(r, c, caller); err != nil {
+		return "", nil, err
+	}
 	clientRule := s.ClientRule
 	if a.mcp {
+		if caller.Act != "" {
+			// MCP 的 agent 走授权码流程，不做令牌交换
+			return "", nil, problemForbidden
+		}
 		agent, ok := s.Tenants().Agent(caller.ClientID)
 		if !ok {
 			// 未登记的 agent 即使拿到了用户令牌也拒绝（gateway 详设 7.2），不再查身份库

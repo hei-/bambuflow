@@ -5,8 +5,11 @@ from typing import Any
 
 import grpc
 from bambuflow_processing import pii
-from bambuflow_processing.state import IngestState
-from bambuflow_processing.worker import STREAM, Worker
+from bambuflow_processing.enrich import Enricher
+from bambuflow_processing.metadata import Guess
+from bambuflow_processing.parsers import parse
+from bambuflow_processing.state import REBUILD_NAMESPACE, IngestState
+from bambuflow_processing.worker import STREAM, RedisStream, Throttle, Worker
 from bambuflow_vocabulary import Term, Vocabularies, Vocabulary
 
 from bambuflow.common.v1 import types_pb2
@@ -19,6 +22,7 @@ class FakeStream:
     def __init__(self, pending: list[tuple[str, bytes]], new: list[tuple[str, bytes]]) -> None:
         self.pending, self.new = pending, new
         self.acked: list[str] = []
+        self.retries: list[str] = []
 
     def read(self, pending: bool) -> list[tuple[str, bytes]]:
         if pending:
@@ -29,6 +33,9 @@ class FakeStream:
 
     def ack(self, msg_id: str) -> None:
         self.acked.append(msg_id)
+
+    def retry_later(self, msg_id: str) -> None:
+        self.retries.append(msg_id)
 
 
 class FakeRaw:
@@ -41,9 +48,15 @@ class FakeRaw:
 
 class FakeEmbedder:
     model_version = "bge-m3@mock"
+    sparse = False
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [[0.0] * 1024 for _ in texts]
+
+    def embed_full(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[dict[int, float]] | None]:
+        return self.embed(texts), None
 
 
 VOCAB = Vocabularies(
@@ -86,9 +99,15 @@ class FakeRedis:
     def xadd(self, stream: str, fields: dict[str, Any]) -> None:
         self.streams.setdefault(stream, []).append(fields)
 
+    def scan_iter(self, match: str, count: int = 0) -> list[str]:
+        prefix = match.rstrip("*")
+        return [k for k in self.h if k.startswith(prefix)]
+
 
 def make_worker(*args: Any, **kw: Any) -> Worker:
     kw.setdefault("state", IngestState(FakeRedis(), "p-test"))
+    # 测试在进程内解析，不配 OCR
+    kw.setdefault("parse", lambda ct, data, title: parse(ct, data, title, None))
     return Worker(*args, vocab=VOCAB, **kw)
 
 
@@ -98,21 +117,10 @@ class FakeWriter:
     ) -> None:
         self.result = result
         self.requests: list[index_writer_pb2.WriteDocumentRequest] = []
-        self.tombstones: list[index_writer_pb2.TombstoneDocumentRequest] = []
-        self.acl_updates: list[index_writer_pb2.UpdateAclRequest] = []
-        self.tombstone_result = index_writer_pb2.TOMBSTONE_RESULT_TOMBSTONED
 
     def WriteDocument(self, request: Any, timeout: float) -> Any:
         self.requests.append(request)
         return index_writer_pb2.WriteDocumentResponse(result=self.result, index_version="ix-1")
-
-    def UpdateAcl(self, request: Any, timeout: float) -> Any:
-        self.acl_updates.append(request)
-        return index_writer_pb2.UpdateAclResponse(result=index_writer_pb2.ACL_RESULT_UPDATED)
-
-    def TombstoneDocument(self, request: Any, timeout: float) -> Any:
-        self.tombstones.append(request)
-        return index_writer_pb2.TombstoneDocumentResponse(result=self.tombstone_result)
 
 
 def envelope(doc: str, content_hash: str = "h1") -> dict[str, Any]:
@@ -168,6 +176,73 @@ def test_writes_document_with_spans_acl_and_versions() -> None:
         "effective_date",
         "validity_status",
     ]
+
+
+class CountingEmbedder(FakeEmbedder):
+    def __init__(self) -> None:
+        self.texts: list[str] = []
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        self.texts += texts
+        return [[0.5] * 1024 for _ in texts]
+
+
+class FakeCache:
+    """按块的向量缓存：记下写入过的输入摘要，命中时返回向量。"""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.vectors: dict[str, list[float]] = {}
+        self.fail = fail
+
+    def LookupVectors(self, request: Any, timeout: float) -> Any:
+        if self.fail:
+            raise grpc.RpcError()
+        assert request.embedding_model_version == "bge-m3@mock"
+        return index_writer_pb2.LookupVectorsResponse(
+            vectors=[
+                index_writer_pb2.CachedVector(input_hash=h, embedding=self.vectors[h])
+                for h in request.input_hashes
+                if h in self.vectors
+            ]
+        )
+
+
+def test_vector_cache_skips_unchanged_chunks() -> None:
+    cache, embedder, writer = FakeCache(), CountingEmbedder(), FakeWriter()
+    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
+    make_worker(
+        FakeStream([], [("1-0", event("credit"))]), raw, embedder, writer, vector_cache=cache
+    ).run_once()
+    first = writer.requests[0]
+    written = list(first.chunks)
+    if first.HasField("enrichment"):
+        written.append(first.enrichment.summary_chunk)
+    assert len(embedder.texts) == len(written)
+    assert all(len(c.input_hash) == 64 for c in written)
+    # 入库后缓存里就有这些块；同样内容再来一次，一个块都不送嵌入模型，向量照旧
+    cache.vectors = {c.input_hash: list(c.embedding) for c in written}
+    embedder.texts = []
+    make_worker(
+        FakeStream([], [("2-0", event("credit"))]), raw, embedder, writer, vector_cache=cache
+    ).run_once()
+    assert embedder.texts == []
+    assert [list(c.embedding) for c in writer.requests[1].chunks] == [
+        list(c.embedding) for c in first.chunks
+    ]
+
+
+def test_vector_cache_unavailable_embeds_everything() -> None:
+    embedder, writer = CountingEmbedder(), FakeWriter()
+    stats = make_worker(
+        FakeStream([], [("1-0", event("credit"))]),
+        FakeRaw({"s3://raw/credit": envelope("credit")}),
+        embedder,
+        writer,
+        vector_cache=FakeCache(fail=True),
+    ).run_once()
+    req = writer.requests[0]
+    assert stats.written == 1
+    assert len(embedder.texts) == len(req.chunks) + (1 if req.HasField("enrichment") else 0)
 
 
 def test_summary_chunk_is_written_with_its_own_vector() -> None:
@@ -292,6 +367,21 @@ def test_retryable_failure_stays_pending_until_five_attempts() -> None:
     assert [d["attempts"] for d in state.dead_letters()] == [5]
 
 
+def test_rebuild_worker_state_is_separate() -> None:
+    # 重建用的 worker 与线上模型的 worker 处理同一批事件：一边成功不能清掉另一边的死信与重试计数
+    rdb = FakeRedis()
+    live = IngestState(rdb, "p-test")
+    rebuild = IngestState(rdb, "p-test", namespace=REBUILD_NAMESPACE)
+    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
+    stream = FakeStream([("1-0", event("credit", content_hash="other"))], [])
+    make_worker(stream, raw, FakeEmbedder(), FakeWriter(), state=rebuild).run_once()
+    stream = FakeStream([("1-0", event("credit"))], [])
+    make_worker(stream, raw, FakeEmbedder(), FakeWriter(), state=live).run_once()
+    assert [d["doc_id"] for d in rebuild.dead_letters()] == ["credit"]
+    assert not live.dead_letters()
+    assert (live.status("credit") or {})["state"] != "dead_letter"
+
+
 def test_model_mismatch_waits_for_rebuild_without_dead_letter() -> None:
     state = IngestState(FakeRedis(), "p-test")
     raw = FakeRaw({"s3://raw/credit": envelope("credit")})
@@ -305,9 +395,7 @@ def test_model_mismatch_waits_for_rebuild_without_dead_letter() -> None:
     assert not state.dead_letters()
 
 
-class DownEmbedder:
-    model_version = "bge-m3@mock"
-
+class DownEmbedder(FakeEmbedder):
     def embed(self, texts: list[str]) -> list[list[float]]:
         raise OSError("connection refused")
 
@@ -356,20 +444,20 @@ def test_replay_requeues_event_and_quarantines_after_three() -> None:
     assert (status["state"], status["error_code"], status["batch_id"]) == ("written", "", batch)
 
 
-class DownWriter(FakeWriter):
-    def TombstoneDocument(self, request: Any, timeout: float) -> Any:
-        raise grpc.RpcError("indexing 不可用")
-
-
-def test_delete_failures_retry_forever_and_never_dead_letter() -> None:
+def test_delete_and_acl_events_on_content_stream_are_rejected() -> None:
+    """删除与仅权限变化走 ingest:document-access 由 indexing 处理；
+    发错到内容流的直接进死信，不悄悄跳过。"""
     state = IngestState(FakeRedis(), "p-test")
-    for _ in range(7):
-        stream = FakeStream([("1-0", event("gone", events_pb2.CHANGE_TYPE_DELETE))], [])
-        stats = make_worker(
-            stream, FakeRaw({}), FakeEmbedder(), DownWriter(), state=state
-        ).run_once()
-        assert stats.failed == ["gone"] and stream.acked == []
-    assert (state.status("gone") or {})["stage"] == "delete" and not state.dead_letters()
+    stream = FakeStream(
+        [],
+        [
+            ("1-0", event("gone", events_pb2.CHANGE_TYPE_DELETE)),
+            ("2-0", event("credit", events_pb2.CHANGE_TYPE_ACL_ONLY)),
+        ],
+    )
+    stats = make_worker(stream, FakeRaw({}), FakeEmbedder(), FakeWriter(), state=state).run_once()
+    assert stats.dead_lettered == 2 and stream.acked == ["1-0", "2-0"]
+    assert {d["error_code"] for d in state.dead_letters()} == {"unsupported_event"}
 
 
 def test_pending_messages_retried_once_then_new_ones() -> None:
@@ -448,51 +536,6 @@ def test_binary_document_with_tampered_content_is_not_written() -> None:
     assert stats.failed == ["rate"] and writer.requests == [] and stats.dead_lettered == 1
 
 
-def test_delete_event_writes_tombstone_without_reading_raw() -> None:
-    stream = FakeStream([], [("1-0", event("gone", events_pb2.CHANGE_TYPE_DELETE))])
-    writer = FakeWriter()
-    stats = make_worker(stream, FakeRaw({}), FakeEmbedder(), writer).run_once()
-    assert stats.deleted == 1 and stream.acked == ["1-0"] and writer.requests == []
-    assert writer.tombstones[0].doc_id == "gone" and writer.tombstones[0].source_id == "src_wiki"
-    # 删除时间早于已入库内容（文档已在源端重新创建）：不生效，计为过期，消息确认
-    writer = FakeWriter()
-    writer.tombstone_result = index_writer_pb2.TOMBSTONE_RESULT_STALE
-    stream = FakeStream([], [("2-0", event("gone", events_pb2.CHANGE_TYPE_DELETE))])
-    stats = make_worker(stream, FakeRaw({}), FakeEmbedder(), writer).run_once()
-    assert stats.stale == 1 and stats.deleted == 0 and stream.acked == ["2-0"]
-
-
-def test_acl_only_event_updates_acl_without_embedding() -> None:
-    class CountingEmbedder(FakeEmbedder):
-        calls = 0
-
-        def embed(self, texts: list[str]) -> list[list[float]]:
-            CountingEmbedder.calls += 1
-            return super().embed(texts)
-
-    stream = FakeStream([], [("1-0", event("credit", events_pb2.CHANGE_TYPE_ACL_ONLY))])
-    writer = FakeWriter()
-    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
-    stats = make_worker(stream, raw, CountingEmbedder(), writer).run_once()
-    assert stats.acl_updated == 1 and stream.acked == ["1-0"] and writer.requests == []
-    assert CountingEmbedder.calls == 0, "快速通道不应重算向量"
-    req = writer.acl_updates[0]
-    assert list(req.acl_tokens) == ["group:risk-dept"]
-    assert req.classification == types_pb2.CLASSIFICATION_CONFIDENTIAL
-
-
-def test_acl_only_for_binary_document_reads_only_the_envelope() -> None:
-    """共享盘的二进制文档走同一条快速通道：只读文档包里的权限与密级，不取原文、不解析。"""
-    data = SAMPLE_PDF.read_bytes()
-    env = binary_envelope(data)
-    raw = FakeBinaryRaw({"s3://raw/rate": json.dumps(env).encode()})  # 没有原文对象：读到就会失败
-    stream = FakeStream([], [("1-0", event("rate", events_pb2.CHANGE_TYPE_ACL_ONLY))])
-    writer = FakeWriter()
-    stats = make_worker(stream, raw, FakeEmbedder(), writer).run_once()
-    assert stats.acl_updated == 1 and stream.acked == ["1-0"] and writer.requests == []
-    assert list(writer.acl_updates[0].acl_tokens) == ["group:credit-l2"]
-
-
 class FakeKeys:
     key_id = "bambuflow-pii"
 
@@ -526,3 +569,264 @@ def test_pii_is_masked_in_index_and_originals_are_sealed() -> None:
             o for _, _, o in pii.unseal(b"k" * 32, with_pii.chunk_id, with_pii.pii.ciphertext)
         ]
         assert originals == ["13812345678", "zhang.san"]
+
+
+class StreamRedis:
+    """RedisStream 用到的流命令：按时间算挂起消息的空闲时长；
+    每次阻塞读新消息时时间前进 10 秒，读到第 n 轮后停。"""
+
+    def __init__(self, msgs: list[tuple[str, bytes]], rounds: int) -> None:
+        self.t = 0.0
+        self.rounds = rounds
+        self.entries = dict(msgs)
+        self.new = [m for m, _ in msgs]
+        # 挂起列表：消息 ID → (消费者, 最近一次投递的时间)
+        self.pel: dict[str, tuple[str, float]] = {}
+        self.h: dict[str, dict[str, str]] = {}
+
+    def xgroup_create(self, *a: Any, **kw: Any) -> None:
+        pass
+
+    def xreadgroup(self, group: str, consumer: str, streams: Any, count: int, block: int) -> Any:
+        self.t += 10
+        self.rounds -= 1
+        out = [(m.encode(), {b"pb": self.entries[m]}) for m in self.new]
+        for m in self.new:
+            self.pel[m] = (consumer, self.t)
+        self.new = []
+        return [(STREAM.encode(), out)] if out else []
+
+    def _idle_ms(self, m: str) -> float:
+        return (self.t - self.pel[m][1]) * 1000
+
+    def xclaim(self, stream: str, group: str, consumer: str, min_idle: int, ids: list[str]) -> Any:
+        got = [m for m in ids if m in self.pel and self._idle_ms(m) >= min_idle]
+        for m in got:
+            self.pel[m] = (consumer, self.t)
+        return [(m.encode(), {b"pb": self.entries[m]}) for m in got]
+
+    def xautoclaim(
+        self, stream: str, group: str, consumer: str, min_idle: int, start: str, count: int
+    ) -> Any:
+        return [b"0-0", self.xclaim(stream, group, consumer, min_idle, list(self.pel)), []]
+
+    def xpending_range(self, stream: str, group: str, lo: str, hi: str, count: int) -> list[Any]:
+        return [{"message_id": lo}] if lo in self.pel else []
+
+    def xack(self, stream: str, group: str, msg_id: str) -> None:
+        self.pel.pop(msg_id, None)
+
+    def hgetall(self, key: str) -> dict[str, str]:
+        return dict(self.h.get(key, {}))
+
+    def hget(self, key: str, field: str) -> str | None:
+        return self.h.get(key, {}).get(field)
+
+    def hset(self, key: str, field: str, value: str) -> None:
+        self.h.setdefault(key, {})[field] = value
+
+    def hdel(self, key: str, field: str) -> None:
+        self.h.get(key, {}).pop(field, None)
+
+    def hexists(self, key: str, field: str) -> bool:
+        return field in self.h.get(key, {})
+
+
+class CountingWriter(FlakyWriter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def WriteDocument(self, request: Any, timeout: float) -> Any:
+        self.calls += 1
+        return super().WriteDocument(request, timeout)
+
+
+def test_serve_retries_with_exponential_backoff_until_dead_letter() -> None:
+    writer = CountingWriter()
+    state = IngestState(FakeRedis(), "p-test")
+    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
+    r = StreamRedis([("1-0", event("credit"))], rounds=60)
+    stream = RedisStream(r, now=lambda: r.t)
+    worker = make_worker(stream, raw, FakeEmbedder(), writer, state=state)
+    worker.serve(lambda: r.rounds <= 0, clock=lambda: r.t)
+    # 第 1 次立即处理，之后间隔 30、60、120、240 秒重试；第 5 次失败进死信并确认，不再重试
+    assert writer.calls == 5
+    assert "1-0" not in r.pel and r.h.get("processing:retry:processing") == {}
+    assert [d["attempts"] for d in state.dead_letters()] == [5]
+
+
+def test_retry_schedule_survives_restart_and_any_instance_takes_it() -> None:
+    """退避的次数与时间存在 Redis：换一个实例（新的主机名）也按到期时间接着重试，不提前、不丢。"""
+    r = StreamRedis([("1-0", event("credit"))], rounds=99)
+    first = RedisStream(r, now=lambda: r.t)
+    assert first.read(False)
+    first.retry_later("1-0")
+    first.retry_later("1-0")  # 第二次失败：退避 60 秒
+    second = RedisStream(r, now=lambda: r.t)
+    second._consumer = "new-pod"
+    r.t += 30
+    assert second.read(True) == []
+    r.t += 31
+    assert [m for m, _ in second.read(True)] == ["1-0"] and r.pel["1-0"][0] == "new-pod"
+    # 刚被认领：另一个实例同时扫到也认领不到
+    assert first.read(True) == []
+
+
+def test_stale_message_of_gone_consumer_is_redone() -> None:
+    r = StreamRedis([("1-0", event("credit"))], rounds=99)
+    gone = RedisStream(r, now=lambda: r.t)
+    gone.read(False)  # 读了，处理中途进程没了
+    other = RedisStream(r, now=lambda: r.t)
+    other._consumer = "new-pod"
+    assert other.read(True) == []
+    r.t += 46 * 60
+    assert [m for m, _ in other.read(True)] == ["1-0"]
+
+
+class FlakyEnricher(Enricher):
+    """增强前 failures 次整体失败（抽取式摘要也出错），之后照常。"""
+
+    failures = 1
+
+    def enrich(self, *args: Any, **kw: Any) -> Any:
+        if self.failures > 0:
+            self.failures -= 1
+            raise RuntimeError("增强失败")
+        return super().enrich(*args, **kw)
+
+
+def test_failed_enrichment_is_written_without_summary_then_redone() -> None:
+    t = {"now": 1000.0}
+    r = FakeRedis()
+    state = IngestState(r, "p-test", clock=lambda: t["now"])
+    body = "# 授信\n\n## 总则\n\n第一条 授信业务由信贷部统一管理。\n"
+    raw = FakeRaw({"s3://raw/credit": envelope("credit") | {"content": body}})
+    writer = FakeWriter()
+    stream = FakeStream([], [("1-0", event("credit"))])
+    worker = make_worker(stream, raw, FakeEmbedder(), writer, state=state)
+    worker._enricher = FlakyEnricher(VOCAB)
+    worker.run_once()
+    # 增强失败不阻塞入库：先不带摘要写入并确认
+    assert stream.acked == ["1-0"] and not writer.requests[0].HasField("enrichment")
+    assert state.requeue_enrich(STREAM) == 0  # 还没到 30 分钟
+    t["now"] += 30 * 60
+    assert state.requeue_enrich(STREAM) == 1 and len(r.streams[STREAM]) == 1
+    # 补做：原事件重新处理，这次带上摘要，记录清掉
+    worker._stream = FakeStream([], [("2-0", r.streams[STREAM][0]["pb"])])
+    worker.run_once()
+    assert writer.requests[1].HasField("enrichment")
+    t["now"] += 10 * 3600
+    assert state.requeue_enrich(STREAM) == 0
+
+
+def test_enrichment_gives_up_after_six_tries() -> None:
+    state = IngestState(FakeRedis(), "p-test")
+    evt = events_pb2.DocumentChanged.FromString(event("credit"))
+    assert all(state.enrich_failed(evt) for _ in range(6))
+    assert not state.enrich_failed(evt)
+
+
+def test_throttle_spaces_documents() -> None:
+    now = [0.0]
+    slept: list[float] = []
+
+    def sleep(d: float) -> None:
+        slept.append(d)
+        now[0] += d
+
+    t = Throttle(4, clock=lambda: now[0], sleep=sleep)
+    for _ in range(3):
+        t.wait()
+    assert slept == [0.25, 0.25]
+    # 处理本身慢于间隔时不再等
+    now[0] += 1
+    t.wait()
+    assert slept == [0.25, 0.25]
+
+
+class GuessingModel:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.seen: list[str] = []
+
+    def guess(self, title: str, chunks: Any, classification: int) -> Guess:
+        self.seen = [c.text for c in chunks]
+        if self.fail:
+            raise RuntimeError("模型超时")
+        return Guess(doc_type="办法", confidence={"doc_type": 0.9})
+
+
+def test_metadata_model_fills_missing_fields() -> None:
+    writer, model = FakeWriter(), GuessingModel()
+    make_worker(
+        FakeStream([], [("1-0", event("credit"))]),
+        FakeRaw({"s3://raw/credit": envelope("credit")}),
+        FakeEmbedder(),
+        writer,
+        metadata_model=model,
+    ).run_once()
+    md = writer.requests[0].metadata
+    assert md.doc_type == "DT-POLICY" and "doc_type" not in md.missing
+    # 模型抽取失败不阻塞入库，字段照旧缺失
+    writer2 = FakeWriter()
+    stats = make_worker(
+        FakeStream([], [("1-0", event("credit"))]),
+        FakeRaw({"s3://raw/credit": envelope("credit")}),
+        FakeEmbedder(),
+        writer2,
+        metadata_model=GuessingModel(fail=True),
+    ).run_once()
+    assert stats.written == 1 and "doc_type" in writer2.requests[0].metadata.missing
+
+
+class BrokenNer:
+    def entities(self, text: str) -> list[pii.Entity]:
+        raise pii.NerError("NER 服务不可用")
+
+
+def test_ner_failure_stops_at_mask_stage() -> None:
+    # 脱敏失败即停在本阶段，不跳过脱敏继续入库（入库管道详设第 11 节）
+    state = IngestState(FakeRedis(), "p-test")
+    writer = FakeWriter()
+    stats = make_worker(
+        FakeStream([], [("1-0", event("credit"))]),
+        FakeRaw({"s3://raw/credit": envelope("credit")}),
+        FakeEmbedder(),
+        writer,
+        state=state,
+        ner=BrokenNer(),
+    ).run_once()
+    assert stats.failed == ["credit"] and writer.requests == []
+    status = state.status("credit")
+    assert status is not None and status["stage"] == "mask"
+
+
+class SparseEmbedder(FakeEmbedder):
+    sparse = True
+
+    def __init__(self) -> None:
+        self.texts: list[str] = []
+
+    def embed_full(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[dict[int, float]] | None]:
+        self.texts += texts
+        return self.embed(texts), [{7: 0.5, 42: 1.25} for _ in texts]
+
+
+def test_sparse_vectors_reach_the_index_and_backfill_from_cache() -> None:
+    emb, writer = SparseEmbedder(), FakeWriter()
+    raw = FakeRaw({"s3://raw/credit": envelope("credit")})
+    make_worker(FakeStream([], [("1-0", event("credit"))]), raw, emb, writer).run_once()
+    assert all(dict(c.sparse) == {7: 0.5, 42: 1.25} for c in writer.requests[0].chunks)
+    # 缓存里只有稠密向量（启用稀疏召回之前入库的）：模型给稀疏向量时按未命中处理，补上稀疏向量
+    cache = FakeCache()
+    cache.vectors = {c.input_hash: list(c.embedding) for c in writer.requests[0].chunks}
+    emb.texts = []
+    make_worker(
+        FakeStream([], [("2-0", event("credit"))]), raw, emb, writer, vector_cache=cache
+    ).run_once()
+    assert len(emb.texts) == len(writer.requests[1].chunks) + (
+        1 if writer.requests[1].HasField("enrichment") else 0
+    )

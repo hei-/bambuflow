@@ -1,4 +1,4 @@
-"""审计查询（P3-M4，governance 详设 1.1、9.3）：审计岗按用户、文档、时间范围查 gateway 的入口审计；
+"""审计查询（P3-M4，governance 详设 1.1、9.3）：审计岗按用户、文档、时间范围查审计索引（H17b）；
 其他角色 403；查询本身既写 gateway 的管理审计，也写 governance 的变更审计。
 """
 
@@ -44,8 +44,8 @@ def test_auditor_queries_by_user_and_document() -> None:
     assert a["citations"], a
     doc = a["citations"][0]["doc_id"]
     found: list[dict[str, Any]] = []
-    # gateway 每 5 秒送一次审计段
-    for _ in range(30):
+    # gateway 每 5 秒送一次审计段，governance 每 30 秒把新送来的段写进审计索引
+    for _ in range(90):
         found = [
             r
             for r in query_all({**window(), "sub": "alice"})
@@ -79,7 +79,8 @@ def test_auditor_queries_by_user_and_document() -> None:
 def test_only_auditor_can_query() -> None:
     for user in ("olga", "ivan", "alice"):
         assert call(user, "GET", PATH, params=window()).status_code == 403, user
-    # 必须带时间范围，跨度不超过 31 天
+    # 必须带时间范围；跨度不限（走审计索引）
     assert call("audra", "GET", PATH, params={"sub": "alice"}).status_code == 400
     wide = {"from": "2026-01-01T00:00:00Z", "to": "2026-03-01T00:00:00Z"}
-    assert call("audra", "GET", PATH, params=wide).status_code == 400
+    assert call("audra", "GET", PATH, params=wide).status_code == 200
+    assert call("audra", "GET", PATH, params={**wide, "kind": "debug"}).status_code == 400

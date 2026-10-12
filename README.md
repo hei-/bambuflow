@@ -61,9 +61,10 @@
 | `services/indexing` | Go | 唯一的索引写入口：写入、版本发布与回滚（双人复核）、拒绝名单 |
 | `services/governance` | Go | 配置快照、受控词表、数据源注册与授权、紧急拒绝、实验登记、审计查询、身份同步、Webhook 投递 |
 | `services/evaluation` | Python | 回放评测与门禁、A/B 分析与护栏、在线抽样评审 |
+| `services/console` | TypeScript | 管理控制台：问答（流式、引用预览、why、反馈）与运维管理页，只调用 gateway |
 | `libs/` | Go / Python | 被至少两个模块使用的库：平台库（日志、遥测、Principal 校验）、逐句校验、受控词表、中文分段 |
-| `contracts/` | proto / OpenAPI | 模块之间与对外的全部接口，生成的代码在 `contracts/gen` |
-| `deploy/` | Compose / Helm | 开发环境（`deploy/compose`）、生产 chart（`deploy/helm/bambuflow`）、工具容器 |
+| `contracts/` | proto / OpenAPI | 模块之间与对外的全部接口，生成的代码在 `contracts/gen`（console 用的 TypeScript 类型在 `contracts/gen/ts`） |
+| `deploy/` | Compose / Helm | 开发环境（`deploy/compose`）、生产 chart（在线平面 `deploy/helm/bambuflow`、离线入库平面 `deploy/helm/bambuflow-ingest`）、工具容器 |
 | `golden/` | — | 评测集与基线 |
 | `tools/` | — | e2e、权限评测集、依赖与术语检查、测试数据与模拟服务、Helm 冒烟测试 |
 
@@ -102,7 +103,7 @@
 | 数据增强 | 文档摘要与关键词、受控元数据（按词表归一）、可疑指令标记 | `processing/enrich.py`、`metadata.py`、`injection.py` | 单测；`test_summaries.py`、`test_injection.py` |
 | 增量索引与回滚 | 按内容哈希增量入库、向量缓存复用；版本化索引，发布与回滚走双人复核；删除标记随回滚保留，删数据不会复活 | `indexing/internal/writer/`（`writer.go`、`versions.go`）、`connectors/internal/incremental/` | 单测；`test_index_admin.py`、`test_admin_index_versions.py` |
 | 结构化数据 | 表结构与字段说明入索引；业务数据由只读 sql_query 按调用者的数据库角色查询，只允许白名单视图 | `connectors/internal/dbschema/`、`orchestrator/structured.py` | `test_dbschema.py`、`test_structured_query.py` |
-| 访问控制（RBAC / ABAC） | 租户、群组、部门、密级组成 ACL；OPA 策略；召回前过滤、返回前复核、逐句校验再复核，一律 fail-closed；管理接口按平台角色 RBAC | `retrieval/internal/policy/`、`config/policy/authz.rego`、`gateway/internal/roles/` | 权限评测集（`make eval-perm`，120 项，越权 0） |
+| 访问控制（RBAC / ABAC） | 租户、群组、部门、密级组成 ACL；OPA 策略；召回前过滤、返回前复核、逐句校验再复核，一律 fail-closed；管理接口按平台角色 RBAC | `libs/platform-go/policy/`、`config/policies/global.rego`、`gateway/internal/roles/` | 权限评测集（`make eval-perm`，120 项，越权 0） |
 | 数据分级与掩码 | 文档带密级，按调用者密级过滤；身份证、手机号、银行卡号、邮箱入库时即等长掩码（索引只存掩码文本），检索返回与送入模型前再各掩码一道，回答记录同样掩码 | `processing/pii.py`、`retrieval/internal/redact/`、`orchestrator/redact.py` | `test_pii.py`；各语言共用的样例 `tools/test-upstream/pii_cases.json` |
 | 审计 | 每个请求一条入口审计（含检索候选、送入模型、展示给用户的三类块），先写本地队列再送开启对象锁的桶，写不进去就拒绝请求；管理审计、变更审计；审计岗按用户、文档、时间查询 | `gateway/internal/audit/`、`governance/internal/changeaudit/`、`auditquery/` | `test_audit.py`、`test_admin_audit.py` |
 | 加密与密钥管理 | 密钥与连接串只在 Vault（Secrets Operator 同步、Agent 注入），Principal 用 Vault 里的 ES256 密钥签名；PII 原值应用层信封加密：入库时等长掩码，原值用文档级数据密钥 AES-256-GCM 加密，数据密钥由 Vault transit 主密钥包裹，只为策略允许的调用者解开还原，解不开就返回掩码 | `processing/pii.py`、`retrieval/internal/pii/`、`gateway/internal/issuer/` | `test_pii.py`、`test_worker.py`、`pii_test.go`；`make helm-smoke` |
@@ -117,6 +118,11 @@
 ## 快速开始
 
 本机只需要 git、make 和 docker 客户端，不在本机编译。
+
+**演示**：`make demo` 一条命令起环境、入库样例数据，然后在浏览器里打开管理控制台 <http://localhost:27300>
+演示问答与管理操作；hosts 配置、演示账号与推荐路线见 [`docs/demo.md`](docs/demo.md)。
+
+**开发**：
 
 ```bash
 cp .env.local.example .env.local   # 按需填写；不填就用本机 Docker 与模拟的模型服务
@@ -134,11 +140,13 @@ make eval-perm && make eval        # 权限评测集与评测集
 
 | 命令 | 作用 |
 | --- | --- |
-| `make fix` | uv lock、ruff、go mod tidy、gofmt，并把改动拷回本地；改完代码先 fix 再 check |
+| `make fix` | uv lock、ruff、go mod tidy、gofmt、prettier，并把改动拷回本地；改完代码先 fix 再 check |
 | `make check` | lint + test + 依赖规则 + 术语检查 + Helm 检查；提交前至少跑这一项 |
 | `make contracts` | 重新生成契约代码并做 buf lint、兼容性与 OpenAPI 检查；动了 `contracts/` 必跑 |
 | `make up PROFILE=core,ingest` / `make down` | 起停开发环境（Compose） |
 | `make ingest` | 全量入库样例数据源并发布索引版本 |
+| `make reconcile` | 每日对账：与已入库的文档比对后同步一轮 |
+| `make demo` | 演示环境：up + ingest + reconcile，见 `docs/demo.md` |
 | `make e2e` | 端到端测试 |
 | `make eval-perm` | 权限评测集，越权必须为 0 |
 | `make eval` | 评测集，与提交的基线比较 |

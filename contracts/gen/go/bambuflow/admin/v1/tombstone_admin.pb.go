@@ -456,8 +456,8 @@ const file_bambuflow_admin_v1_tombstone_admin_proto_rawDesc = "" +
 	"revocation2\xf8\x01\n" +
 	"\x15TombstoneAdminService\x12m\n" +
 	"\x10RevokeTombstones\x12+.bambuflow.admin.v1.RevokeTombstonesRequest\x1a,.bambuflow.admin.v1.RevokeTombstonesResponse\x12p\n" +
-	"\x11ApproveRevocation\x12,.bambuflow.admin.v1.ApproveRevocationRequest\x1a-.bambuflow.admin.v1.ApproveRevocationResponseB\xe2\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x13TombstoneAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x11ApproveRevocation\x12,.bambuflow.admin.v1.ApproveRevocationRequest\x1a-.bambuflow.admin.v1.ApproveRevocationResponseB\xde\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x13TombstoneAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_tombstone_admin_proto_rawDescOnce sync.Once

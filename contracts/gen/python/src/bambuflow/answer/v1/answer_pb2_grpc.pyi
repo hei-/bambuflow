@@ -49,6 +49,10 @@ class AnswerServiceStub:
     """反馈（技术设计文档 F8、13.1）：有用 / 有误 / 引用不对，挂在对应回答下。只有提问人本人可提交，其他人一律 NOT_FOUND；
     同一提交人重复使用同一幂等键时返回已有反馈，内容不同时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
     """
+    DeleteConversation: _grpc.UnaryUnaryMultiCallable[_answer_pb2.DeleteConversationRequest, _answer_pb2.DeleteConversationResponse]
+    """删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）：只删会话存储里的摘要、问题与上轮引用，
+    审计记录与回答记录不受影响。会话不存在、已过期或不属于调用者时同样成功返回，不让调用方据此判断别人的会话是否存在。
+    """
 
 @_typing.type_check_only
 class AnswerServiceAsyncStub(AnswerServiceStub):
@@ -70,6 +74,10 @@ class AnswerServiceAsyncStub(AnswerServiceStub):
     CreateFeedback: _aio.UnaryUnaryMultiCallable[_answer_pb2.CreateFeedbackRequest, _answer_pb2.CreateFeedbackResponse]  # type: ignore[assignment]
     """反馈（技术设计文档 F8、13.1）：有用 / 有误 / 引用不对，挂在对应回答下。只有提问人本人可提交，其他人一律 NOT_FOUND；
     同一提交人重复使用同一幂等键时返回已有反馈，内容不同时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
+    """
+    DeleteConversation: _aio.UnaryUnaryMultiCallable[_answer_pb2.DeleteConversationRequest, _answer_pb2.DeleteConversationResponse]  # type: ignore[assignment]
+    """删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）：只删会话存储里的摘要、问题与上轮引用，
+    审计记录与回答记录不受影响。会话不存在、已过期或不属于调用者时同样成功返回，不让调用方据此判断别人的会话是否存在。
     """
 
 class AnswerServiceServicer(metaclass=_abc_1.ABCMeta):
@@ -113,6 +121,16 @@ class AnswerServiceServicer(metaclass=_abc_1.ABCMeta):
     ) -> _typing.Union[_answer_pb2.CreateFeedbackResponse, _abc.Awaitable[_answer_pb2.CreateFeedbackResponse]]:
         """反馈（技术设计文档 F8、13.1）：有用 / 有误 / 引用不对，挂在对应回答下。只有提问人本人可提交，其他人一律 NOT_FOUND；
         同一提交人重复使用同一幂等键时返回已有反馈，内容不同时返回 ALREADY_EXISTS（对外 409 idempotency_conflict）。
+        """
+
+    @_abc_1.abstractmethod
+    def DeleteConversation(
+        self,
+        request: _answer_pb2.DeleteConversationRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_answer_pb2.DeleteConversationResponse, _abc.Awaitable[_answer_pb2.DeleteConversationResponse]]:
+        """删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）：只删会话存储里的摘要、问题与上轮引用，
+        审计记录与回答记录不受影响。会话不存在、已过期或不属于调用者时同样成功返回，不让调用方据此判断别人的会话是否存在。
         """
 
 def add_AnswerServiceServicer_to_server(servicer: AnswerServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

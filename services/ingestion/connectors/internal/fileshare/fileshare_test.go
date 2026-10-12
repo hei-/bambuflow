@@ -28,9 +28,9 @@ func TestList(t *testing.T) {
 	write(t, dir, "rate.pdf"+MetaSuffix, meta)
 	write(t, dir, "mail.eml", "Subject: x\n\nbody")
 	write(t, dir, "mail.eml"+MetaSuffix, strings.Replace(meta, "fs-rate-notice", "fs-mail", 1))
-	files, err := List(dir)
-	if err != nil {
-		t.Fatal(err)
+	files, skipped, err := List(dir)
+	if err != nil || len(skipped) != 0 {
+		t.Fatal(err, skipped)
 	}
 	if len(files) != 2 || files[0].Name != "mail.eml" || files[1].Name != "rate.pdf" {
 		t.Fatalf("应按文件名排序列出两个文件: %v", files)
@@ -47,7 +47,8 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestListRejects(t *testing.T) {
+// 单个文件不合法时跳过它、记下原因，其余照常返回（入库管道详设第 11 节：单份文档失败不中止整轮）
+func TestListSkipsBadFiles(t *testing.T) {
 	for name, setup := range map[string]func(dir string){
 		"缺元数据文件": func(dir string) { write(t, dir, "a.pdf", "x") },
 		"元数据没有对应文件": func(dir string) {
@@ -61,12 +62,6 @@ func TestListRejects(t *testing.T) {
 			write(t, dir, "a.pdf", "")
 			write(t, dir, "a.pdf"+MetaSuffix, meta)
 		},
-		"id 重复": func(dir string) {
-			write(t, dir, "a.pdf", "x")
-			write(t, dir, "a.pdf"+MetaSuffix, meta)
-			write(t, dir, "b.pdf", "y")
-			write(t, dir, "b.pdf"+MetaSuffix, meta)
-		},
 		"元数据有未知字段": func(dir string) {
 			write(t, dir, "a.pdf", "x")
 			write(t, dir, "a.pdf"+MetaSuffix, meta+"visibility: all\n")
@@ -75,10 +70,26 @@ func TestListRejects(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			setup(dir)
-			if _, err := List(dir); err == nil {
-				t.Fatal("应整批拒绝")
+			write(t, dir, "ok.pdf", "%PDF 正常")
+			write(t, dir, "ok.pdf"+MetaSuffix, strings.Replace(meta, "fs-rate-notice", "fs-ok", 1))
+			files, skipped, err := List(dir)
+			if err != nil || len(files) != 1 || files[0].Name != "ok.pdf" || len(skipped) != 1 || skipped[0].Reason == "" {
+				t.Fatalf("应跳过坏文件、保留其余: %v %v %v", files, skipped, err)
 			}
 		})
+	}
+	// id 重复：先读到的保留，后一个跳过
+	dir := t.TempDir()
+	write(t, dir, "a.pdf", "x")
+	write(t, dir, "a.pdf"+MetaSuffix, meta)
+	write(t, dir, "b.pdf", "y")
+	write(t, dir, "b.pdf"+MetaSuffix, meta)
+	files, skipped, err := List(dir)
+	if err != nil || len(files) != 1 || files[0].Name != "a.pdf" || len(skipped) != 1 || skipped[0].Name != "b.pdf" {
+		t.Fatalf("id 重复: %v %v %v", files, skipped, err)
+	}
+	if _, _, err := List(filepath.Join(dir, "nope")); err == nil {
+		t.Fatal("目录读不了时整轮失败")
 	}
 }
 
@@ -86,12 +97,12 @@ func TestOnlyACLChangeKeepsContentHash(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "a.pdf", "%PDF 内容")
 	write(t, dir, "a.pdf"+MetaSuffix, meta)
-	before, err := List(dir)
+	before, _, err := List(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	write(t, dir, "a.pdf"+MetaSuffix, strings.Replace(meta, "group:credit-l2", "group:risk-dept", 1))
-	after, err := List(dir)
+	after, _, err := List(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

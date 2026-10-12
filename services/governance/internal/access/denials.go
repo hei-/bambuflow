@@ -17,9 +17,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/services/governance/internal/paging"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/services/governance/internal/paging"
 )
 
 // 平台角色（gateway 的 BF_ADMIN_ROLES_FILE 映射，governance 详设 9.1）
@@ -28,6 +28,7 @@ const (
 	RoleDataOwner     = "data_owner"
 	RolePlatformAdmin = "platform_admin"
 	RoleAuditor       = "auditor"
+	RoleOperator      = "platform_operator"
 )
 
 // Auditor 写变更审计（internal/changeaudit）。
@@ -47,7 +48,15 @@ type DenialStore interface {
 	ListDenials(ctx context.Context, offset, limit int) ([]Denial, error)
 	PendingDenials(ctx context.Context) ([]Denial, error)
 	MarkApplied(ctx context.Context, id string) (time.Time, error)
+	UnpublishedDenials(ctx context.Context) ([]Denial, error)
+	MarkPublished(ctx context.Context, id string) error
 	Source(ctx context.Context, id string) (Source, error)
+}
+
+// BackupChannel 把规则签名后发到事件流的独立主题（governance 详设 8.2 的备用通道）：索引库的拒绝名单写不进去时，
+// retrieval 仍能从这里拿到规则。
+type BackupChannel interface {
+	Publish(ctx context.Context, d Denial) error
 }
 
 // applyTimeout：写拒绝名单的单次超时。超时的规则保持 pending，由 Reconcile 重试。
@@ -69,7 +78,9 @@ type DenialServer struct {
 	Store DenialStore
 	Audit Auditor
 	Index Denier
-	Log   *slog.Logger
+	// Backup 是备用通道
+	Backup BackupChannel
+	Log    *slog.Logger
 }
 
 func newID(prefix string) string {
@@ -147,6 +158,9 @@ func (s *DenialServer) create(ctx context.Context, scope, target, reason string)
 		s.Log.ErrorContext(ctx, "登记紧急拒绝规则失败", slog.Any("err", err))
 		return Denial{}, false, errInternal
 	}
+	if d.PublishedAt == nil {
+		s.publish(ctx, &d)
+	}
 	if d.AppliedAt == nil {
 		s.apply(ctx, &d)
 	}
@@ -182,7 +196,24 @@ func (s *DenialServer) apply(ctx context.Context, d *Denial) {
 	s.Log.WarnContext(ctx, "紧急拒绝规则已生效", slog.String("denial_id", d.ID), slog.String("scope", d.Scope))
 }
 
-// Reconcile 每隔 every 把还没生效的规则重新写一遍拒绝名单，直到 ctx 结束。
+// publish 把规则发到备用通道；失败只记错误日志，Reconcile 重试。
+func (s *DenialServer) publish(ctx context.Context, d *Denial) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), applyTimeout)
+	defer cancel()
+	if err := s.Backup.Publish(ctx, *d); err != nil {
+		s.Log.ErrorContext(ctx, "紧急拒绝规则未能发到备用通道，稍后重试", slog.String("denial_id", d.ID), slog.Any("err", err))
+		return
+	}
+	if err := s.Store.MarkPublished(ctx, d.ID); err != nil {
+		// 已经发出去了，下一轮会再发一次：retrieval 按规则 ID 去重
+		s.Log.ErrorContext(ctx, "记录紧急拒绝规则发布时间失败", slog.String("denial_id", d.ID), slog.Any("err", err))
+		return
+	}
+	now := time.Now()
+	d.PublishedAt = &now
+}
+
+// Reconcile 每隔 every 把还没生效的规则重新写一遍拒绝名单、还没发到备用通道的重新发一遍，直到 ctx 结束。
 func (s *DenialServer) Reconcile(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
@@ -199,6 +230,14 @@ func (s *DenialServer) Reconcile(ctx context.Context, every time.Duration) {
 		}
 		for i := range pending {
 			s.apply(ctx, &pending[i])
+		}
+		unpublished, err := s.Store.UnpublishedDenials(ctx)
+		if err != nil {
+			s.Log.ErrorContext(ctx, "读取未发到备用通道的紧急拒绝规则失败", slog.Any("err", err))
+			continue
+		}
+		for i := range unpublished {
+			s.publish(ctx, &unpublished[i])
 		}
 	}
 }

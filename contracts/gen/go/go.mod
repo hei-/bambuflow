@@ -1,4 +1,4 @@
-module github.com/bambu-ai/bambuflow/contracts/gen/go
+module github.com/hei-/bambuflow/contracts/gen/go
 
 go 1.26.0
 

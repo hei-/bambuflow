@@ -6,22 +6,29 @@ import "google/protobuf/timestamp.proto";
 
 // AuditAdminService 是审计查询（技术设计文档 13.2，governance 详设 7.2），由 governance 实现，
 // gateway 的 GET /v1/admin/audit 调用，只给审计岗；每次查询本身写 governance 的变更审计。
-// 数据来自 gateway 送到审计桶的入口审计段：谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档。
+// 按审计索引（技术设计文档 4.1 audit_index）查，原文从审计桶读。三类记录：
+// access 是 gateway 的入口审计（谁来过、是否放行，问答的候选、上下文、展示三类块与列出的文档），
+// change 是各服务的变更审计（governance、indexing、connectors、evaluation），eval 是评测回放的请求（evaluation 详设 4.2）。
+// 索引在记录送进审计桶后约 1 分钟内可查。
 service AuditAdminService {
   rpc QueryAudit(QueryAuditRequest) returns (QueryAuditResponse);
 }
 
 message QueryAuditRequest {
-  // 按用户（平台账号）筛选；为空不限
+  // 按用户筛选：入口审计与评测回放是提问人（平台账号），变更审计是操作人；为空不限
   string sub = 1;
-  // 按文档筛选：文档出现在候选、上下文、展示的块或列出的文档里；为空不限
+  // 按文档筛选：文档出现在上下文、展示的块或列出的文档里，或是变更审计的对象；为空不限。
+  // 只出现在候选里的不进索引（技术设计文档 8.3），查不出来；返回的记录里 matched_in 会把候选一并列出
   string doc_id = 2;
-  // 时间范围（含两端），必填，跨度不超过 31 天
+  // 时间范围（含两端），必填，跨度不限
   google.protobuf.Timestamp from = 3;
   google.protobuf.Timestamp to = 4;
   // 1–200，0 时取 50
   int32 page_size = 5;
   string page_token = 6;
+  // 记录类别：access、change、eval、restricted（受限级内容的单独访问记录）；为空时为 access 与 change
+  //（评测回放不混进线上访问，受限级访问另有同一请求的 access 记录，要查时显式指定）
+  repeated string kinds = 7;
 }
 
 message QueryAuditResponse {
@@ -31,7 +38,8 @@ message QueryAuditResponse {
   string next_page_token = 2;
 }
 
-// AuditRecord 是一条入口审计（gateway 详设 8.1、8.2）。
+// AuditRecord 是一条审计记录：入口审计（gateway 详设 8.1、8.2）、评测回放（字段与入口审计相同），或变更审计
+// （governance 详设 9.3：sub 为操作人，另有 roles、action、object_id、detail_json）。
 message AuditRecord {
   google.protobuf.Timestamp time = 1;
   string trace_id = 2;
@@ -51,9 +59,44 @@ message AuditRecord {
   repeated string context_chunk_ids = 13;
   repeated string shown_chunk_ids = 14;
   repeated string listed_doc_ids = 15;
-  // 按文档查询时，文档出现在哪几类里：candidate、context、shown、listed
+  // 按文档查询时，文档出现在哪几类里：candidate、context、shown、listed，变更审计为 object
   repeated string matched_in = 16;
   // 管理接口才有：方法与路径
   string admin_method = 17;
   string admin_path = 18;
+  // 问答与检索用到的版本（技术设计文档 8.3）：回答记录按保留期销毁后仍能据此追溯
+  AuditVersions versions = 19;
+  // 问答的结果状态（answered、insufficient_evidence、refused 等）
+  string answer_status = 20;
+  // 已推送句子按顺序连接后的 SHA-256；审计不存回答原文
+  string answer_sha256 = 21;
+  // access、change、eval 或 restricted
+  string kind = 22;
+  // 写这条记录的服务：gateway、governance、indexing、connectors、evaluation
+  string source = 23;
+  // 变更审计才有：操作人的平台角色、动作（如 source.approve）、对象 ID 与动作的参数和依据（JSON）
+  repeated string roles = 24;
+  string action = 25;
+  string object_id = 26;
+  string detail_json = 27;
+  // 评测回放才有：所属的门禁
+  string gate_id = 28;
+}
+
+message AuditVersions {
+  string index_version = 1;
+  string policy_version = 2;
+  string embedding_model = 3;
+  string rerank_model = 4;
+  string generation_model = 5;
+  string prompt_version = 6;
+  string nli_model = 7;
+  string calculator_version = 8;
+  string experiment_id = 9;
+  string experiment_arm = 10;
+  // 降级与拒答原因，格式为“阶段:原因”
+  repeated string degraded = 11;
+  // 租户 pipeline 与全局 routing 的配置版本（cfv_ 前缀）
+  string pipeline_version = 12;
+  string routing_version = 13;
 }

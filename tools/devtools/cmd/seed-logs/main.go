@@ -16,7 +16,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 type entry struct {

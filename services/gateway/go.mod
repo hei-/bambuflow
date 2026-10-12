@@ -1,17 +1,17 @@
-module github.com/bambu-ai/bambuflow/services/gateway
+module github.com/hei-/bambuflow/services/gateway
 
 go 1.26.0
 
 replace (
-	github.com/bambu-ai/bambuflow/contracts/gen/go => ../../contracts/gen/go
-	github.com/bambu-ai/bambuflow/libs/platform-go => ../../libs/platform-go
+	github.com/hei-/bambuflow/contracts/gen/go => ../../contracts/gen/go
+	github.com/hei-/bambuflow/libs/platform-go => ../../libs/platform-go
 )
 
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
-	github.com/bambu-ai/bambuflow/contracts/gen/go v0.0.0-00010101000000-000000000000
-	github.com/bambu-ai/bambuflow/libs/platform-go v0.0.0-00010101000000-000000000000
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/hei-/bambuflow/contracts/gen/go v0.0.0-00010101000000-000000000000
+	github.com/hei-/bambuflow/libs/platform-go v0.0.0-00010101000000-000000000000
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/redis/go-redis/v9 v9.23.0
 	go.opentelemetry.io/otel v1.47.0
@@ -32,7 +32,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect

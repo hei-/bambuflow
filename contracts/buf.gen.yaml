@@ -3,7 +3,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/bambu-ai/bambuflow/contracts/gen/go
+      value: github.com/hei-/bambuflow/contracts/gen/go
 plugins:
   - remote: buf.build/protocolbuffers/go:v1.36.12
     out: gen/go

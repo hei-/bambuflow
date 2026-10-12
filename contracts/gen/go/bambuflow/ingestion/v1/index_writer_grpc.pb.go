@@ -19,9 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	IndexWriterService_WriteDocument_FullMethodName     = "/bambuflow.ingestion.v1.IndexWriterService/WriteDocument"
-	IndexWriterService_TombstoneDocument_FullMethodName = "/bambuflow.ingestion.v1.IndexWriterService/TombstoneDocument"
-	IndexWriterService_UpdateAcl_FullMethodName         = "/bambuflow.ingestion.v1.IndexWriterService/UpdateAcl"
+	IndexWriterService_WriteDocument_FullMethodName       = "/bambuflow.ingestion.v1.IndexWriterService/WriteDocument"
+	IndexWriterService_TombstoneDocument_FullMethodName   = "/bambuflow.ingestion.v1.IndexWriterService/TombstoneDocument"
+	IndexWriterService_UpdateAcl_FullMethodName           = "/bambuflow.ingestion.v1.IndexWriterService/UpdateAcl"
+	IndexWriterService_LookupVectors_FullMethodName       = "/bambuflow.ingestion.v1.IndexWriterService/LookupVectors"
+	IndexWriterService_SetPartitionGrants_FullMethodName  = "/bambuflow.ingestion.v1.IndexWriterService/SetPartitionGrants"
+	IndexWriterService_ListSourceDocuments_FullMethodName = "/bambuflow.ingestion.v1.IndexWriterService/ListSourceDocuments"
+	IndexWriterService_RecordPurge_FullMethodName         = "/bambuflow.ingestion.v1.IndexWriterService/RecordPurge"
 )
 
 // IndexWriterServiceClient is the client API for IndexWriterService service.
@@ -39,6 +43,17 @@ type IndexWriterServiceClient interface {
 	// UpdateAcl 只更新文档的权限与密级（快速通道，入库管道详设第 9 节）：不重算向量、不进待发布版本，
 	// 对线上立即生效。
 	UpdateAcl(ctx context.Context, in *UpdateAclRequest, opts ...grpc.CallOption) (*UpdateAclResponse, error)
+	// 按块的向量缓存（入库管道详设第 8 节）：按向量化输入的摘要与嵌入模型版本取已入库的向量，命中的块不再送嵌入模型。
+	// 只读，查不到的不在结果里；缓存不可用时调用方照常全部向量化。
+	LookupVectors(ctx context.Context, in *LookupVectorsRequest, opts ...grpc.CallOption) (*LookupVectorsResponse, error)
+	// 替换分区级数据源一个分区的全部被授权方（PartitionGrantChanged）；不改索引与文档权限。
+	SetPartitionGrants(ctx context.Context, in *SetPartitionGrantsRequest, opts ...grpc.CallOption) (*SetPartitionGrantsResponse, error)
+	// ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
+	// connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
+	ListSourceDocuments(ctx context.Context, in *ListSourceDocumentsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListSourceDocumentsResponse], error)
+	// RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+	// 同一存储重复记录时保留最早的时间。
+	RecordPurge(ctx context.Context, in *RecordPurgeRequest, opts ...grpc.CallOption) (*RecordPurgeResponse, error)
 }
 
 type indexWriterServiceClient struct {
@@ -79,6 +94,55 @@ func (c *indexWriterServiceClient) UpdateAcl(ctx context.Context, in *UpdateAclR
 	return out, nil
 }
 
+func (c *indexWriterServiceClient) LookupVectors(ctx context.Context, in *LookupVectorsRequest, opts ...grpc.CallOption) (*LookupVectorsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LookupVectorsResponse)
+	err := c.cc.Invoke(ctx, IndexWriterService_LookupVectors_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexWriterServiceClient) SetPartitionGrants(ctx context.Context, in *SetPartitionGrantsRequest, opts ...grpc.CallOption) (*SetPartitionGrantsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetPartitionGrantsResponse)
+	err := c.cc.Invoke(ctx, IndexWriterService_SetPartitionGrants_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexWriterServiceClient) ListSourceDocuments(ctx context.Context, in *ListSourceDocumentsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListSourceDocumentsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &IndexWriterService_ServiceDesc.Streams[0], IndexWriterService_ListSourceDocuments_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListSourceDocumentsRequest, ListSourceDocumentsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type IndexWriterService_ListSourceDocumentsClient = grpc.ServerStreamingClient[ListSourceDocumentsResponse]
+
+func (c *indexWriterServiceClient) RecordPurge(ctx context.Context, in *RecordPurgeRequest, opts ...grpc.CallOption) (*RecordPurgeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecordPurgeResponse)
+	err := c.cc.Invoke(ctx, IndexWriterService_RecordPurge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IndexWriterServiceServer is the server API for IndexWriterService service.
 // All implementations must embed UnimplementedIndexWriterServiceServer
 // for forward compatibility.
@@ -94,6 +158,17 @@ type IndexWriterServiceServer interface {
 	// UpdateAcl 只更新文档的权限与密级（快速通道，入库管道详设第 9 节）：不重算向量、不进待发布版本，
 	// 对线上立即生效。
 	UpdateAcl(context.Context, *UpdateAclRequest) (*UpdateAclResponse, error)
+	// 按块的向量缓存（入库管道详设第 8 节）：按向量化输入的摘要与嵌入模型版本取已入库的向量，命中的块不再送嵌入模型。
+	// 只读，查不到的不在结果里；缓存不可用时调用方照常全部向量化。
+	LookupVectors(context.Context, *LookupVectorsRequest) (*LookupVectorsResponse, error)
+	// 替换分区级数据源一个分区的全部被授权方（PartitionGrantChanged）；不改索引与文档权限。
+	SetPartitionGrants(context.Context, *SetPartitionGrantsRequest) (*SetPartitionGrantsResponse, error)
+	// ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
+	// connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
+	ListSourceDocuments(*ListSourceDocumentsRequest, grpc.ServerStreamingServer[ListSourceDocumentsResponse]) error
+	// RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+	// 同一存储重复记录时保留最早的时间。
+	RecordPurge(context.Context, *RecordPurgeRequest) (*RecordPurgeResponse, error)
 	mustEmbedUnimplementedIndexWriterServiceServer()
 }
 
@@ -112,6 +187,18 @@ func (UnimplementedIndexWriterServiceServer) TombstoneDocument(context.Context, 
 }
 func (UnimplementedIndexWriterServiceServer) UpdateAcl(context.Context, *UpdateAclRequest) (*UpdateAclResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateAcl not implemented")
+}
+func (UnimplementedIndexWriterServiceServer) LookupVectors(context.Context, *LookupVectorsRequest) (*LookupVectorsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LookupVectors not implemented")
+}
+func (UnimplementedIndexWriterServiceServer) SetPartitionGrants(context.Context, *SetPartitionGrantsRequest) (*SetPartitionGrantsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetPartitionGrants not implemented")
+}
+func (UnimplementedIndexWriterServiceServer) ListSourceDocuments(*ListSourceDocumentsRequest, grpc.ServerStreamingServer[ListSourceDocumentsResponse]) error {
+	return status.Error(codes.Unimplemented, "method ListSourceDocuments not implemented")
+}
+func (UnimplementedIndexWriterServiceServer) RecordPurge(context.Context, *RecordPurgeRequest) (*RecordPurgeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecordPurge not implemented")
 }
 func (UnimplementedIndexWriterServiceServer) mustEmbedUnimplementedIndexWriterServiceServer() {}
 func (UnimplementedIndexWriterServiceServer) testEmbeddedByValue()                            {}
@@ -188,6 +275,71 @@ func _IndexWriterService_UpdateAcl_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IndexWriterService_LookupVectors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LookupVectorsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexWriterServiceServer).LookupVectors(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IndexWriterService_LookupVectors_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexWriterServiceServer).LookupVectors(ctx, req.(*LookupVectorsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexWriterService_SetPartitionGrants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetPartitionGrantsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexWriterServiceServer).SetPartitionGrants(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IndexWriterService_SetPartitionGrants_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexWriterServiceServer).SetPartitionGrants(ctx, req.(*SetPartitionGrantsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexWriterService_ListSourceDocuments_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListSourceDocumentsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(IndexWriterServiceServer).ListSourceDocuments(m, &grpc.GenericServerStream[ListSourceDocumentsRequest, ListSourceDocumentsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type IndexWriterService_ListSourceDocumentsServer = grpc.ServerStreamingServer[ListSourceDocumentsResponse]
+
+func _IndexWriterService_RecordPurge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecordPurgeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexWriterServiceServer).RecordPurge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IndexWriterService_RecordPurge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexWriterServiceServer).RecordPurge(ctx, req.(*RecordPurgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IndexWriterService_ServiceDesc is the grpc.ServiceDesc for IndexWriterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -207,7 +359,25 @@ var IndexWriterService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "UpdateAcl",
 			Handler:    _IndexWriterService_UpdateAcl_Handler,
 		},
+		{
+			MethodName: "LookupVectors",
+			Handler:    _IndexWriterService_LookupVectors_Handler,
+		},
+		{
+			MethodName: "SetPartitionGrants",
+			Handler:    _IndexWriterService_SetPartitionGrants_Handler,
+		},
+		{
+			MethodName: "RecordPurge",
+			Handler:    _IndexWriterService_RecordPurge_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ListSourceDocuments",
+			Handler:       _IndexWriterService_ListSourceDocuments_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "bambuflow/ingestion/v1/index_writer.proto",
 }

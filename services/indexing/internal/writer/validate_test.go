@@ -7,8 +7,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
 )
 
 func validRequest() *ingestionv1.WriteDocumentRequest {
@@ -148,5 +148,17 @@ func TestValidateEnrichment(t *testing.T) {
 				t.Fatal("应拒收")
 			}
 		})
+	}
+}
+
+func TestTitleKeyMatchesProcessing(t *testing.T) {
+	for in, want := range map[string]string{
+		" 授信管理办法（2025 年修订） ": "授信管理办法",
+		"个人消费贷款管理办法(2020版)":  "个人消费贷款管理办法",
+		"信用卡分期管理规定":          "信用卡分期管理规定",
+	} {
+		if got := TitleKey(in); got != want {
+			t.Errorf("TitleKey(%q) = %q，应为 %q", in, got, want)
+		}
 	}
 }

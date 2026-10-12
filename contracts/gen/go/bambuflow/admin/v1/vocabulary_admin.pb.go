@@ -524,8 +524,8 @@ const file_bambuflow_admin_v1_vocabulary_admin_proto_rawDesc = "" +
 	"\tListTerms\x12$.bambuflow.admin.v1.ListTermsRequest\x1a%.bambuflow.admin.v1.ListTermsResponse\x12[\n" +
 	"\n" +
 	"UpsertTerm\x12%.bambuflow.admin.v1.UpsertTermRequest\x1a&.bambuflow.admin.v1.UpsertTermResponse\x12d\n" +
-	"\rDeprecateTerm\x12(.bambuflow.admin.v1.DeprecateTermRequest\x1a).bambuflow.admin.v1.DeprecateTermResponseB\xe3\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x14VocabularyAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\rDeprecateTerm\x12(.bambuflow.admin.v1.DeprecateTermRequest\x1a).bambuflow.admin.v1.DeprecateTermResponseB\xdf\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x14VocabularyAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_vocabulary_admin_proto_rawDescOnce sync.Once

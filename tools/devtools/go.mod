@@ -1,15 +1,15 @@
 // 开发与 CI 专用的工具（Vault 种子、服务桩），打进测试工具镜像，不进生产镜像。
-module github.com/bambu-ai/bambuflow/tools/devtools
+module github.com/hei-/bambuflow/tools/devtools
 
 go 1.26.0
 
 replace (
-	github.com/bambu-ai/bambuflow/contracts/gen/go => ../../contracts/gen/go
-	github.com/bambu-ai/bambuflow/libs/platform-go => ../../libs/platform-go
+	github.com/hei-/bambuflow/contracts/gen/go => ../../contracts/gen/go
+	github.com/hei-/bambuflow/libs/platform-go => ../../libs/platform-go
 )
 
 require (
-	github.com/bambu-ai/bambuflow/libs/platform-go v0.0.0-00010101000000-000000000000
+	github.com/hei-/bambuflow/libs/platform-go v0.0.0-00010101000000-000000000000
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/redis/go-redis/v9 v9.23.0
 )

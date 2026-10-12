@@ -769,8 +769,8 @@ const file_bambuflow_admin_v1_rebuild_admin_proto_rawDesc = "" +
 	"\x0eApproveRebuild\x12).bambuflow.admin.v1.ApproveRebuildRequest\x1a*.bambuflow.admin.v1.ApproveRebuildResponse\x12[\n" +
 	"\n" +
 	"GetRebuild\x12%.bambuflow.admin.v1.GetRebuildRequest\x1a&.bambuflow.admin.v1.GetRebuildResponse\x12d\n" +
-	"\rCancelRebuild\x12(.bambuflow.admin.v1.CancelRebuildRequest\x1a).bambuflow.admin.v1.CancelRebuildResponseB\xe0\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x11RebuildAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\rCancelRebuild\x12(.bambuflow.admin.v1.CancelRebuildRequest\x1a).bambuflow.admin.v1.CancelRebuildResponseB\xdc\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x11RebuildAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_rebuild_admin_proto_rawDescOnce sync.Once

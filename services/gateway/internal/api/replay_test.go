@@ -11,10 +11,21 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
 )
+
+// DeleteConversation 记下调用者与会话 ID；conv_down 模拟会话存储不可用。
+func (f *fakeOrchestrator) DeleteConversation(ctx context.Context, req *answerv1.DeleteConversationRequest) (*answerv1.DeleteConversationResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if req.GetConversationId() == "conv_down" {
+		return nil, status.Error(codes.Unavailable, "down")
+	}
+	f.deleted = append(f.deleted, grpcmw.PrincipalFrom(ctx).GetSub()+"/"+req.GetConversationId())
+	return &answerv1.DeleteConversationResponse{}, nil
+}
 
 // GetAnswer 模拟 orchestrator 的判定：alice 是提问人；审计岗凭 as_auditor 可看；其余一律 NOT_FOUND。
 func (f *fakeOrchestrator) GetAnswer(ctx context.Context, req *answerv1.GetAnswerRequest) (*answerv1.GetAnswerResponse, error) {
@@ -146,6 +157,34 @@ func TestFeedback(t *testing.T) {
 		if r.status != c.status || r.body["type"] != c.typ {
 			t.Errorf("%s: 得到 %d %v，期望 %d %s", c.name, r.status, r.body["type"], c.status, c.typ)
 		}
+	}
+}
+
+func TestDeleteConversation(t *testing.T) {
+	e := newEnv(t)
+	tok := e.authz.token(t, "alice", "console")
+	r := e.request(t, http.MethodDelete, "/v1/conversations/conv_abc123", tok, "", nil)
+	if r.status != 204 || r.raw != "" {
+		t.Fatalf("删除会话: %d %q", r.status, r.raw)
+	}
+	e.orchestrator.mu.Lock()
+	deleted := e.orchestrator.deleted
+	e.orchestrator.mu.Unlock()
+	if len(deleted) != 1 || deleted[0] != "alice/conv_abc123" {
+		t.Fatalf("应以调用者身份转给 orchestrator: %v", deleted)
+	}
+	recs := e.audit.snapshot()
+	if last := recs[len(recs)-1]; last.Endpoint != "conversation-delete" || last.Status != 204 {
+		t.Fatalf("删除会话的审计: %+v", last)
+	}
+	if r := e.request(t, http.MethodDelete, "/v1/conversations/abc", tok, "", nil); r.status != 404 {
+		t.Errorf("ID 格式不对应为 404: %d", r.status)
+	}
+	if r := e.request(t, http.MethodDelete, "/v1/conversations/conv_down", tok, "", nil); r.status != 503 {
+		t.Errorf("会话存储不可用应为 503: %d", r.status)
+	}
+	if r := e.request(t, http.MethodDelete, "/v1/conversations/conv_abc123", "", "", nil); r.status != 401 {
+		t.Errorf("未认证应为 401: %d", r.status)
 	}
 }
 

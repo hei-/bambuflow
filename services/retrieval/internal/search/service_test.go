@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -19,12 +18,13 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/services/retrieval/internal/guard"
-	"github.com/bambu-ai/bambuflow/services/retrieval/internal/policy"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/policy"
+	"github.com/hei-/bambuflow/services/retrieval/internal/guard"
 )
 
 const model = "bge-m3@test"
@@ -40,6 +40,8 @@ type fakeStore struct {
 	errs map[string]error
 	// 被紧急拒绝的租户
 	deniedTenants map[string]bool
+	// 分区授权：grantee token → 可见的分区 token
+	partitions map[string][]string
 	// 图谱：实体与边（边的证据块是 chunks 里的块）
 	entities []Entity
 	edges    []fakeEdge
@@ -73,6 +75,11 @@ func (s *fakeStore) Dense(_ context.Context, _ string, f Filter, _ []float32, k 
 	if err := s.call("Dense"); err != nil {
 		return nil, err
 	}
+	return s.recallAll(f, k), nil
+}
+
+// recallAll 是按过滤条件可见的全部块，按 chunk_id 排序取前 k 个（稠密、稀疏两路的模拟）。
+func (s *fakeStore) recallAll(f Filter, k int) []Candidate {
 	var ids []string
 	for id, c := range s.chunks {
 		if f.Check(s.acl[c.DocID]) == retrievalv1.AccessReason_ACCESS_REASON_ALLOWED && metaMatch(f.Meta, s.meta[c.DocID]) {
@@ -84,7 +91,7 @@ func (s *fakeStore) Dense(_ context.Context, _ string, f Filter, _ []float32, k 
 	for _, id := range ids[:min(k, len(ids))] {
 		out = append(out, s.chunks[id])
 	}
-	return out, nil
+	return out
 }
 
 // Keyword 与 Dense 用同样的过滤，再要求正文含任一词。
@@ -107,11 +114,37 @@ func (s *fakeStore) Keyword(_ context.Context, _ string, f Filter, terms []strin
 	return out, nil
 }
 
-func (s *fakeStore) latest(docID string) (ACL, bool) {
-	if a, ok := s.now[docID]; ok {
-		return a, true
+// Identifier 与 Dense 用同样的过滤，再要求正文或标题含任一标识符（不区分大小写）。
+func (s *fakeStore) Identifier(_ context.Context, _ string, f Filter, ids []string, k int) ([]Candidate, error) {
+	if err := s.call("Identifier"); err != nil {
+		return nil, err
 	}
-	a, ok := s.acl[docID]
+	var hits []string
+	for id, c := range s.chunks {
+		hit := slices.ContainsFunc(ids, func(x string) bool {
+			x = strings.ToUpper(x)
+			return strings.Contains(strings.ToUpper(c.Text), x) || strings.Contains(strings.ToUpper(c.Title), x)
+		})
+		if hit && f.Check(s.acl[c.DocID]) == retrievalv1.AccessReason_ACCESS_REASON_ALLOWED && metaMatch(f.Meta, s.meta[c.DocID]) {
+			hits = append(hits, id)
+		}
+	}
+	slices.Sort(hits)
+	var out []Candidate
+	for _, id := range hits[:min(k, len(hits))] {
+		c := s.chunks[id]
+		c.RouteScore = 1
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func (s *fakeStore) latest(docID string) (ACL, bool) {
+	a, ok := s.now[docID]
+	if !ok {
+		a, ok = s.acl[docID]
+	}
+	a.DocID = docID
 	return a, ok
 }
 
@@ -212,6 +245,38 @@ func (s *fakeStore) TenantDenied(_ context.Context, tenant string) (bool, error)
 	return s.deniedTenants[tenant], s.call("TenantDenied")
 }
 
+func (s *fakeStore) Sparse(_ context.Context, _ string, f Filter, _ map[uint32]float32, k int) ([]Candidate, error) {
+	if err := s.call("Sparse"); err != nil {
+		return nil, err
+	}
+	return s.recallAll(f, k), nil
+}
+
+func (s *fakeStore) Chunks(_ context.Context, _ string, f Filter, ids []string) (map[string]Candidate, error) {
+	if err := s.call("Chunks"); err != nil {
+		return nil, err
+	}
+	out := map[string]Candidate{}
+	for _, id := range ids {
+		c, ok := s.chunks[id]
+		if !ok {
+			continue
+		}
+		if a, _ := s.latest(c.DocID); f.Check(a) == retrievalv1.AccessReason_ACCESS_REASON_ALLOWED {
+			out[id] = c
+		}
+	}
+	return out, nil
+}
+
+func (s *fakeStore) PartitionTokens(_ context.Context, tokens []string) ([]string, error) {
+	var out []string
+	for _, t := range tokens {
+		out = append(out, s.partitions[t]...)
+	}
+	return out, s.call("PartitionTokens")
+}
+
 func (s *fakeStore) Groups(_ context.Context, username string) ([]string, error) {
 	return s.groups[username], s.call("Groups")
 }
@@ -219,10 +284,16 @@ func (s *fakeStore) Groups(_ context.Context, username string) ([]string, error)
 type fakeEmbedder struct {
 	model string
 	err   error
+	// 每个查询的稀疏向量；为 nil 表示模型不给稀疏向量
+	sparse map[uint32]float32
 }
 
-func (e fakeEmbedder) Embed(_ context.Context, texts []string) ([][]float32, string, error) {
-	return make([][]float32, len(texts)), e.model, e.err
+func (e fakeEmbedder) Embed(_ context.Context, texts []string) ([]QueryVector, string, error) {
+	out := make([]QueryVector, len(texts))
+	for i := range out {
+		out[i].Sparse = e.sparse
+	}
+	return out, e.model, e.err
 }
 
 // 固定数据：wiki 源三份文档，mail 源一份（不属于 credit 租户）。
@@ -244,14 +315,15 @@ func newStore() *fakeStore {
 
 func realPolicy(t *testing.T) *policy.Engine {
 	t.Helper()
-	src, err := os.ReadFile("../../../../config/policy/authz.rego")
+	src, err := os.ReadFile("../../../../config/policies/global.rego")
 	if err != nil {
 		t.Fatal(err)
 	}
-	e, err := policy.Load(context.Background(), fstest.MapFS{
-		"authz.rego": {Data: src},
-		"data.json":  {Data: []byte(`{"tenants": {"credit": {}}}`)},
-	})
+	b, err := policy.Build([]policy.Layer{{Scope: policy.ScopeGlobal, Body: string(src)}, {Scope: "tenant:credit", Body: "deny := set()\n"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := policy.Compile(context.Background(), b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,6 +332,20 @@ func realPolicy(t *testing.T) *policy.Engine {
 
 // fakeGrants 是 governance 下发的租户授权；nil 表示拿不到授权数据
 type fakeGrants map[string][]string
+
+func (g fakeGrants) Plan(context.Context, string, string, string) *configv1.PipelineConfig {
+	return nil
+}
+
+// planGrants 在 fakeGrants 之上给出一个租户的 pipeline
+type planGrants struct {
+	fakeGrants
+	plan *configv1.PipelineConfig
+}
+
+func (g planGrants) Plan(context.Context, string, string, string) *configv1.PipelineConfig {
+	return g.plan
+}
 
 func (g fakeGrants) Sources(tenant string) ([]string, string, error) {
 	if g == nil {
@@ -329,6 +415,8 @@ func newServer(t *testing.T, st *fakeStore) *Server {
 		Store: st, Embedder: fakeEmbedder{model: model}, Policy: realPolicy(t), Grants: fakeGrants{"credit": {"wiki"}},
 		Tokenize: strings.Fields,
 		Reranker: &fakeReranker{}, Log: quiet,
+		// 与部署默认一致：稀疏召回不开
+		Disabled: map[string]bool{"sparse": true},
 	}
 }
 
@@ -404,6 +492,86 @@ func TestTenantEmergencyDenial(t *testing.T) {
 	st.deniedTenants = map[string]bool{"risk": true}
 	if resp, err := search(t, s, alice(), query("额度")); err != nil || len(resp.GetHits()) == 0 {
 		t.Fatalf("别的租户被拒绝不影响本租户: %v", err)
+	}
+}
+
+// 分区级数据源（ADR-14）：文档只带分区 token，按分区授权表展开后才可见；授权一撤，召回与返回前复核同时不再放行
+func TestPartitionGrantsExpandTokens(t *testing.T) {
+	st := newStore()
+	st.acl["loan"] = ACL{SourceID: "wiki", Tokens: []string{"part:wiki/制度库"}, Classification: 2, Active: true}
+	s := newServer(t, st)
+	if resp, err := search(t, s, alice(), query("loan")); err != nil || slices.Contains(docs(resp), "loan") {
+		t.Fatalf("没有分区授权时不可见: %v %v", docs(resp), err)
+	}
+	st.partitions = map[string][]string{"dept:信贷部": {"part:wiki/制度库"}}
+	resp, err := search(t, s, alice(), query("loan"))
+	if err != nil || !slices.Contains(docs(resp), "loan") {
+		t.Fatalf("部门有分区授权时可见: %v %v", docs(resp), err)
+	}
+	check := func() bool {
+		r, err := invoke(t, alice(), "answer", &retrievalv1.CheckAccessRequest{ChunkIds: []string{"wiki:loan#1"}}, s.CheckAccess)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.GetResults()[0].GetAllowed()
+	}
+	if !check() {
+		t.Fatal("返回前复核按同一张表放行")
+	}
+	st.partitions = nil
+	if check() {
+		t.Fatal("撤销分区授权后返回前复核应拒绝")
+	}
+	st.errs["PartitionTokens"] = errors.New("连不上")
+	if _, err := search(t, s, alice(), query("loan")); status.Code(err) != codes.Unavailable {
+		t.Fatalf("读不到分区授权时拒绝: %v", err)
+	}
+}
+
+type localDenials struct{ sources, docs, tenants map[string]bool }
+
+func (l localDenials) Source(id string) bool { return l.sources[id] }
+func (l localDenials) Doc(id string) bool    { return l.docs[id] }
+func (l localDenials) Tenant(t string) bool  { return l.tenants[t] }
+
+// 备用通道收到的规则（索引库的拒绝名单里没有）：按租户、数据源、文档分别在召回范围与返回前复核生效（governance 详设 8.2）
+func TestBackupChannelDenials(t *testing.T) {
+	st := newStore()
+	st.acl["handbook"] = ACL{SourceID: "wiki", Tokens: []string{"group:credit-l2"}, Classification: 1, Active: true}
+	s := newServer(t, st)
+	check := func() []bool {
+		t.Helper()
+		resp, err := invoke(t, alice(), "answer", &retrievalv1.CheckAccessRequest{ChunkIds: []string{"wiki:loan#1", "wiki:handbook#1"}}, s.CheckAccess)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return []bool{resp.GetResults()[0].GetAllowed(), resp.GetResults()[1].GetAllowed()}
+	}
+
+	s.Local = localDenials{docs: map[string]bool{"loan": true}}
+	resp, err := search(t, s, alice(), query("额度"))
+	if err != nil || !slices.Equal(docs(resp), []string{"handbook"}) {
+		t.Fatalf("按文档拒绝后只剩 handbook: %v %v", docs(resp), err)
+	}
+	if got := check(); !slices.Equal(got, []bool{false, true}) {
+		t.Fatalf("返回前复核应拦下被拒绝的文档: %v", got)
+	}
+	list, err := invoke(t, alice(), "answer", &retrievalv1.ListDocumentsRequest{}, s.ListDocuments)
+	if err != nil || slices.ContainsFunc(list.GetDocuments(), func(d *retrievalv1.DocumentSummary) bool { return d.GetDocId() == "loan" }) {
+		t.Fatalf("列举不应包含被拒绝的文档: %v %v", list, err)
+	}
+
+	s.Local = localDenials{sources: map[string]bool{"wiki": true}}
+	if resp, err := search(t, s, alice(), query("额度")); err != nil || len(resp.GetHits()) != 0 {
+		t.Fatalf("按数据源拒绝后应检索不到: %v %v", docs(resp), err)
+	}
+	if got := check(); !slices.Equal(got, []bool{false, false}) {
+		t.Fatalf("按数据源拒绝，复核应全部拦下: %v", got)
+	}
+
+	s.Local = localDenials{tenants: map[string]bool{"credit": true}}
+	if resp, err := search(t, s, alice(), query("额度")); err != nil || len(resp.GetHits()) != 0 {
+		t.Fatalf("按租户拒绝后应检索不到: %v %v", docs(resp), err)
 	}
 }
 
@@ -553,6 +721,7 @@ func TestInvalidRequests(t *testing.T) {
 		"子查询过长":    query(string(long)),
 		"top_k 越界": {Queries: query("a").Queries, TopK: 51},
 		"top_k 为负": {Queries: query("a").Queries, TopK: -1},
+		"计划版本不合法":  {Queries: query("a").Queries, PlanVersion: "v2"},
 	}
 	for name, req := range cases {
 		if _, err := search(t, s, alice(), req); status.Code(err) != codes.InvalidArgument {
@@ -961,5 +1130,28 @@ func TestSearchAppliesMetadataFilters(t *testing.T) {
 	req.Filters = &commonv1.Filters{DocTypes: []string{"DT-POLICY"}}
 	if resp, err = search(t, s, alice(), req); err != nil || !slices.Equal(docs(resp), []string{"loan"}) {
 		t.Fatalf("类型相符的文档照常返回: %v %v", docs(resp), err)
+	}
+}
+
+// 稀疏召回（详设 6.2）：部署开启了这一路才执行，与稠密共用一次嵌入调用；模型不给稀疏向量时这一路降级
+func TestSparseRoute(t *testing.T) {
+	st := newStore()
+	s := newServer(t, st)
+	s.Disabled = map[string]bool{"sparse": true}
+	if _, err := search(t, s, alice(), query("额度")); err != nil || st.count("Sparse") != 0 {
+		t.Fatalf("默认不开: %v", err)
+	}
+	s.Disabled = nil
+	emb := &countingEmbedder{fakeEmbedder: fakeEmbedder{model: model, sparse: map[uint32]float32{7: 0.5}}}
+	s.Embedder = emb
+	resp, err := search(t, s, alice(), query("额度"))
+	if err != nil || st.count("Sparse") != 1 || len(emb.texts) != 1 || len(resp.GetDegraded()) != 0 {
+		t.Fatalf("开启后执行、只嵌入一次: %v %d %v %v", err, st.count("Sparse"), emb.texts, resp.GetDegraded())
+	}
+	s.Embedder = fakeEmbedder{model: model}
+	resp, err = search(t, s, alice(), query("额度"))
+	if err != nil || len(resp.GetDegraded()) != 1 || resp.GetDegraded()[0].GetStage() != "sparse" ||
+		resp.GetDegraded()[0].GetReason() != "sparse_unavailable" {
+		t.Fatalf("模型不给稀疏向量时降级: %v %v", err, resp.GetDegraded())
 	}
 }

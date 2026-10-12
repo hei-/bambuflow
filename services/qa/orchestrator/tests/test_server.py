@@ -33,9 +33,12 @@ class Recorder(retrieval_pb2_grpc.RetrievalServiceServicer):
 
     async def CheckAccess(self, request: Any, context: Any) -> retrieval_pb2.CheckAccessResponse:
         self._record("CheckAccess", request, context)
+        # revoked 开头的块无权；gone 开头的不在结果里（同样按无权处理）
         return retrieval_pb2.CheckAccessResponse(
             results=[
-                retrieval_pb2.AccessResult(chunk_id=c, allowed=True) for c in request.chunk_ids
+                retrieval_pb2.AccessResult(chunk_id=c, allowed=not c.startswith("revoked"))
+                for c in request.chunk_ids
+                if not c.startswith("gone")
             ]
         )
 
@@ -97,6 +100,21 @@ async def retrieval() -> AsyncIterator[tuple[Recorder, Any]]:
         await srv.stop(None)
 
 
+def test_access_records_denied_chunks() -> None:
+    """返回前复核拦下的块记进 denied（回答记录的越权拦截数）；sql_query 查出的证据不经复核。"""
+
+    async def run() -> set[str]:
+        async with retrieval() as (_, stub):
+            denied: set[str] = set()
+            ctx: Any = Inbound("answer")
+            access = server._Access(stub, ctx, Deadline(5), denied, {"sql:1"})
+            got = await access.allowed(["ok#1", "revoked#1", "gone#1", "sql:1"])
+            assert got == {"ok#1": True, "revoked#1": False, "sql:1": True}
+            return denied
+
+    assert asyncio.run(run()) == {"revoked#1", "gone#1"}
+
+
 @pytest.mark.parametrize("purpose", ["answer", "mcp", "batch"])
 def test_purpose_follows_entry(purpose: str) -> None:
     async def run() -> list[tuple[str, str, Any]]:
@@ -104,7 +122,9 @@ def test_purpose_follows_entry(purpose: str) -> None:
             ctx: Any = Inbound(purpose)
             deadline = Deadline(5)
             await server._Search(stub, ctx, deadline).search("额度", None)
-            await server._Access(stub, ctx, deadline).allowed(["wiki:loan#1"])
+            denied: set[str] = set()
+            await server._Access(stub, ctx, deadline, denied).allowed(["wiki:loan#1"])
+            assert not denied
             catalog = server._Catalog(stub, ctx, deadline)
             await catalog.count(types_pb2.Filters(), retrieval_pb2.COUNT_GROUP_BY_UNSPECIFIED)
             await catalog.list(types_pb2.Filters(), 20)

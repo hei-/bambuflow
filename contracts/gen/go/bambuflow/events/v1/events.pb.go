@@ -105,6 +105,80 @@ func (x *PlatformEvent) GetOccurredAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// ChunkAclChanged 由 indexing 在文档权限变化或写删除标记后发出（retrieval 详设 3.5），发到 Redis 流 retrieval:chunk-acl，
+// retrieval 的每个副本各自读取（不用消费组），按文档 → 缓存键的反向索引删除检索结果缓存。缓存只用于提速，组装时还会按最新
+// 权限复核，所以这个事件丢了也不会越权，只是缓存里多留一会儿过时的结果（最多 10 分钟）。
+type ChunkAclChanged struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 前缀 evt_
+	EventId string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	// 权限变了或写了删除标记的文档；这些文档的全部块都按变化处理
+	DocIds []string `protobuf:"bytes,2,rep,name=doc_ids,json=docIds,proto3" json:"doc_ids,omitempty"`
+	// acl 或 tombstone
+	ChangeType    string                 `protobuf:"bytes,3,opt,name=change_type,json=changeType,proto3" json:"change_type,omitempty"`
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChunkAclChanged) Reset() {
+	*x = ChunkAclChanged{}
+	mi := &file_bambuflow_events_v1_events_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChunkAclChanged) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChunkAclChanged) ProtoMessage() {}
+
+func (x *ChunkAclChanged) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_events_v1_events_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChunkAclChanged.ProtoReflect.Descriptor instead.
+func (*ChunkAclChanged) Descriptor() ([]byte, []int) {
+	return file_bambuflow_events_v1_events_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ChunkAclChanged) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *ChunkAclChanged) GetDocIds() []string {
+	if x != nil {
+		return x.DocIds
+	}
+	return nil
+}
+
+func (x *ChunkAclChanged) GetChangeType() string {
+	if x != nil {
+		return x.ChangeType
+	}
+	return ""
+}
+
+func (x *ChunkAclChanged) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
 var File_bambuflow_events_v1_events_proto protoreflect.FileDescriptor
 
 const file_bambuflow_events_v1_events_proto_rawDesc = "" +
@@ -116,8 +190,15 @@ const file_bambuflow_events_v1_events_proto_rawDesc = "" +
 	"\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1b\n" +
 	"\tobject_id\x18\x04 \x01(\tR\bobjectId\x12;\n" +
 	"\voccurred_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAtB\xe1\x01\n" +
-	"\x17com.bambuflow.events.v1B\vEventsProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/events/v1;eventsv1\xa2\x02\x03BEX\xaa\x02\x13Bambuflow.Events.V1\xca\x02\x13Bambuflow\\Events\\V1\xe2\x02\x1fBambuflow\\Events\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Events::V1b\x06proto3"
+	"occurredAt\"\xa3\x01\n" +
+	"\x0fChunkAclChanged\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x17\n" +
+	"\adoc_ids\x18\x02 \x03(\tR\x06docIds\x12\x1f\n" +
+	"\vchange_type\x18\x03 \x01(\tR\n" +
+	"changeType\x12;\n" +
+	"\voccurred_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAtB\xdd\x01\n" +
+	"\x17com.bambuflow.events.v1B\vEventsProtoP\x01ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/events/v1;eventsv1\xa2\x02\x03BEX\xaa\x02\x13Bambuflow.Events.V1\xca\x02\x13Bambuflow\\Events\\V1\xe2\x02\x1fBambuflow\\Events\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Events::V1b\x06proto3"
 
 var (
 	file_bambuflow_events_v1_events_proto_rawDescOnce sync.Once
@@ -131,18 +212,20 @@ func file_bambuflow_events_v1_events_proto_rawDescGZIP() []byte {
 	return file_bambuflow_events_v1_events_proto_rawDescData
 }
 
-var file_bambuflow_events_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_bambuflow_events_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_bambuflow_events_v1_events_proto_goTypes = []any{
 	(*PlatformEvent)(nil),         // 0: bambuflow.events.v1.PlatformEvent
-	(*timestamppb.Timestamp)(nil), // 1: google.protobuf.Timestamp
+	(*ChunkAclChanged)(nil),       // 1: bambuflow.events.v1.ChunkAclChanged
+	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
 }
 var file_bambuflow_events_v1_events_proto_depIdxs = []int32{
-	1, // 0: bambuflow.events.v1.PlatformEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 0: bambuflow.events.v1.PlatformEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	2, // 1: bambuflow.events.v1.ChunkAclChanged.occurred_at:type_name -> google.protobuf.Timestamp
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_events_v1_events_proto_init() }
@@ -156,7 +239,7 @@ func file_bambuflow_events_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_events_v1_events_proto_rawDesc), len(file_bambuflow_events_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

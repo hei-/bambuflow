@@ -83,6 +83,8 @@ class Record:
     latency_ms: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # 返回前复核拦下的块数（灰度观察，governance 详设 4.1）
+    access_denied: int = 0
     # 信封加密的问题原文与受限级回答快照（seal），数据密钥由主密钥包裹后存 sealed_key
     sealed_question: bytes = b""
     sealed_answer: bytes = b""
@@ -136,6 +138,7 @@ def build(
     listed_restricted: bool,
     latency_ms: int = 0,
     usage: answer_pb2.TokenUsage | None = None,
+    access_denied: int = 0,
 ) -> Record:
     """由返回给调用方的回答生成记录。
 
@@ -162,11 +165,12 @@ def build(
         latency_ms=latency_ms,
         prompt_tokens=usage.prompt_tokens if usage else 0,
         completion_tokens=usage.completion_tokens if usage else 0,
+        access_denied=access_denied,
     )
 
 
 def _slim(a: answer_pb2.AnswerResponse) -> answer_pb2.AnswerResponse:
-    """受限级回答只留标识与版本：句子、引文、标题、子问题、图路径上的实体名称都是正文。"""
+    """受限级回答只留标识、版本与置信度：句子、引文、标题、子问题、图路径上的实体名称都是正文。"""
     out = answer_pb2.AnswerResponse(
         answer_id=a.answer_id,
         trace_id=a.trace_id,
@@ -176,6 +180,8 @@ def _slim(a: answer_pb2.AnswerResponse) -> answer_pb2.AnswerResponse:
     )
     out.why.CopyFrom(a.why)
     out.why.ClearField("graph_path")
+    # 置信度只有数值，不是正文；灰度观察要用覆盖率
+    out.confidence.CopyFrom(a.confidence)
     for r in out.why.agent_rounds:
         for c in r.calls:
             c.sub_question = ""
@@ -279,9 +285,9 @@ class PGRecords:
                          (answer_id, tenant, asker, actor, purpose, question, body_withheld,
                           sentence_count, answer, experiment_id, experiment_arm, latency_ms,
                           prompt_tokens, completion_tokens, sealed_question, sealed_answer,
-                          sealed_key, key_id)
+                          sealed_key, key_id, access_denied)
                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                               NULLIF(%s, ''::bytea), NULLIF(%s, ''::bytea), %s, %s)
+                               NULLIF(%s, ''::bytea), NULLIF(%s, ''::bytea), %s, %s, %s)
                        ON CONFLICT (answer_id) DO UPDATE SET
                          question = EXCLUDED.question, body_withheld = EXCLUDED.body_withheld,
                          sentence_count = EXCLUDED.sentence_count, answer = EXCLUDED.answer,
@@ -291,7 +297,8 @@ class PGRecords:
                          completion_tokens = EXCLUDED.completion_tokens,
                          sealed_question = EXCLUDED.sealed_question,
                          sealed_answer = EXCLUDED.sealed_answer,
-                         sealed_key = EXCLUDED.sealed_key, key_id = EXCLUDED.key_id
+                         sealed_key = EXCLUDED.sealed_key, key_id = EXCLUDED.key_id,
+                         access_denied = EXCLUDED.access_denied
                        WHERE answer_records.tenant = EXCLUDED.tenant
                          AND answer_records.asker = EXCLUDED.asker""",
                     (
@@ -313,6 +320,7 @@ class PGRecords:
                         rec.sealed_answer,
                         rec.sealed_key,
                         rec.key_id,
+                        rec.access_denied,
                     ),
                 )
         except (psycopg.Error, PoolTimeout) as e:

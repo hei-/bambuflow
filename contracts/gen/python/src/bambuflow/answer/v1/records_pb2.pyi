@@ -37,7 +37,7 @@ class ListAnswerRecordsResponse(_message.Message):
     def __init__(self, records: _Optional[_Iterable[_Union[AnswerRecord, _Mapping]]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
 
 class AnswerRecord(_message.Message):
-    __slots__ = ("answer_id", "user_key", "created_at", "status", "experiment_id", "experiment_arm", "latency_ms", "usage", "feedback", "body_withheld", "answer")
+    __slots__ = ("answer_id", "user_key", "created_at", "status", "experiment_id", "experiment_arm", "latency_ms", "usage", "feedback", "body_withheld", "answer", "masked_question", "feedback_comments", "coverage", "access_denied", "canary_releases")
     ANSWER_ID_FIELD_NUMBER: _ClassVar[int]
     USER_KEY_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
@@ -49,6 +49,11 @@ class AnswerRecord(_message.Message):
     FEEDBACK_FIELD_NUMBER: _ClassVar[int]
     BODY_WITHHELD_FIELD_NUMBER: _ClassVar[int]
     ANSWER_FIELD_NUMBER: _ClassVar[int]
+    MASKED_QUESTION_FIELD_NUMBER: _ClassVar[int]
+    FEEDBACK_COMMENTS_FIELD_NUMBER: _ClassVar[int]
+    COVERAGE_FIELD_NUMBER: _ClassVar[int]
+    ACCESS_DENIED_FIELD_NUMBER: _ClassVar[int]
+    CANARY_RELEASES_FIELD_NUMBER: _ClassVar[int]
     answer_id: str
     user_key: str
     created_at: _timestamp_pb2.Timestamp
@@ -60,4 +65,9 @@ class AnswerRecord(_message.Message):
     feedback: _containers.RepeatedScalarFieldContainer[str]
     body_withheld: bool
     answer: _answer_pb2.AnswerResponse
-    def __init__(self, answer_id: _Optional[str] = ..., user_key: _Optional[str] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., status: _Optional[_Union[_answer_pb2.Status, str]] = ..., experiment_id: _Optional[str] = ..., experiment_arm: _Optional[_Union[_answer_pb2.ExperimentArm, str]] = ..., latency_ms: _Optional[int] = ..., usage: _Optional[_Union[_answer_pb2.TokenUsage, _Mapping]] = ..., feedback: _Optional[_Iterable[str]] = ..., body_withheld: _Optional[bool] = ..., answer: _Optional[_Union[_answer_pb2.AnswerResponse, _Mapping]] = ...) -> None: ...
+    masked_question: str
+    feedback_comments: _containers.RepeatedScalarFieldContainer[str]
+    coverage: float
+    access_denied: int
+    canary_releases: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, answer_id: _Optional[str] = ..., user_key: _Optional[str] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., status: _Optional[_Union[_answer_pb2.Status, str]] = ..., experiment_id: _Optional[str] = ..., experiment_arm: _Optional[_Union[_answer_pb2.ExperimentArm, str]] = ..., latency_ms: _Optional[int] = ..., usage: _Optional[_Union[_answer_pb2.TokenUsage, _Mapping]] = ..., feedback: _Optional[_Iterable[str]] = ..., body_withheld: _Optional[bool] = ..., answer: _Optional[_Union[_answer_pb2.AnswerResponse, _Mapping]] = ..., masked_question: _Optional[str] = ..., feedback_comments: _Optional[_Iterable[str]] = ..., coverage: _Optional[float] = ..., access_denied: _Optional[int] = ..., canary_releases: _Optional[_Iterable[str]] = ...) -> None: ...

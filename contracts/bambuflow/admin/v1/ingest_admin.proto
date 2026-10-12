@@ -86,6 +86,14 @@ message ReplayRequest {
   repeated string doc_ids = 4;
   // 原因必填，最多 500 字
   string reason = 5;
+  // 时间段（入库管道详设第 11 节）：死信按最近一次失败的时间，已成功的文档按最近一次处理的时间；两端都可以只给一个
+  google.protobuf.Timestamp from = 6;
+  google.protobuf.Timestamp to = 7;
+  // 组件版本：只重放当时用这个入库管道版本（解析器、分块器等的组合版本，如 p3-3）处理的文档
+  string pipeline_version = 8;
+  // 也重新处理已成功入库的文档（修好组件后按组件版本或时间段重新入库），而不只是死信；须给 pipeline_version 或时间段，
+  // 一次最多 10000 份
+  bool include_succeeded = 9;
 }
 
 message ReplayResponse {
@@ -94,4 +102,6 @@ message ReplayResponse {
   int32 replayed = 2;
   // 按条件匹配到但因隔离而跳过的
   int32 skipped_quarantined = 3;
+  // replayed 中重新处理的已成功文档（include_succeeded 时）
+  int32 reprocessed = 4;
 }

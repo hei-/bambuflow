@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bambu-ai/bambuflow/services/retrieval/internal/search"
+	"github.com/hei-/bambuflow/services/retrieval/internal/search"
 )
 
 func TestMetaWhereNumbersParametersAndNeverInlinesValues(t *testing.T) {

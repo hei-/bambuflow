@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	eventsv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/events/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/outbox"
+	eventsv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/events/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/outbox"
 )
 
 // 请求头（contracts/openapi/v1/openapi.yaml 的 webhooks.platform_event）。

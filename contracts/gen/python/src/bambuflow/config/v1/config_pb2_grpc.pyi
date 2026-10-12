@@ -44,6 +44,11 @@ class ConfigServiceStub:
     """Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。"""
     GetSigningKeys: _grpc.UnaryUnaryMultiCallable[_config_pb2.GetSigningKeysRequest, _config_pb2.GetSigningKeysResponse]
     """GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。"""
+    GetCandidate: _grpc.UnaryUnaryMultiCallable[_config_pb2.GetCandidateRequest, _config_pb2.GetCandidateResponse]
+    """GetCandidate 按版本取一个还没生效的候选配置，供评测副本跑配置发布的门禁（governance 详设 4.1 第 ③④ 步、evaluation 详设 4.2）。
+    只对评测身份开放：authorization 里要带 evaluation 签发的评测身份（评测副本转发正在回答的那道题的身份），
+    线上实例只持有 gateway 签发的 Principal，取不到候选。
+    """
 
 @_typing.type_check_only
 class ConfigServiceAsyncStub(ConfigServiceStub):
@@ -61,6 +66,11 @@ class ConfigServiceAsyncStub(ConfigServiceStub):
     """Ack 上报某个实例已加载的版本或加载失败的原因（灰度跟踪与紧急规则的生效确认，governance 详设 7.1）。"""
     GetSigningKeys: _aio.UnaryUnaryMultiCallable[_config_pb2.GetSigningKeysRequest, _config_pb2.GetSigningKeysResponse]  # type: ignore[assignment]
     """GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。"""
+    GetCandidate: _aio.UnaryUnaryMultiCallable[_config_pb2.GetCandidateRequest, _config_pb2.GetCandidateResponse]  # type: ignore[assignment]
+    """GetCandidate 按版本取一个还没生效的候选配置，供评测副本跑配置发布的门禁（governance 详设 4.1 第 ③④ 步、evaluation 详设 4.2）。
+    只对评测身份开放：authorization 里要带 evaluation 签发的评测身份（评测副本转发正在回答的那道题的身份），
+    线上实例只持有 gateway 签发的 Principal，取不到候选。
+    """
 
 class ConfigServiceServicer(metaclass=_abc_1.ABCMeta):
     """ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
@@ -99,5 +109,16 @@ class ConfigServiceServicer(metaclass=_abc_1.ABCMeta):
         context: _ServicerContext,
     ) -> _typing.Union[_config_pb2.GetSigningKeysResponse, _abc.Awaitable[_config_pb2.GetSigningKeysResponse]]:
         """GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。"""
+
+    @_abc_1.abstractmethod
+    def GetCandidate(
+        self,
+        request: _config_pb2.GetCandidateRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_config_pb2.GetCandidateResponse, _abc.Awaitable[_config_pb2.GetCandidateResponse]]:
+        """GetCandidate 按版本取一个还没生效的候选配置，供评测副本跑配置发布的门禁（governance 详设 4.1 第 ③④ 步、evaluation 详设 4.2）。
+        只对评测身份开放：authorization 里要带 evaluation 签发的评测身份（评测副本转发正在回答的那道题的身份），
+        线上实例只持有 gateway 签发的 Principal，取不到候选。
+        """
 
 def add_ConfigServiceServicer_to_server(servicer: ConfigServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

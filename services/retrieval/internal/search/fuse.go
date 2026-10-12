@@ -9,7 +9,8 @@ import (
 	"strings"
 	"unicode"
 
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
 )
 
 const (
@@ -30,35 +31,85 @@ const (
 
 // ranking 是一路召回在一个子查询上的结果列表及这一路在 RRF 中的权重。
 type ranking struct {
+	route  string
 	list   []Candidate
 	weight float64
 }
 
-// routeWeight 按意图给出一路召回的融合权重。
-func routeWeight(route string, intent retrievalv1.SearchIntent) float64 {
-	if route == "graph" && intent == retrievalv1.SearchIntent_SEARCH_INTENT_RELATION {
-		return relationGraphWeight
+// routeWeight 是一路召回的融合权重：租户检索计划给的权重（默认 1.0），关系类问题再乘图召回的加权。
+func routeWeight(route string, intent retrievalv1.SearchIntent, plan *configv1.RetrievalPlan) float64 {
+	w := 1.0
+	if pw, ok := plan.GetRouteWeights()[route]; ok {
+		w = pw
 	}
-	return 1
+	if route == "graph" && intent == retrievalv1.SearchIntent_SEARCH_INTENT_RELATION {
+		w *= relationGraphWeight
+	}
+	return w
 }
 
 type scored struct {
 	Candidate
+	// 排序分：融合分，精排后换成精排分
 	score float64
 	// 给出最高分的子查询下标，精排时用它作为查询文本（详设 7.4）
 	query int
+	// 分数解释（详设 7.5）：融合分、精排分（未精排为 nil）、各路归一化后的原始分数与命中记录
+	rrf         float64
+	rerank      *float64
+	routeScores map[string]float64
+	matches     []match
+	// 编号精确匹配命中：不参与融合排序，置顶（详设 7.1）；identRank 是它在这一路的最好名次
+	pinned    bool
+	identRank int32
+}
+
+// match 是一路召回在一个子查询上命中一块的名次（从 1 开始）。
+type match struct {
+	route string
+	query int
+	rank  int32
+}
+
+// trace 收集一块在各路、各子查询上的命中，供分数解释用。
+type trace struct {
+	cand        Candidate
+	query       int
+	routeScores map[string]float64
+	matches     []match
+	identRank   int32
 }
 
 // fuse 先在每个子查询内跨召回路做加权 RRF，再跨子查询合并：同一块取最大分（详设 7.1、7.2）。
 // perQuery[q] 是第 q 个子查询在各召回路上的结果列表。同分按 chunk_id 排，结果可复现。
+//
+// 编号精确匹配一路不计入 RRF：它命中的块标为 pinned，只由它命中的块融合分为 0。
 func fuse(perQuery [][]ranking) []scored {
 	best := map[string]*scored{}
+	traces := map[string]*trace{}
 	ranked := make([][]string, len(perQuery))
 	for q, lists := range perQuery {
 		sum := map[string]float64{}
 		cand := map[string]Candidate{}
 		for _, l := range lists {
+			// pos 是从 1 开始的名次（契约里是 int32，直接按 int32 计数）
+			pos := int32(0)
 			for rank, c := range l.list {
+				pos++
+				t := traces[c.ChunkID]
+				if t == nil {
+					t = &trace{cand: c, query: q, routeScores: map[string]float64{}}
+					traces[c.ChunkID] = t
+				}
+				t.cand = withPath(t.cand, c)
+				t.routeScores[l.route] = max(t.routeScores[l.route], c.RouteScore)
+				t.matches = append(t.matches, match{l.route, q, pos})
+				if l.route == "identifier" {
+					if t.identRank == 0 || pos < t.identRank {
+						t.identRank = pos
+					}
+					continue
+				}
 				sum[c.ChunkID] += l.weight / float64(rrfK+rank+1)
 				cand[c.ChunkID] = withPath(c, cand[c.ChunkID])
 			}
@@ -76,12 +127,43 @@ func fuse(perQuery [][]ranking) []scored {
 		}
 		ranked[q] = sortedIDs(sum)
 	}
-	out := make([]scored, 0, len(best))
-	for _, s := range best {
+	out := make([]scored, 0, len(traces))
+	for id, t := range traces {
+		s, ok := best[id]
+		if !ok {
+			// 只由编号精确匹配命中
+			s = &scored{Candidate: t.cand, query: t.query}
+		}
+		s.Candidate = withPath(s.Candidate, t.cand)
+		s.rrf, s.routeScores, s.matches = s.score, t.routeScores, t.matches
+		s.pinned, s.identRank = t.identRank > 0, t.identRank
 		out = append(out, *s)
 	}
 	byScore(out)
 	return withQuota(out, ranked)
+}
+
+// pinFirst 把编号精确匹配命中的块（最多 identifierK 个，按这一路的名次）放在最前，其余经 diversify 取足 poolSize。
+func pinFirst(fused []scored) []scored {
+	var pinned, rest []scored
+	for _, s := range fused {
+		if s.pinned {
+			pinned = append(pinned, s)
+		} else {
+			rest = append(rest, s)
+		}
+	}
+	slices.SortStableFunc(pinned, func(a, b scored) int { return cmp.Compare(a.identRank, b.identRank) })
+	if len(pinned) > identifierK {
+		// 超出上限的编号命中块按普通候选参与排序
+		for i := range pinned[identifierK:] {
+			pinned[identifierK+i].pinned = false
+		}
+		rest = append(rest, pinned[identifierK:]...)
+		byScore(rest)
+		pinned = pinned[:identifierK]
+	}
+	return append(pinned, diversify(rest, poolSize-len(pinned))...)
 }
 
 // withPath 合并同一块的两条记录时保留图路径：同一块可能先被稠密或关键词路召回、再被图召回，
@@ -153,8 +235,8 @@ func withQuota(all []scored, ranked [][]string) []scored {
 	return append(pool, rest...)
 }
 
-// diversify 依次做近重复去重、同文档限量、MMR，取出最多 poolSize 个候选送精排（详设 7.3）。
-func diversify(cands []scored) []scored {
+// diversify 依次做近重复去重、同文档限量、MMR，取出最多 n 个候选送精排（详设 7.3）。
+func diversify(cands []scored, n int) []scored {
 	var kept []scored
 	var hashes []uint64
 	perDoc := map[string]int{}
@@ -170,16 +252,19 @@ func diversify(cands []scored) []scored {
 		perDoc[c.DocID]++
 		kept = append(kept, c)
 	}
-	return mmr(kept, poolSize)
+	return mmr(kept, n)
 }
 
 // mmr 每次选 λ·相关性 − (1−λ)·与已选结果的最大相似度 最大的候选。相关性是归一化后的融合分，
 // 相似度用字二元组集合的 Jaccard（候选里没有块向量）。
 func mmr(cands []scored, n int) []scored {
 	if len(cands) <= 1 {
-		return cands
+		return cands[:min(len(cands), max(n, 0))]
 	}
 	top := cands[0].score
+	if top == 0 {
+		top = 1
+	}
 	grams := make([]map[string]bool, len(cands))
 	for i, c := range cands {
 		grams[i] = bigrams(c.Text)

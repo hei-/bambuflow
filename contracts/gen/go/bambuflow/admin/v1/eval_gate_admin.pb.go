@@ -141,11 +141,13 @@ type Gate struct {
 	Conclusion string   `protobuf:"bytes,6,opt,name=conclusion,proto3" json:"conclusion,omitempty"`
 	Reasons    []string `protobuf:"bytes,7,rep,name=reasons,proto3" json:"reasons,omitempty"`
 	// 多次运行间结果不同的题，只作参考
-	Unstable      []string               `protobuf:"bytes,8,rep,name=unstable,proto3" json:"unstable,omitempty"`
-	Metrics       []*GateMetric          `protobuf:"bytes,9,rep,name=metrics,proto3" json:"metrics,omitempty"`
-	Config        []*GateConfigVersion   `protobuf:"bytes,10,rep,name=config,proto3" json:"config,omitempty"`
-	Repeats       int32                  `protobuf:"varint,11,opt,name=repeats,proto3" json:"repeats,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Unstable  []string               `protobuf:"bytes,8,rep,name=unstable,proto3" json:"unstable,omitempty"`
+	Metrics   []*GateMetric          `protobuf:"bytes,9,rep,name=metrics,proto3" json:"metrics,omitempty"`
+	Config    []*GateConfigVersion   `protobuf:"bytes,10,rep,name=config,proto3" json:"config,omitempty"`
+	Repeats   int32                  `protobuf:"varint,11,opt,name=repeats,proto3" json:"repeats,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// 门禁覆盖的各租户的评测集是否满足分阶段接入的要求（evaluation 详设 3.1）：切到全量时 governance 要求阶段为 general
+	Readiness     []*TenantReadiness `protobuf:"bytes,13,rep,name=readiness,proto3" json:"readiness,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -264,6 +266,119 @@ func (x *Gate) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Gate) GetReadiness() []*TenantReadiness {
+	if x != nil {
+		return x.Readiness
+	}
+	return nil
+}
+
+// TenantReadiness 是一个租户的评测集对照试点（≥ 100 题）与全量（≥ 300 题、双人标注 ≥ 150）要求的情况。
+// 只计已审核的题；应拒答占比至少 15%，合成题占比至多 50%。
+type TenantReadiness struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Tenant string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// none、pilot、general：满足的最高阶段
+	Stage string `protobuf:"bytes,2,opt,name=stage,proto3" json:"stage,omitempty"`
+	// 计入的已审核题数
+	Counted int32 `protobuf:"varint,3,opt,name=counted,proto3" json:"counted,omitempty"`
+	// 没有审核人、不计入的题数
+	Unreviewed     int32   `protobuf:"varint,4,opt,name=unreviewed,proto3" json:"unreviewed,omitempty"`
+	RefuseShare    float64 `protobuf:"fixed64,5,opt,name=refuse_share,json=refuseShare,proto3" json:"refuse_share,omitempty"`
+	SyntheticShare float64 `protobuf:"fixed64,6,opt,name=synthetic_share,json=syntheticShare,proto3" json:"synthetic_share,omitempty"`
+	DoubleReviewed int32   `protobuf:"varint,7,opt,name=double_reviewed,json=doubleReviewed,proto3" json:"double_reviewed,omitempty"`
+	// 达到下一阶段还差什么
+	Gaps          []string `protobuf:"bytes,8,rep,name=gaps,proto3" json:"gaps,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TenantReadiness) Reset() {
+	*x = TenantReadiness{}
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TenantReadiness) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TenantReadiness) ProtoMessage() {}
+
+func (x *TenantReadiness) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TenantReadiness.ProtoReflect.Descriptor instead.
+func (*TenantReadiness) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *TenantReadiness) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *TenantReadiness) GetStage() string {
+	if x != nil {
+		return x.Stage
+	}
+	return ""
+}
+
+func (x *TenantReadiness) GetCounted() int32 {
+	if x != nil {
+		return x.Counted
+	}
+	return 0
+}
+
+func (x *TenantReadiness) GetUnreviewed() int32 {
+	if x != nil {
+		return x.Unreviewed
+	}
+	return 0
+}
+
+func (x *TenantReadiness) GetRefuseShare() float64 {
+	if x != nil {
+		return x.RefuseShare
+	}
+	return 0
+}
+
+func (x *TenantReadiness) GetSyntheticShare() float64 {
+	if x != nil {
+		return x.SyntheticShare
+	}
+	return 0
+}
+
+func (x *TenantReadiness) GetDoubleReviewed() int32 {
+	if x != nil {
+		return x.DoubleReviewed
+	}
+	return 0
+}
+
+func (x *TenantReadiness) GetGaps() []string {
+	if x != nil {
+		return x.Gaps
+	}
+	return nil
+}
+
 type ListGatesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 只看涉及这个租户的门禁
@@ -278,7 +393,7 @@ type ListGatesRequest struct {
 
 func (x *ListGatesRequest) Reset() {
 	*x = ListGatesRequest{}
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -290,7 +405,7 @@ func (x *ListGatesRequest) String() string {
 func (*ListGatesRequest) ProtoMessage() {}
 
 func (x *ListGatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -303,7 +418,7 @@ func (x *ListGatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGatesRequest.ProtoReflect.Descriptor instead.
 func (*ListGatesRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListGatesRequest) GetTenant() string {
@@ -345,7 +460,7 @@ type ListGatesResponse struct {
 
 func (x *ListGatesResponse) Reset() {
 	*x = ListGatesResponse{}
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -357,7 +472,7 @@ func (x *ListGatesResponse) String() string {
 func (*ListGatesResponse) ProtoMessage() {}
 
 func (x *ListGatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -370,7 +485,7 @@ func (x *ListGatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGatesResponse.ProtoReflect.Descriptor instead.
 func (*ListGatesResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListGatesResponse) GetGates() []*Gate {
@@ -396,7 +511,7 @@ type GetGateRequest struct {
 
 func (x *GetGateRequest) Reset() {
 	*x = GetGateRequest{}
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -408,7 +523,7 @@ func (x *GetGateRequest) String() string {
 func (*GetGateRequest) ProtoMessage() {}
 
 func (x *GetGateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -421,7 +536,7 @@ func (x *GetGateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGateRequest.ProtoReflect.Descriptor instead.
 func (*GetGateRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetGateRequest) GetGateId() string {
@@ -442,7 +557,7 @@ type GetGateResponse struct {
 
 func (x *GetGateResponse) Reset() {
 	*x = GetGateResponse{}
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -454,7 +569,7 @@ func (x *GetGateResponse) String() string {
 func (*GetGateResponse) ProtoMessage() {}
 
 func (x *GetGateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -467,7 +582,7 @@ func (x *GetGateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGateResponse.ProtoReflect.Descriptor instead.
 func (*GetGateResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetGateResponse) GetGate() *Gate {
@@ -496,7 +611,7 @@ const file_bambuflow_admin_v1_eval_gate_admin_proto_rawDesc = "" +
 	"\x06_value\"?\n" +
 	"\x11GateConfigVersion\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06values\x18\x02 \x03(\tR\x06values\"\xbd\x03\n" +
+	"\x06values\x18\x02 \x03(\tR\x06values\"\x80\x04\n" +
 	"\x04Gate\x12\x17\n" +
 	"\agate_id\x18\x01 \x01(\tR\x06gateId\x12\x18\n" +
 	"\atrigger\x18\x02 \x01(\tR\atrigger\x12\x1d\n" +
@@ -514,7 +629,19 @@ const file_bambuflow_admin_v1_eval_gate_admin_proto_rawDesc = "" +
 	" \x03(\v2%.bambuflow.admin.v1.GateConfigVersionR\x06config\x12\x18\n" +
 	"\arepeats\x18\v \x01(\x05R\arepeats\x129\n" +
 	"\n" +
-	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x80\x01\n" +
+	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12A\n" +
+	"\treadiness\x18\r \x03(\v2#.bambuflow.admin.v1.TenantReadinessR\treadiness\"\x82\x02\n" +
+	"\x0fTenantReadiness\x12\x16\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x14\n" +
+	"\x05stage\x18\x02 \x01(\tR\x05stage\x12\x18\n" +
+	"\acounted\x18\x03 \x01(\x05R\acounted\x12\x1e\n" +
+	"\n" +
+	"unreviewed\x18\x04 \x01(\x05R\n" +
+	"unreviewed\x12!\n" +
+	"\frefuse_share\x18\x05 \x01(\x01R\vrefuseShare\x12'\n" +
+	"\x0fsynthetic_share\x18\x06 \x01(\x01R\x0esyntheticShare\x12'\n" +
+	"\x0fdouble_reviewed\x18\a \x01(\x05R\x0edoubleReviewed\x12\x12\n" +
+	"\x04gaps\x18\b \x03(\tR\x04gaps\"\x80\x01\n" +
 	"\x10ListGatesRequest\x12\x16\n" +
 	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x18\n" +
 	"\atrigger\x18\x02 \x01(\tR\atrigger\x12\x1b\n" +
@@ -531,8 +658,8 @@ const file_bambuflow_admin_v1_eval_gate_admin_proto_rawDesc = "" +
 	"\x0freport_markdown\x18\x02 \x01(\tR\x0ereportMarkdown2\xc4\x01\n" +
 	"\x14EvalGateAdminService\x12X\n" +
 	"\tListGates\x12$.bambuflow.admin.v1.ListGatesRequest\x1a%.bambuflow.admin.v1.ListGatesResponse\x12R\n" +
-	"\aGetGate\x12\".bambuflow.admin.v1.GetGateRequest\x1a#.bambuflow.admin.v1.GetGateResponseB\xe1\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x12EvalGateAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\aGetGate\x12\".bambuflow.admin.v1.GetGateRequest\x1a#.bambuflow.admin.v1.GetGateResponseB\xdd\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x12EvalGateAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescOnce sync.Once
@@ -546,32 +673,34 @@ func file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescGZIP() []byte {
 	return file_bambuflow_admin_v1_eval_gate_admin_proto_rawDescData
 }
 
-var file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_bambuflow_admin_v1_eval_gate_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_bambuflow_admin_v1_eval_gate_admin_proto_goTypes = []any{
 	(*GateMetric)(nil),            // 0: bambuflow.admin.v1.GateMetric
 	(*GateConfigVersion)(nil),     // 1: bambuflow.admin.v1.GateConfigVersion
 	(*Gate)(nil),                  // 2: bambuflow.admin.v1.Gate
-	(*ListGatesRequest)(nil),      // 3: bambuflow.admin.v1.ListGatesRequest
-	(*ListGatesResponse)(nil),     // 4: bambuflow.admin.v1.ListGatesResponse
-	(*GetGateRequest)(nil),        // 5: bambuflow.admin.v1.GetGateRequest
-	(*GetGateResponse)(nil),       // 6: bambuflow.admin.v1.GetGateResponse
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*TenantReadiness)(nil),       // 3: bambuflow.admin.v1.TenantReadiness
+	(*ListGatesRequest)(nil),      // 4: bambuflow.admin.v1.ListGatesRequest
+	(*ListGatesResponse)(nil),     // 5: bambuflow.admin.v1.ListGatesResponse
+	(*GetGateRequest)(nil),        // 6: bambuflow.admin.v1.GetGateRequest
+	(*GetGateResponse)(nil),       // 7: bambuflow.admin.v1.GetGateResponse
+	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
 }
 var file_bambuflow_admin_v1_eval_gate_admin_proto_depIdxs = []int32{
 	0, // 0: bambuflow.admin.v1.Gate.metrics:type_name -> bambuflow.admin.v1.GateMetric
 	1, // 1: bambuflow.admin.v1.Gate.config:type_name -> bambuflow.admin.v1.GateConfigVersion
-	7, // 2: bambuflow.admin.v1.Gate.created_at:type_name -> google.protobuf.Timestamp
-	2, // 3: bambuflow.admin.v1.ListGatesResponse.gates:type_name -> bambuflow.admin.v1.Gate
-	2, // 4: bambuflow.admin.v1.GetGateResponse.gate:type_name -> bambuflow.admin.v1.Gate
-	3, // 5: bambuflow.admin.v1.EvalGateAdminService.ListGates:input_type -> bambuflow.admin.v1.ListGatesRequest
-	5, // 6: bambuflow.admin.v1.EvalGateAdminService.GetGate:input_type -> bambuflow.admin.v1.GetGateRequest
-	4, // 7: bambuflow.admin.v1.EvalGateAdminService.ListGates:output_type -> bambuflow.admin.v1.ListGatesResponse
-	6, // 8: bambuflow.admin.v1.EvalGateAdminService.GetGate:output_type -> bambuflow.admin.v1.GetGateResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	8, // 2: bambuflow.admin.v1.Gate.created_at:type_name -> google.protobuf.Timestamp
+	3, // 3: bambuflow.admin.v1.Gate.readiness:type_name -> bambuflow.admin.v1.TenantReadiness
+	2, // 4: bambuflow.admin.v1.ListGatesResponse.gates:type_name -> bambuflow.admin.v1.Gate
+	2, // 5: bambuflow.admin.v1.GetGateResponse.gate:type_name -> bambuflow.admin.v1.Gate
+	4, // 6: bambuflow.admin.v1.EvalGateAdminService.ListGates:input_type -> bambuflow.admin.v1.ListGatesRequest
+	6, // 7: bambuflow.admin.v1.EvalGateAdminService.GetGate:input_type -> bambuflow.admin.v1.GetGateRequest
+	5, // 8: bambuflow.admin.v1.EvalGateAdminService.ListGates:output_type -> bambuflow.admin.v1.ListGatesResponse
+	7, // 9: bambuflow.admin.v1.EvalGateAdminService.GetGate:output_type -> bambuflow.admin.v1.GetGateResponse
+	8, // [8:10] is the sub-list for method output_type
+	6, // [6:8] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_eval_gate_admin_proto_init() }
@@ -586,7 +715,7 @@ func file_bambuflow_admin_v1_eval_gate_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_admin_v1_eval_gate_admin_proto_rawDesc), len(file_bambuflow_admin_v1_eval_gate_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -19,7 +19,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from bambuflow.admin.v1 import ingest_admin_pb2, ingest_admin_pb2_grpc
 from bambuflow_platform.grpc_server import current_principal
-from bambuflow_processing.state import IngestState
+from bambuflow_processing.state import IngestState, new_batch_id
 from bambuflow_processing.worker import STREAM
 
 if TYPE_CHECKING:
@@ -36,6 +36,9 @@ MAX_PAGE = 200
 MAX_REPLAY_DOCS = 500
 MAX_REASON = 500
 MAX_ID = 512
+MAX_VERSION = 64
+# 一次最多重新处理的已成功文档：更多的应分批，或改走全量重建
+MAX_REPROCESS = 10000
 
 
 async def abort(context: Ctx, code: grpc.StatusCode, msg: str) -> NoReturn:
@@ -76,6 +79,20 @@ def _matches(d: dict[str, Any], source_id: str, stage: str, error_code: str) -> 
         and (not stage or d["stage"] == stage)
         and (not error_code or d["error_code"] == error_code)
     )
+
+
+def _in_window(at: str, start: dt.datetime | None, end: dt.datetime | None) -> bool:
+    """at 是状态里的 ISO 时间；没有记录时间的不算在任何时间段内。"""
+    if start is None and end is None:
+        return True
+    if not at:
+        return False
+    t = dt.datetime.fromisoformat(at)
+    return (start is None or t >= start) and (end is None or t <= end)
+
+
+def _bound(t: Timestamp, present: bool) -> dt.datetime | None:
+    return t.ToDatetime(dt.UTC) if present else None
 
 
 def _token(doc_id: str) -> str:
@@ -163,19 +180,62 @@ class IngestAdmin(ingest_admin_pb2_grpc.IngestAdminServiceServicer):
             await abort(
                 context, grpc.StatusCode.INVALID_ARGUMENT, f"doc_ids 最多 {MAX_REPLAY_DOCS} 个"
             )
-        if not (named or request.source_id or request.stage or request.error_code):
+        start = _bound(getattr(request, "from"), request.HasField("from"))
+        end = _bound(request.to, request.HasField("to"))
+        window = start is not None or end is not None
+        version = request.pipeline_version
+        if len(version) > MAX_VERSION or (start and end and start > end):
+            await abort(
+                context, grpc.StatusCode.INVALID_ARGUMENT, "pipeline_version 或时间段不合法"
+            )
+        if not (
+            named or request.source_id or request.stage or request.error_code or window or version
+        ):
             # 不给条件就是全部重放：这种操作要明确写出条件，不能靠空请求触发
             await abort(context, grpc.StatusCode.INVALID_ARGUMENT, "至少给一个条件或 doc_ids")
+        if request.include_succeeded and not (version or window):
+            # 重新处理已成功的文档开销大：要说清楚是哪个组件版本或哪段时间的
+            await abort(
+                context,
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "重新处理已成功的文档须给组件版本或时间段",
+            )
         matched = [
             d
             for d in await self._call(context, self._state.dead_letters)
             if _matches(d, request.source_id, request.stage, request.error_code)
             and (not named or d["doc_id"] in named)
+            and (not version or d.get("pipeline_version") == version)
+            and _in_window(str(d.get("last_failed_at", "")), start, end)
         ]
         # 隔离文档只有点名才重放（入库管道详设第 11 节：不再自动重试，等人工处理）
         chosen = [d for d in matched if not d["quarantined"] or d["doc_id"] in named]
-        batch, n = await self._call(context, self._state.replay, chosen, STREAM)
-        _log.info("已重放死信", extra={"ingest_batch_id": batch, "replayed": n})
+        again: list[dict[str, str]] = []
+        if request.include_succeeded and not request.stage and not request.error_code:
+            dead = {d["doc_id"] for d in chosen}
+            again = [
+                d
+                for d in await self._call(context, self._state.succeeded_docs)
+                if _matches(d, request.source_id, "", "")
+                and (not named or d["doc_id"] in named)
+                and (not version or d.get("pipeline_version") == version)
+                and _in_window(d.get("updated_at", ""), start, end)
+                and d["doc_id"] not in dead
+            ]
+            if len(again) > MAX_REPROCESS:
+                await abort(
+                    context,
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    f"符合条件的已成功文档有 {len(again)} 份，"
+                    f"超过一次 {MAX_REPROCESS} 份，请缩小条件",
+                )
+        batch = new_batch_id()
+        _, n = await self._call(context, self._state.replay, chosen, STREAM, batch)
+        m = await self._call(context, self._state.reprocess, again, STREAM, batch)
+        _log.info("已重放", extra={"ingest_batch_id": batch, "replayed": n + m, "reprocessed": m})
         return ingest_admin_pb2.ReplayResponse(
-            ingest_batch_id=batch, replayed=n, skipped_quarantined=len(matched) - len(chosen)
+            ingest_batch_id=batch if n + m else "",
+            replayed=n + m,
+            reprocessed=m,
+            skipped_quarantined=len(matched) - len(chosen),
         )

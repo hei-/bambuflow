@@ -138,6 +138,17 @@ def test_grant_and_revoke_take_effect_in_search() -> None:
     with psycopg.connect(os.environ["BF_PG_DSN"]) as conn:
         n = conn.execute("SELECT count(*) FROM governance.outbox").fetchone()
     assert n is not None and n[0] >= 1
+
+    # connectors 消费 source.revoked，对该源全部文档写删除标记，之后的同步都跳过
+    def tombstoned() -> bool:
+        with psycopg.connect(os.environ["BF_PG_DSN"]) as conn:
+            row = conn.execute("SELECT state FROM idx.doc_acl WHERE doc_id = %s", (doc,)).fetchone()
+        return row is not None and row[0] == "tombstoned"
+
+    assert wait_until(tombstoned), "撤销后应在 1 分钟内给该源的文档写删除标记"
+    status = call("olga", "GET", f"{PATH}/{src}/sync-status")
+    assert status.status_code == 200 and status.json()["revoked_at"], status.text
+    assert call("olga", "POST", f"{PATH}/{src}/sync", {"reason": "x"}).status_code == 409
     # 撤销后不能再授权、不能再撤销
     assert call("dana", "POST", f"{PATH}/{src}/grants", {"tenant": "risk"}).status_code == 409
     assert call("dana", "POST", f"{PATH}/{src}/revoke", {"reason": "x"}).status_code == 409
@@ -145,11 +156,15 @@ def test_grant_and_revoke_take_effect_in_search() -> None:
 
 def test_register_and_approve_permissions() -> None:
     body = {"type": "wiki", "owner_dept": "信贷部", "default_classification": "internal"}
-    # 只有平台管理员能注册；受限级数据源暂不接受注册
+    # 只有平台管理员能注册
     assert call("dana", "POST", PATH, body).status_code == 403
-    restricted = {**body, "default_classification": "restricted"}
-    assert call("paul", "POST", PATH, restricted).status_code == 400
     src = call("paul", "POST", PATH, body).json()["source_id"]
+    # 列表：平台管理员看全部，数据属主只看本部门的
+    assert src in [
+        x["source_id"]
+        for x in call("paul", "GET", PATH, params={"status": "pending"}).json()["sources"]
+    ]
+    assert src not in [x["source_id"] for x in call("rick", "GET", PATH).json()["sources"]]
     # 平台管理员不能审批；别的部门的属主看不到；缺依据 400
     assert call("paul", "POST", f"{PATH}/{src}/approve", {"basis": "x"}).status_code == 403
     assert call("rick", "POST", f"{PATH}/{src}/approve", {"basis": "x"}).status_code == 404
@@ -158,3 +173,23 @@ def test_register_and_approve_permissions() -> None:
     assert call("dana", "POST", f"{PATH}/{src}/grants", {"tenant": "credit"}).status_code == 409
     assert call("dana", "POST", f"{PATH}/{src}/approve", {"basis": "x"}).status_code == 200
     assert call("dana", "POST", f"{PATH}/{src}/approve", {"basis": "x"}).status_code == 409
+
+
+def test_restricted_source_needs_infosec() -> None:
+    body = {
+        "type": "db",
+        "owner_dept": "信贷部",
+        "default_classification": "restricted",
+        "description": "e2e 受限级",
+    }
+    src = call("paul", "POST", PATH, body).json()["source_id"]
+    infosec = {"basis": "SEC-1", "capacity": "infosec"}
+    # 属主批过仍待信息安全审批，不能授权
+    first = call("dana", "POST", f"{PATH}/{src}/approve", {"basis": "DATA-1"})
+    assert first.status_code == 200 and first.json()["status"] == "pending", first.text
+    assert call("dana", "POST", f"{PATH}/{src}/grants", {"tenant": "credit"}).status_code == 409
+    # 属主不能以信息安全的身份审批
+    assert call("dana", "POST", f"{PATH}/{src}/approve", infosec).status_code == 403
+    done = call("ivan", "POST", f"{PATH}/{src}/approve", infosec)
+    assert done.status_code == 200 and done.json()["status"] == "active", done.text
+    assert done.json()["security_approved_by"] == "ivan"

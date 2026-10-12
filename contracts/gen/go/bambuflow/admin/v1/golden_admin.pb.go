@@ -22,6 +22,365 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type FeedbackCase struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	AnswerId string                 `protobuf:"bytes,1,opt,name=answer_id,json=answerId,proto3" json:"answer_id,omitempty"`
+	Tenant   string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// 回答的时间
+	AnsweredAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=answered_at,json=answeredAt,proto3" json:"answered_at,omitempty"`
+	// 掩码后的问题（与回答记录里存的相同）
+	MaskedQuestion string `protobuf:"bytes,4,opt,name=masked_question,json=maskedQuestion,proto3" json:"masked_question,omitempty"`
+	// 回答的状态：answered、evidence_only、insufficient_evidence、refused
+	AnswerStatus string `protobuf:"bytes,5,opt,name=answer_status,json=answerStatus,proto3" json:"answer_status,omitempty"`
+	// wrong、bad_citation，可能有多条
+	Ratings []string `protobuf:"bytes,6,rep,name=ratings,proto3" json:"ratings,omitempty"`
+	// 提问人的说明（保存前已做 PII 掩码）
+	Comments []string `protobuf:"bytes,7,rep,name=comments,proto3" json:"comments,omitempty"`
+	// 当时引用的文档：doc_id 与标题
+	CitedDocIds []string `protobuf:"bytes,8,rep,name=cited_doc_ids,json=citedDocIds,proto3" json:"cited_doc_ids,omitempty"`
+	CitedTitles []string `protobuf:"bytes,9,rep,name=cited_titles,json=citedTitles,proto3" json:"cited_titles,omitempty"`
+	// open（待处理）、converted（已转为候选题）、dismissed（驳回）
+	Status         string                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
+	ResolvedBy     string                 `protobuf:"bytes,11,opt,name=resolved_by,json=resolvedBy,proto3" json:"resolved_by,omitempty"`
+	ResolutionNote string                 `protobuf:"bytes,12,opt,name=resolution_note,json=resolutionNote,proto3" json:"resolution_note,omitempty"`
+	ResolvedAt     *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=resolved_at,json=resolvedAt,proto3" json:"resolved_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *FeedbackCase) Reset() {
+	*x = FeedbackCase{}
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FeedbackCase) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FeedbackCase) ProtoMessage() {}
+
+func (x *FeedbackCase) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FeedbackCase.ProtoReflect.Descriptor instead.
+func (*FeedbackCase) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *FeedbackCase) GetAnswerId() string {
+	if x != nil {
+		return x.AnswerId
+	}
+	return ""
+}
+
+func (x *FeedbackCase) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *FeedbackCase) GetAnsweredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AnsweredAt
+	}
+	return nil
+}
+
+func (x *FeedbackCase) GetMaskedQuestion() string {
+	if x != nil {
+		return x.MaskedQuestion
+	}
+	return ""
+}
+
+func (x *FeedbackCase) GetAnswerStatus() string {
+	if x != nil {
+		return x.AnswerStatus
+	}
+	return ""
+}
+
+func (x *FeedbackCase) GetRatings() []string {
+	if x != nil {
+		return x.Ratings
+	}
+	return nil
+}
+
+func (x *FeedbackCase) GetComments() []string {
+	if x != nil {
+		return x.Comments
+	}
+	return nil
+}
+
+func (x *FeedbackCase) GetCitedDocIds() []string {
+	if x != nil {
+		return x.CitedDocIds
+	}
+	return nil
+}
+
+func (x *FeedbackCase) GetCitedTitles() []string {
+	if x != nil {
+		return x.CitedTitles
+	}
+	return nil
+}
+
+func (x *FeedbackCase) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *FeedbackCase) GetResolvedBy() string {
+	if x != nil {
+		return x.ResolvedBy
+	}
+	return ""
+}
+
+func (x *FeedbackCase) GetResolutionNote() string {
+	if x != nil {
+		return x.ResolutionNote
+	}
+	return ""
+}
+
+func (x *FeedbackCase) GetResolvedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ResolvedAt
+	}
+	return nil
+}
+
+type ListFeedbackCasesRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Tenant string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// 为空时只列 open
+	Status        string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListFeedbackCasesRequest) Reset() {
+	*x = ListFeedbackCasesRequest{}
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListFeedbackCasesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListFeedbackCasesRequest) ProtoMessage() {}
+
+func (x *ListFeedbackCasesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListFeedbackCasesRequest.ProtoReflect.Descriptor instead.
+func (*ListFeedbackCasesRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ListFeedbackCasesRequest) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *ListFeedbackCasesRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type ListFeedbackCasesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 最新的在前，至多 200 条
+	Cases         []*FeedbackCase `protobuf:"bytes,1,rep,name=cases,proto3" json:"cases,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListFeedbackCasesResponse) Reset() {
+	*x = ListFeedbackCasesResponse{}
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListFeedbackCasesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListFeedbackCasesResponse) ProtoMessage() {}
+
+func (x *ListFeedbackCasesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListFeedbackCasesResponse.ProtoReflect.Descriptor instead.
+func (*ListFeedbackCasesResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListFeedbackCasesResponse) GetCases() []*FeedbackCase {
+	if x != nil {
+		return x.Cases
+	}
+	return nil
+}
+
+type ResolveFeedbackCaseRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Tenant   string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	AnswerId string                 `protobuf:"bytes,2,opt,name=answer_id,json=answerId,proto3" json:"answer_id,omitempty"`
+	// converted 或 dismissed
+	Resolution string `protobuf:"bytes,3,opt,name=resolution,proto3" json:"resolution,omitempty"`
+	// 必填，最多 500 字：转题时写候选题 ID，驳回时写原因
+	Note          string `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveFeedbackCaseRequest) Reset() {
+	*x = ResolveFeedbackCaseRequest{}
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveFeedbackCaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveFeedbackCaseRequest) ProtoMessage() {}
+
+func (x *ResolveFeedbackCaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveFeedbackCaseRequest.ProtoReflect.Descriptor instead.
+func (*ResolveFeedbackCaseRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ResolveFeedbackCaseRequest) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *ResolveFeedbackCaseRequest) GetAnswerId() string {
+	if x != nil {
+		return x.AnswerId
+	}
+	return ""
+}
+
+func (x *ResolveFeedbackCaseRequest) GetResolution() string {
+	if x != nil {
+		return x.Resolution
+	}
+	return ""
+}
+
+func (x *ResolveFeedbackCaseRequest) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+type ResolveFeedbackCaseResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Case          *FeedbackCase          `protobuf:"bytes,1,opt,name=case,proto3" json:"case,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveFeedbackCaseResponse) Reset() {
+	*x = ResolveFeedbackCaseResponse{}
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveFeedbackCaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveFeedbackCaseResponse) ProtoMessage() {}
+
+func (x *ResolveFeedbackCaseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveFeedbackCaseResponse.ProtoReflect.Descriptor instead.
+func (*ResolveFeedbackCaseResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ResolveFeedbackCaseResponse) GetCase() *FeedbackCase {
+	if x != nil {
+		return x.Case
+	}
+	return nil
+}
+
 type GoldenExpected struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// answered、insufficient_evidence、refused
@@ -35,7 +394,7 @@ type GoldenExpected struct {
 
 func (x *GoldenExpected) Reset() {
 	*x = GoldenExpected{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[0]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +406,7 @@ func (x *GoldenExpected) String() string {
 func (*GoldenExpected) ProtoMessage() {}
 
 func (x *GoldenExpected) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[0]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +419,7 @@ func (x *GoldenExpected) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GoldenExpected.ProtoReflect.Descriptor instead.
 func (*GoldenExpected) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{0}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GoldenExpected) GetStatus() string {
@@ -117,7 +476,7 @@ type GoldenQuestion struct {
 
 func (x *GoldenQuestion) Reset() {
 	*x = GoldenQuestion{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -129,7 +488,7 @@ func (x *GoldenQuestion) String() string {
 func (*GoldenQuestion) ProtoMessage() {}
 
 func (x *GoldenQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -142,7 +501,7 @@ func (x *GoldenQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GoldenQuestion.ProtoReflect.Descriptor instead.
 func (*GoldenQuestion) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GoldenQuestion) GetQuestionId() string {
@@ -247,7 +606,7 @@ type ListQuestionsRequest struct {
 
 func (x *ListQuestionsRequest) Reset() {
 	*x = ListQuestionsRequest{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -259,7 +618,7 @@ func (x *ListQuestionsRequest) String() string {
 func (*ListQuestionsRequest) ProtoMessage() {}
 
 func (x *ListQuestionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -272,7 +631,7 @@ func (x *ListQuestionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQuestionsRequest.ProtoReflect.Descriptor instead.
 func (*ListQuestionsRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListQuestionsRequest) GetTenant() string {
@@ -300,7 +659,7 @@ type ListQuestionsResponse struct {
 
 func (x *ListQuestionsResponse) Reset() {
 	*x = ListQuestionsResponse{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -312,7 +671,7 @@ func (x *ListQuestionsResponse) String() string {
 func (*ListQuestionsResponse) ProtoMessage() {}
 
 func (x *ListQuestionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -325,7 +684,7 @@ func (x *ListQuestionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQuestionsResponse.ProtoReflect.Descriptor instead.
 func (*ListQuestionsResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListQuestionsResponse) GetQuestions() []*GoldenQuestion {
@@ -357,7 +716,7 @@ type SubmitCandidateRequest struct {
 
 func (x *SubmitCandidateRequest) Reset() {
 	*x = SubmitCandidateRequest{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -369,7 +728,7 @@ func (x *SubmitCandidateRequest) String() string {
 func (*SubmitCandidateRequest) ProtoMessage() {}
 
 func (x *SubmitCandidateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -382,7 +741,7 @@ func (x *SubmitCandidateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitCandidateRequest.ProtoReflect.Descriptor instead.
 func (*SubmitCandidateRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SubmitCandidateRequest) GetTenant() string {
@@ -443,7 +802,7 @@ type SubmitCandidateResponse struct {
 
 func (x *SubmitCandidateResponse) Reset() {
 	*x = SubmitCandidateResponse{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -455,7 +814,7 @@ func (x *SubmitCandidateResponse) String() string {
 func (*SubmitCandidateResponse) ProtoMessage() {}
 
 func (x *SubmitCandidateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -468,7 +827,7 @@ func (x *SubmitCandidateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitCandidateResponse.ProtoReflect.Descriptor instead.
 func (*SubmitCandidateResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SubmitCandidateResponse) GetQuestion() *GoldenQuestion {
@@ -491,7 +850,7 @@ type ReviewCandidateRequest struct {
 
 func (x *ReviewCandidateRequest) Reset() {
 	*x = ReviewCandidateRequest{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -503,7 +862,7 @@ func (x *ReviewCandidateRequest) String() string {
 func (*ReviewCandidateRequest) ProtoMessage() {}
 
 func (x *ReviewCandidateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -516,7 +875,7 @@ func (x *ReviewCandidateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewCandidateRequest.ProtoReflect.Descriptor instead.
 func (*ReviewCandidateRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ReviewCandidateRequest) GetTenant() string {
@@ -556,7 +915,7 @@ type ReviewCandidateResponse struct {
 
 func (x *ReviewCandidateResponse) Reset() {
 	*x = ReviewCandidateResponse{}
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -568,7 +927,7 @@ func (x *ReviewCandidateResponse) String() string {
 func (*ReviewCandidateResponse) ProtoMessage() {}
 
 func (x *ReviewCandidateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_golden_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -581,7 +940,7 @@ func (x *ReviewCandidateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewCandidateResponse.ProtoReflect.Descriptor instead.
 func (*ReviewCandidateResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ReviewCandidateResponse) GetQuestion() *GoldenQuestion {
@@ -595,7 +954,39 @@ var File_bambuflow_admin_v1_golden_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_golden_admin_proto_rawDesc = "" +
 	"\n" +
-	"%bambuflow/admin/v1/golden_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x01\n" +
+	"%bambuflow/admin/v1/golden_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xea\x03\n" +
+	"\fFeedbackCase\x12\x1b\n" +
+	"\tanswer_id\x18\x01 \x01(\tR\banswerId\x12\x16\n" +
+	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12;\n" +
+	"\vanswered_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"answeredAt\x12'\n" +
+	"\x0fmasked_question\x18\x04 \x01(\tR\x0emaskedQuestion\x12#\n" +
+	"\ranswer_status\x18\x05 \x01(\tR\fanswerStatus\x12\x18\n" +
+	"\aratings\x18\x06 \x03(\tR\aratings\x12\x1a\n" +
+	"\bcomments\x18\a \x03(\tR\bcomments\x12\"\n" +
+	"\rcited_doc_ids\x18\b \x03(\tR\vcitedDocIds\x12!\n" +
+	"\fcited_titles\x18\t \x03(\tR\vcitedTitles\x12\x16\n" +
+	"\x06status\x18\n" +
+	" \x01(\tR\x06status\x12\x1f\n" +
+	"\vresolved_by\x18\v \x01(\tR\n" +
+	"resolvedBy\x12'\n" +
+	"\x0fresolution_note\x18\f \x01(\tR\x0eresolutionNote\x12;\n" +
+	"\vresolved_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"resolvedAt\"J\n" +
+	"\x18ListFeedbackCasesRequest\x12\x16\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"S\n" +
+	"\x19ListFeedbackCasesResponse\x126\n" +
+	"\x05cases\x18\x01 \x03(\v2 .bambuflow.admin.v1.FeedbackCaseR\x05cases\"\x85\x01\n" +
+	"\x1aResolveFeedbackCaseRequest\x12\x16\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1b\n" +
+	"\tanswer_id\x18\x02 \x01(\tR\banswerId\x12\x1e\n" +
+	"\n" +
+	"resolution\x18\x03 \x01(\tR\n" +
+	"resolution\x12\x12\n" +
+	"\x04note\x18\x04 \x01(\tR\x04note\"S\n" +
+	"\x1bResolveFeedbackCaseResponse\x124\n" +
+	"\x04case\x18\x01 \x01(\v2 .bambuflow.admin.v1.FeedbackCaseR\x04case\"\x88\x01\n" +
 	"\x0eGoldenExpected\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1d\n" +
 	"\n" +
@@ -643,12 +1034,14 @@ const file_bambuflow_admin_v1_golden_admin_proto_rawDesc = "" +
 	"\bapproved\x18\x03 \x01(\bR\bapproved\x12\x16\n" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\"Y\n" +
 	"\x17ReviewCandidateResponse\x12>\n" +
-	"\bquestion\x18\x01 \x01(\v2\".bambuflow.admin.v1.GoldenQuestionR\bquestion2\xd5\x02\n" +
+	"\bquestion\x18\x01 \x01(\v2\".bambuflow.admin.v1.GoldenQuestionR\bquestion2\xbf\x04\n" +
 	"\x15GoldenSetAdminService\x12d\n" +
 	"\rListQuestions\x12(.bambuflow.admin.v1.ListQuestionsRequest\x1a).bambuflow.admin.v1.ListQuestionsResponse\x12j\n" +
 	"\x0fSubmitCandidate\x12*.bambuflow.admin.v1.SubmitCandidateRequest\x1a+.bambuflow.admin.v1.SubmitCandidateResponse\x12j\n" +
-	"\x0fReviewCandidate\x12*.bambuflow.admin.v1.ReviewCandidateRequest\x1a+.bambuflow.admin.v1.ReviewCandidateResponseB\xdf\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x10GoldenAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x0fReviewCandidate\x12*.bambuflow.admin.v1.ReviewCandidateRequest\x1a+.bambuflow.admin.v1.ReviewCandidateResponse\x12p\n" +
+	"\x11ListFeedbackCases\x12,.bambuflow.admin.v1.ListFeedbackCasesRequest\x1a-.bambuflow.admin.v1.ListFeedbackCasesResponse\x12v\n" +
+	"\x13ResolveFeedbackCase\x12..bambuflow.admin.v1.ResolveFeedbackCaseRequest\x1a/.bambuflow.admin.v1.ResolveFeedbackCaseResponseB\xdb\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x10GoldenAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_golden_admin_proto_rawDescOnce sync.Once
@@ -662,36 +1055,49 @@ func file_bambuflow_admin_v1_golden_admin_proto_rawDescGZIP() []byte {
 	return file_bambuflow_admin_v1_golden_admin_proto_rawDescData
 }
 
-var file_bambuflow_admin_v1_golden_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_bambuflow_admin_v1_golden_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_bambuflow_admin_v1_golden_admin_proto_goTypes = []any{
-	(*GoldenExpected)(nil),          // 0: bambuflow.admin.v1.GoldenExpected
-	(*GoldenQuestion)(nil),          // 1: bambuflow.admin.v1.GoldenQuestion
-	(*ListQuestionsRequest)(nil),    // 2: bambuflow.admin.v1.ListQuestionsRequest
-	(*ListQuestionsResponse)(nil),   // 3: bambuflow.admin.v1.ListQuestionsResponse
-	(*SubmitCandidateRequest)(nil),  // 4: bambuflow.admin.v1.SubmitCandidateRequest
-	(*SubmitCandidateResponse)(nil), // 5: bambuflow.admin.v1.SubmitCandidateResponse
-	(*ReviewCandidateRequest)(nil),  // 6: bambuflow.admin.v1.ReviewCandidateRequest
-	(*ReviewCandidateResponse)(nil), // 7: bambuflow.admin.v1.ReviewCandidateResponse
-	(*timestamppb.Timestamp)(nil),   // 8: google.protobuf.Timestamp
+	(*FeedbackCase)(nil),                // 0: bambuflow.admin.v1.FeedbackCase
+	(*ListFeedbackCasesRequest)(nil),    // 1: bambuflow.admin.v1.ListFeedbackCasesRequest
+	(*ListFeedbackCasesResponse)(nil),   // 2: bambuflow.admin.v1.ListFeedbackCasesResponse
+	(*ResolveFeedbackCaseRequest)(nil),  // 3: bambuflow.admin.v1.ResolveFeedbackCaseRequest
+	(*ResolveFeedbackCaseResponse)(nil), // 4: bambuflow.admin.v1.ResolveFeedbackCaseResponse
+	(*GoldenExpected)(nil),              // 5: bambuflow.admin.v1.GoldenExpected
+	(*GoldenQuestion)(nil),              // 6: bambuflow.admin.v1.GoldenQuestion
+	(*ListQuestionsRequest)(nil),        // 7: bambuflow.admin.v1.ListQuestionsRequest
+	(*ListQuestionsResponse)(nil),       // 8: bambuflow.admin.v1.ListQuestionsResponse
+	(*SubmitCandidateRequest)(nil),      // 9: bambuflow.admin.v1.SubmitCandidateRequest
+	(*SubmitCandidateResponse)(nil),     // 10: bambuflow.admin.v1.SubmitCandidateResponse
+	(*ReviewCandidateRequest)(nil),      // 11: bambuflow.admin.v1.ReviewCandidateRequest
+	(*ReviewCandidateResponse)(nil),     // 12: bambuflow.admin.v1.ReviewCandidateResponse
+	(*timestamppb.Timestamp)(nil),       // 13: google.protobuf.Timestamp
 }
 var file_bambuflow_admin_v1_golden_admin_proto_depIdxs = []int32{
-	0, // 0: bambuflow.admin.v1.GoldenQuestion.expected:type_name -> bambuflow.admin.v1.GoldenExpected
-	8, // 1: bambuflow.admin.v1.GoldenQuestion.submitted_at:type_name -> google.protobuf.Timestamp
-	1, // 2: bambuflow.admin.v1.ListQuestionsResponse.questions:type_name -> bambuflow.admin.v1.GoldenQuestion
-	0, // 3: bambuflow.admin.v1.SubmitCandidateRequest.expected:type_name -> bambuflow.admin.v1.GoldenExpected
-	1, // 4: bambuflow.admin.v1.SubmitCandidateResponse.question:type_name -> bambuflow.admin.v1.GoldenQuestion
-	1, // 5: bambuflow.admin.v1.ReviewCandidateResponse.question:type_name -> bambuflow.admin.v1.GoldenQuestion
-	2, // 6: bambuflow.admin.v1.GoldenSetAdminService.ListQuestions:input_type -> bambuflow.admin.v1.ListQuestionsRequest
-	4, // 7: bambuflow.admin.v1.GoldenSetAdminService.SubmitCandidate:input_type -> bambuflow.admin.v1.SubmitCandidateRequest
-	6, // 8: bambuflow.admin.v1.GoldenSetAdminService.ReviewCandidate:input_type -> bambuflow.admin.v1.ReviewCandidateRequest
-	3, // 9: bambuflow.admin.v1.GoldenSetAdminService.ListQuestions:output_type -> bambuflow.admin.v1.ListQuestionsResponse
-	5, // 10: bambuflow.admin.v1.GoldenSetAdminService.SubmitCandidate:output_type -> bambuflow.admin.v1.SubmitCandidateResponse
-	7, // 11: bambuflow.admin.v1.GoldenSetAdminService.ReviewCandidate:output_type -> bambuflow.admin.v1.ReviewCandidateResponse
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	13, // 0: bambuflow.admin.v1.FeedbackCase.answered_at:type_name -> google.protobuf.Timestamp
+	13, // 1: bambuflow.admin.v1.FeedbackCase.resolved_at:type_name -> google.protobuf.Timestamp
+	0,  // 2: bambuflow.admin.v1.ListFeedbackCasesResponse.cases:type_name -> bambuflow.admin.v1.FeedbackCase
+	0,  // 3: bambuflow.admin.v1.ResolveFeedbackCaseResponse.case:type_name -> bambuflow.admin.v1.FeedbackCase
+	5,  // 4: bambuflow.admin.v1.GoldenQuestion.expected:type_name -> bambuflow.admin.v1.GoldenExpected
+	13, // 5: bambuflow.admin.v1.GoldenQuestion.submitted_at:type_name -> google.protobuf.Timestamp
+	6,  // 6: bambuflow.admin.v1.ListQuestionsResponse.questions:type_name -> bambuflow.admin.v1.GoldenQuestion
+	5,  // 7: bambuflow.admin.v1.SubmitCandidateRequest.expected:type_name -> bambuflow.admin.v1.GoldenExpected
+	6,  // 8: bambuflow.admin.v1.SubmitCandidateResponse.question:type_name -> bambuflow.admin.v1.GoldenQuestion
+	6,  // 9: bambuflow.admin.v1.ReviewCandidateResponse.question:type_name -> bambuflow.admin.v1.GoldenQuestion
+	7,  // 10: bambuflow.admin.v1.GoldenSetAdminService.ListQuestions:input_type -> bambuflow.admin.v1.ListQuestionsRequest
+	9,  // 11: bambuflow.admin.v1.GoldenSetAdminService.SubmitCandidate:input_type -> bambuflow.admin.v1.SubmitCandidateRequest
+	11, // 12: bambuflow.admin.v1.GoldenSetAdminService.ReviewCandidate:input_type -> bambuflow.admin.v1.ReviewCandidateRequest
+	1,  // 13: bambuflow.admin.v1.GoldenSetAdminService.ListFeedbackCases:input_type -> bambuflow.admin.v1.ListFeedbackCasesRequest
+	3,  // 14: bambuflow.admin.v1.GoldenSetAdminService.ResolveFeedbackCase:input_type -> bambuflow.admin.v1.ResolveFeedbackCaseRequest
+	8,  // 15: bambuflow.admin.v1.GoldenSetAdminService.ListQuestions:output_type -> bambuflow.admin.v1.ListQuestionsResponse
+	10, // 16: bambuflow.admin.v1.GoldenSetAdminService.SubmitCandidate:output_type -> bambuflow.admin.v1.SubmitCandidateResponse
+	12, // 17: bambuflow.admin.v1.GoldenSetAdminService.ReviewCandidate:output_type -> bambuflow.admin.v1.ReviewCandidateResponse
+	2,  // 18: bambuflow.admin.v1.GoldenSetAdminService.ListFeedbackCases:output_type -> bambuflow.admin.v1.ListFeedbackCasesResponse
+	4,  // 19: bambuflow.admin.v1.GoldenSetAdminService.ResolveFeedbackCase:output_type -> bambuflow.admin.v1.ResolveFeedbackCaseResponse
+	15, // [15:20] is the sub-list for method output_type
+	10, // [10:15] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_golden_admin_proto_init() }
@@ -705,7 +1111,7 @@ func file_bambuflow_admin_v1_golden_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_admin_v1_golden_admin_proto_rawDesc), len(file_bambuflow_admin_v1_golden_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

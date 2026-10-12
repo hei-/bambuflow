@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/publish"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/publish"
 )
 
 func TestDrainMergesVariablePositions(t *testing.T) {

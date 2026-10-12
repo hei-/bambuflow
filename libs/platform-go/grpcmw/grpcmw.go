@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
 )
 
 const authorizationKey = "authorization"
@@ -79,13 +79,14 @@ func ForwardPrincipal(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, authorizationKey, "Bearer "+c.raw)
 }
 
-// UnaryServerFor 只对 services 列出的 gRPC 服务（全名，如 bambuflow.admin.v1.SourceAdminService）做 UnaryServer 的检查，
+// UnaryServerFor 只对 services 列出的 gRPC 服务（全名，如 bambuflow.admin.v1.SourceAdminService）或单个方法
+// （服务全名/方法名，如 bambuflow.config.v1.ConfigService/GetCandidate）做 UnaryServer 的检查，
 // 同一进程里的其他服务原样放行。管理接口与服务间接口（如 ConfigService）共用一个端口时用它。
 func UnaryServerFor(services []string, v Verifier, log *slog.Logger) grpc.UnaryServerInterceptor {
 	check := UnaryServer(v, log)
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		for _, s := range services {
-			if strings.HasPrefix(info.FullMethod, "/"+s+"/") {
+			if info.FullMethod == "/"+s || strings.HasPrefix(info.FullMethod, "/"+s+"/") {
 				return check(ctx, req, info, handler)
 			}
 		}

@@ -1,15 +1,15 @@
-module github.com/bambu-ai/bambuflow/services/qa/batch
+module github.com/hei-/bambuflow/services/qa/batch
 
 go 1.26.0
 
 replace (
-	github.com/bambu-ai/bambuflow/contracts/gen/go => ../../../contracts/gen/go
-	github.com/bambu-ai/bambuflow/libs/platform-go => ../../../libs/platform-go
+	github.com/hei-/bambuflow/contracts/gen/go => ../../../contracts/gen/go
+	github.com/hei-/bambuflow/libs/platform-go => ../../../libs/platform-go
 )
 
 require (
-	github.com/bambu-ai/bambuflow/contracts/gen/go v0.0.0-00010101000000-000000000000
-	github.com/bambu-ai/bambuflow/libs/platform-go v0.0.0-00010101000000-000000000000
+	github.com/hei-/bambuflow/contracts/gen/go v0.0.0-00010101000000-000000000000
+	github.com/hei-/bambuflow/libs/platform-go v0.0.0-00010101000000-000000000000
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/redis/go-redis/v9 v9.23.0
 	google.golang.org/grpc v1.84.0

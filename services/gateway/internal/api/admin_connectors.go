@@ -4,10 +4,10 @@ import (
 	"context"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
-// 数据源同步的运维接口（入库管道详设 14.4）：GET /v1/admin/sources/{src_id}/sync-status、POST .../pause、.../resume，
+// 数据源同步的运维接口（入库管道详设 14.4）：GET /v1/admin/sources/{src_id}/sync-status、POST .../pause、.../resume、.../sync，
 // 由 connectors 的管理服务实现。
 
 type syncRunJSON struct {
@@ -23,6 +23,20 @@ type syncRunJSON struct {
 	DeletesPaused       bool   `json:"deletes_paused"`
 	DeletesPausedReason string `json:"deletes_paused_reason,omitempty"`
 	Refetched           int32  `json:"refetched"`
+	// 对账才有
+	Reconciliation *reconciliationJSON `json:"reconciliation,omitempty"`
+	// 清单里没能读出、本轮跳过的文档
+	Skipped      int32    `json:"skipped,omitempty"`
+	SkippedItems []string `json:"skipped_items,omitempty"`
+}
+
+type reconciliationJSON struct {
+	Missing            int32 `json:"missing"`
+	ContentMismatch    int32 `json:"content_mismatch"`
+	ACLMismatch        int32 `json:"acl_mismatch"`
+	Orphaned           int32 `json:"orphaned"`
+	TombstonedInSource int32 `json:"tombstoned_in_source"`
+	Indexed            int32 `json:"indexed"`
 }
 
 func syncRunOf(r *adminv1.SyncRun) *syncRunJSON {
@@ -32,7 +46,16 @@ func syncRunOf(r *adminv1.SyncRun) *syncRunJSON {
 	return &syncRunJSON{Command: r.GetCommand(), StartedAt: rfc3339(r.GetStartedAt()), FinishedAt: rfc3339(r.GetFinishedAt()),
 		Result: r.GetResult(), Error: r.GetError(), Documents: r.GetDocuments(), Upserts: r.GetUpserts(), ACLOnly: r.GetAclOnly(),
 		Deletes: r.GetDeletes(), DeletesPaused: r.GetDeletesPaused(), DeletesPausedReason: r.GetDeletesPausedReason(),
-		Refetched: r.GetRefetched()}
+		Refetched: r.GetRefetched(), Reconciliation: reconciliationOf(r.GetReconciliation()), Skipped: r.GetSkipped(),
+		SkippedItems: r.GetSkippedItems()}
+}
+
+func reconciliationOf(c *adminv1.Reconciliation) *reconciliationJSON {
+	if c == nil {
+		return nil
+	}
+	return &reconciliationJSON{Missing: c.GetMissing(), ContentMismatch: c.GetContentMismatch(), ACLMismatch: c.GetAclMismatch(),
+		Orphaned: c.GetOrphaned(), TombstonedInSource: c.GetTombstonedInSource(), Indexed: c.GetIndexed()}
 }
 
 type pauseJSON struct {
@@ -54,6 +77,11 @@ type syncStatusJSON struct {
 	LastSuccess      *syncRunJSON `json:"last_success,omitempty"`
 	FreshnessSeconds int64        `json:"freshness_seconds"`
 	Pause            *pauseJSON   `json:"pause,omitempty"`
+	LastReconcile    *syncRunJSON `json:"last_reconcile,omitempty"`
+	RevokedAt        string       `json:"revoked_at,omitempty"`
+	// 常驻清单轮询的当前间隔与下一轮时间；按定时任务同步的源没有
+	ListingIntervalSeconds int64  `json:"listing_interval_seconds,omitempty"`
+	NextRoundAt            string `json:"next_round_at,omitempty"`
 }
 
 func (s *Server) syncStatus(ctx context.Context, in *adminInput) (adminOutput, error) {
@@ -66,7 +94,30 @@ func (s *Server) syncStatus(ctx context.Context, in *adminInput) (adminOutput, e
 		return adminOutput{}, err
 	}
 	return adminOutput{body: syncStatusJSON{SourceID: r.GetSourceId(), LastRun: syncRunOf(r.GetLastRun()),
-		LastSuccess: syncRunOf(r.GetLastSuccess()), FreshnessSeconds: r.GetFreshnessSeconds(), Pause: pauseOf(r.GetPause())}}, nil
+		LastSuccess: syncRunOf(r.GetLastSuccess()), FreshnessSeconds: r.GetFreshnessSeconds(), Pause: pauseOf(r.GetPause()),
+		LastReconcile: syncRunOf(r.GetLastReconcile()), RevokedAt: rfc3339(r.GetRevokedAt()),
+		ListingIntervalSeconds: r.GetListingIntervalSeconds(), NextRoundAt: rfc3339(r.GetNextRoundAt())}}, nil
+}
+
+type syncNowResultJSON struct {
+	Job         string `json:"job"`
+	RequestedAt string `json:"requested_at"`
+}
+
+func (s *Server) syncSourceNow(ctx context.Context, in *adminInput) (adminOutput, error) {
+	id, err := sourceID(in)
+	if err != nil {
+		return adminOutput{}, err
+	}
+	var req pauseRequestJSON
+	if err := decodeBody(in.body, &req); err != nil {
+		return adminOutput{}, err
+	}
+	r, err := s.Connectors.SyncNow(ctx, &adminv1.SyncNowRequest{SourceId: id, Reason: req.Reason})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	return adminOutput{body: syncNowResultJSON{Job: r.GetJob(), RequestedAt: rfc3339(r.GetRequestedAt())}}, nil
 }
 
 type pauseRequestJSON struct {

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 评测集题目与候选题复核（evaluation 详设 3.4、8.2）：GET/POST /v1/admin/golden-sets/{tenant}/questions、
@@ -137,4 +137,75 @@ func (s *Server) reviewCandidate(ctx context.Context, in *adminInput) (adminOutp
 		return adminOutput{}, err
 	}
 	return adminOutput{body: goldenQuestionOf(r.GetQuestion())}, nil
+}
+
+// 负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：GET .../feedback-cases、POST .../feedback-cases/{answer_id}/resolve。
+
+type feedbackCaseJSON struct {
+	AnswerID       string   `json:"answer_id"`
+	Tenant         string   `json:"tenant"`
+	AnsweredAt     string   `json:"answered_at"`
+	MaskedQuestion string   `json:"masked_question"`
+	AnswerStatus   string   `json:"answer_status"`
+	Ratings        []string `json:"ratings"`
+	Comments       []string `json:"comments"`
+	CitedDocIDs    []string `json:"cited_doc_ids"`
+	CitedTitles    []string `json:"cited_titles"`
+	Status         string   `json:"status"`
+	ResolvedBy     string   `json:"resolved_by,omitempty"`
+	ResolutionNote string   `json:"resolution_note,omitempty"`
+	ResolvedAt     string   `json:"resolved_at,omitempty"`
+}
+
+func feedbackCaseOf(c *adminv1.FeedbackCase) feedbackCaseJSON {
+	return feedbackCaseJSON{AnswerID: c.GetAnswerId(), Tenant: c.GetTenant(), AnsweredAt: rfc3339(c.GetAnsweredAt()),
+		MaskedQuestion: c.GetMaskedQuestion(), AnswerStatus: c.GetAnswerStatus(), Ratings: nonNil(c.GetRatings()),
+		Comments: nonNil(c.GetComments()), CitedDocIDs: nonNil(c.GetCitedDocIds()), CitedTitles: nonNil(c.GetCitedTitles()),
+		Status: c.GetStatus(), ResolvedBy: c.GetResolvedBy(), ResolutionNote: c.GetResolutionNote(), ResolvedAt: rfc3339(c.GetResolvedAt())}
+}
+
+type feedbackCaseListJSON struct {
+	Cases []feedbackCaseJSON `json:"cases"`
+}
+
+func (s *Server) listFeedbackCases(ctx context.Context, in *adminInput) (adminOutput, error) {
+	tenant, err := goldenTenant(in)
+	if err != nil {
+		return adminOutput{}, err
+	}
+	r, err := s.Golden.ListFeedbackCases(ctx, &adminv1.ListFeedbackCasesRequest{Tenant: tenant, Status: in.query.Get("status")})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	out := feedbackCaseListJSON{Cases: []feedbackCaseJSON{}}
+	for _, c := range r.GetCases() {
+		out.Cases = append(out.Cases, feedbackCaseOf(c))
+	}
+	return adminOutput{body: out}, nil
+}
+
+type resolveFeedbackCaseJSON struct {
+	Resolution string `json:"resolution"`
+	Note       string `json:"note"`
+}
+
+func (s *Server) resolveFeedbackCase(ctx context.Context, in *adminInput) (adminOutput, error) {
+	tenant, err := goldenTenant(in)
+	if err != nil {
+		return adminOutput{}, err
+	}
+	id := in.params["answer_id"]
+	if !answerIDPattern.MatchString(id) {
+		return adminOutput{}, problemNotFound
+	}
+	var req resolveFeedbackCaseJSON
+	if err := decodeBody(in.body, &req); err != nil {
+		return adminOutput{}, err
+	}
+	r, err := s.Golden.ResolveFeedbackCase(ctx, &adminv1.ResolveFeedbackCaseRequest{Tenant: tenant, AnswerId: id,
+		Resolution: req.Resolution, Note: req.Note})
+	if err != nil {
+		return adminOutput{}, err
+	}
+	return adminOutput{body: feedbackCaseOf(r.GetCase())}, nil
 }

@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hei-/bambuflow/services/retrieval/internal/search"
 )
 
 // Client 实现 search.Embedder。
@@ -30,8 +33,9 @@ type tensor struct {
 	Data     any    `json:"data"`
 }
 
-// Embed 一次批量送入所有子查询（详设第 4 节第 6 步），返回向量与模型版本（如 bge-m3@mock-hash-1）。
-func (c *Client) Embed(ctx context.Context, texts []string) ([][]float32, string, error) {
+// Embed 一次批量送入所有子查询（详设第 4 节第 6 步），返回各子查询的向量与模型版本（如 bge-m3@mock-hash-1）。
+// 模型给学习型稀疏向量（输出名 sparse，每段文本一个“词元 ID → 权重”的 JSON）时一并返回，与稠密向量共用这一次调用（详设 6.2）。
+func (c *Client) Embed(ctx context.Context, texts []string) ([]search.QueryVector, string, error) {
 	body, err := json.Marshal(map[string]any{
 		"inputs": []tensor{{Name: "text", Shape: []int{len(texts)}, Datatype: "BYTES", Data: texts}},
 	})
@@ -55,23 +59,59 @@ func (c *Client) Embed(ctx context.Context, texts []string) ([][]float32, string
 		ModelName    string `json:"model_name"`
 		ModelVersion string `json:"model_version"`
 		Outputs      []struct {
-			Shape []int     `json:"shape"`
-			Data  []float32 `json:"data"`
+			Name  string          `json:"name"`
+			Shape []int           `json:"shape"`
+			Data  json.RawMessage `json:"data"`
 		} `json:"outputs"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, "", err
 	}
-	if len(out.Outputs) != 1 || len(out.Outputs[0].Shape) != 2 || out.ModelVersion == "" {
+	if len(out.Outputs) == 0 || out.ModelVersion == "" {
 		return nil, "", fmt.Errorf("嵌入模型响应格式不符")
 	}
-	n, dim := out.Outputs[0].Shape[0], out.Outputs[0].Shape[1]
-	if n != len(texts) || dim <= 0 || len(out.Outputs[0].Data) != n*dim {
+	dense, sparse := out.Outputs[0], -1
+	for i, o := range out.Outputs {
+		switch o.Name {
+		case "embedding":
+			dense = o
+		case "sparse":
+			sparse = i
+		}
+	}
+	var flat []float32
+	if len(dense.Shape) != 2 || json.Unmarshal(dense.Data, &flat) != nil {
+		return nil, "", fmt.Errorf("嵌入模型响应格式不符")
+	}
+	n, dim := dense.Shape[0], dense.Shape[1]
+	if n != len(texts) || dim <= 0 || len(flat) != n*dim {
 		return nil, "", fmt.Errorf("嵌入模型返回 %d×%d，请求 %d 条", n, dim, len(texts))
 	}
-	vecs := make([][]float32, n)
+	vecs := make([]search.QueryVector, n)
 	for i := range vecs {
-		vecs[i] = out.Outputs[0].Data[i*dim : (i+1)*dim]
+		vecs[i].Dense = flat[i*dim : (i+1)*dim]
+	}
+	if sparse >= 0 {
+		var items []string
+		if err := json.Unmarshal(out.Outputs[sparse].Data, &items); err != nil || len(items) != n {
+			return nil, "", fmt.Errorf("稀疏向量格式不符")
+		}
+		for i, raw := range items {
+			var w map[string]float32
+			if err := json.Unmarshal([]byte(raw), &w); err != nil {
+				return nil, "", fmt.Errorf("稀疏向量格式不符: %w", err)
+			}
+			vecs[i].Sparse = map[uint32]float32{}
+			for k, v := range w {
+				id, err := strconv.ParseUint(k, 10, 32)
+				if err != nil {
+					return nil, "", fmt.Errorf("稀疏向量的词元 ID %q 不合法", k)
+				}
+				if v > 0 {
+					vecs[i].Sparse[uint32(id)] = v
+				}
+			}
+		}
 	}
 	return vecs, out.ModelName + "@" + out.ModelVersion, nil
 }

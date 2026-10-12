@@ -493,8 +493,8 @@ const file_bambuflow_admin_v1_emergency_denial_admin_proto_rawDesc = "" +
 	"\x14DENIAL_STATUS_ACTIVE\x10\x022\x96\x02\n" +
 	"\x1bEmergencyDenialAdminService\x12y\n" +
 	"\x14ListEmergencyDenials\x12/.bambuflow.admin.v1.ListEmergencyDenialsRequest\x1a0.bambuflow.admin.v1.ListEmergencyDenialsResponse\x12|\n" +
-	"\x15CreateEmergencyDenial\x120.bambuflow.admin.v1.CreateEmergencyDenialRequest\x1a1.bambuflow.admin.v1.CreateEmergencyDenialResponseB\xe8\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x19EmergencyDenialAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x15CreateEmergencyDenial\x120.bambuflow.admin.v1.CreateEmergencyDenialRequest\x1a1.bambuflow.admin.v1.CreateEmergencyDenialResponseB\xe4\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x19EmergencyDenialAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_emergency_denial_admin_proto_rawDescOnce sync.Once

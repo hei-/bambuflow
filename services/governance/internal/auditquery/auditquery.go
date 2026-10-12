@@ -1,20 +1,16 @@
-// Package auditquery 是审计查询 /v1/admin/audit（governance 详设 1.1、2）：按用户、文档、时间范围查 gateway 的入口审计。
-//
-// 数据来自 gateway 送进审计桶的入口审计段（键 gateway/<实例>/audit.jsonl.<封存时刻纳秒>，每行一条 JSON），
-// 不另建索引：设计里的审计索引表（总体设计 4.1 audit_index）还没有，先按时间范围挑出可能相关的段逐行扫描，
-// 所以查询必须带时间范围、跨度不超过 31 天。只有审计岗能查，每次查询先写变更审计再返回结果（fail-closed）。
+// Package auditquery 是审计查询 /v1/admin/audit（governance 详设 1.1、2）与审计索引（index.go）：按用户、文档、时间范围、
+// 记录类别查审计索引，再从审计桶读出原文返回。时间跨度不限。只有审计岗能查，每次查询先写变更审计再返回结果（fail-closed）。
 package auditquery
 
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -23,25 +19,18 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
 )
 
-const (
-	// SegmentPrefix 是 gateway 入口审计段的键前缀
-	SegmentPrefix = "gateway/"
-	maxSpan       = 31 * 24 * time.Hour
-	// segmentSlack：段的封存时刻晚于段里最后一条记录，网关停机或审计桶不可用时可能晚很久；
-	// 时间范围之后这么久之内封存的段也要扫
-	segmentSlack = 24 * time.Hour
-	roleAuditor  = "auditor"
-)
+const roleAuditor = "auditor"
 
-// Segments 是审计桶的只读访问。
-type Segments interface {
-	List(ctx context.Context, prefix string) ([]string, error)
-	Get(ctx context.Context, key string) ([]byte, error)
-}
+var (
+	// restricted 是 gateway 为受限级内容单独写的访问记录（技术设计文档 8.6）；同一次请求另有一条 access，默认不重复列出
+	kinds          = []string{"access", "change", "eval", "restricted"}
+	defaultKinds   = []string{"access", "change"}
+	errLineMissing = errors.New("原文里没有这一行")
+)
 
 // Auditor 写变更审计。
 type Auditor interface {
@@ -50,12 +39,13 @@ type Auditor interface {
 
 type Server struct {
 	adminv1.UnimplementedAuditAdminServiceServer
-	Store Segments
-	Audit Auditor
-	Log   *slog.Logger
+	Bucket Bucket
+	Index  Index
+	Audit  Auditor
+	Log    *slog.Logger
 }
 
-// record 是入口审计的一行（gateway internal/audit.Record 的 JSON 形式，只取查询要返回的字段）。
+// record 是入口审计与评测回放的一行（gateway internal/audit.Record 的 JSON 形式，只取查询要返回的字段）。
 type record struct {
 	Time              time.Time `json:"time"`
 	TraceID           string    `json:"trace_id"`
@@ -72,136 +62,159 @@ type record struct {
 	ContextChunkIDs   []string  `json:"context_chunk_ids"`
 	ShownChunkIDs     []string  `json:"shown_chunk_ids"`
 	ListedDocIDs      []string  `json:"listed_doc_ids"`
-	Admin             *struct {
+	Versions          *struct {
+		IndexVersion      string   `json:"index_version"`
+		PolicyVersion     string   `json:"policy_version"`
+		EmbeddingModel    string   `json:"embedding_model"`
+		RerankModel       string   `json:"rerank_model"`
+		GenerationModel   string   `json:"generation_model"`
+		PromptVersion     string   `json:"prompt_version"`
+		NLIModel          string   `json:"nli_model"`
+		CalculatorVersion string   `json:"calculator_version"`
+		PipelineVersion   string   `json:"pipeline_version"`
+		RoutingVersion    string   `json:"routing_version"`
+		ExperimentID      string   `json:"experiment_id"`
+		ExperimentArm     string   `json:"experiment_arm"`
+		Degraded          []string `json:"degraded"`
+	} `json:"versions"`
+	AnswerStatus string `json:"answer_status"`
+	AnswerSHA    string `json:"answer_sha256"`
+	Admin        *struct {
 		Method string `json:"method"`
 		Path   string `json:"path"`
 	} `json:"admin"`
+	// 评测回放才有
+	GateID string `json:"gate_id"`
+	// restricted_access 为受限级内容的单独访问记录
+	Event string `json:"event"`
 }
 
-// segment 是一个审计段：键与封存时刻。
-type segment struct {
-	key    string
-	sealed int64
-}
-
-// cursor 是分页位置：从第 seg 个段（按封存时刻排序后，以键标识）的第 line 行开始。
-type cursor struct {
-	Key  string `json:"k"`
-	Line int    `json:"l"`
+// change 是一条变更审计（libs/platform-go/changeaudit.Record 的 JSON 形式）。
+type change struct {
+	Time     time.Time       `json:"time"`
+	TraceID  string          `json:"trace_id"`
+	Actor    string          `json:"actor"`
+	Roles    []string        `json:"roles"`
+	Action   string          `json:"action"`
+	ObjectID string          `json:"object_id"`
+	Detail   json.RawMessage `json:"detail"`
 }
 
 func (s *Server) QueryAudit(ctx context.Context, r *adminv1.QueryAuditRequest) (*adminv1.QueryAuditResponse, error) {
 	if !grpcmw.HasRole(grpcmw.PrincipalFrom(ctx), roleAuditor) {
 		return nil, status.Error(codes.PermissionDenied, "需要审计岗")
 	}
-	from, to := r.GetFrom().AsTime(), r.GetTo().AsTime()
-	size := int(r.GetPageSize())
-	if size == 0 {
-		size = 50
+	f := Filter{From: r.GetFrom().AsTime(), To: r.GetTo().AsTime(), Sub: r.GetSub(), DocID: r.GetDocId(), Kinds: r.GetKinds(),
+		Limit: int(r.GetPageSize())}
+	if f.Limit == 0 {
+		f.Limit = 50
+	}
+	if len(f.Kinds) == 0 {
+		f.Kinds = defaultKinds
 	}
 	switch {
-	case r.GetFrom() == nil || r.GetTo() == nil || to.Before(from) || to.Sub(from) > maxSpan:
-		return nil, status.Error(codes.InvalidArgument, "from、to 必填，跨度不超过 31 天")
-	case size < 1 || size > 200:
+	case r.GetFrom() == nil || r.GetTo() == nil || f.To.Before(f.From):
+		return nil, status.Error(codes.InvalidArgument, "from、to 必填，from 不晚于 to")
+	case f.Limit < 1 || f.Limit > 200:
 		return nil, status.Error(codes.InvalidArgument, "page_size 应为 1–200")
-	case len(r.GetSub()) > 256 || len(r.GetDocId()) > 512 || !utf8.ValidString(r.GetSub()) || !utf8.ValidString(r.GetDocId()):
+	case len(f.Sub) > 256 || len(f.DocID) > 512 || !utf8.ValidString(f.Sub) || !utf8.ValidString(f.DocID):
 		return nil, status.Error(codes.InvalidArgument, "sub 或 doc_id 不合法")
+	case slices.ContainsFunc(f.Kinds, func(k string) bool { return !slices.Contains(kinds, k) }):
+		return nil, status.Error(codes.InvalidArgument, "kinds 只能是 access、change、eval、restricted")
 	}
-	var start cursor
 	if t := r.GetPageToken(); t != "" {
+		var c Cursor
 		raw, err := base64.RawURLEncoding.DecodeString(t)
-		if err != nil || json.Unmarshal(raw, &start) != nil || start.Line < 0 {
+		if err != nil || json.Unmarshal(raw, &c) != nil || c.RecordID == "" {
 			return nil, status.Error(codes.InvalidArgument, "page_token 不合法")
 		}
+		f.After = &c
 	}
 
 	// 先写变更审计：查询行为本身被审计（谁在什么时候查了谁、哪份文档），写不进去就不查
-	if err := s.Audit.Write(ctx, "audit.query", "", map[string]string{
-		"sub": r.GetSub(), "doc_id": r.GetDocId(), "from": from.UTC().Format(time.RFC3339), "to": to.UTC().Format(time.RFC3339),
-		"page_token": r.GetPageToken(),
+	if err := s.Audit.Write(ctx, "audit.query", "", map[string]any{
+		"sub": f.Sub, "doc_id": f.DocID, "from": f.From.UTC().Format(time.RFC3339), "to": f.To.UTC().Format(time.RFC3339),
+		"kinds": f.Kinds, "page_token": r.GetPageToken(),
 	}); err != nil {
 		s.Log.ErrorContext(ctx, "写审计查询的变更审计失败", slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "暂时不可用")
 	}
 
-	segs, err := s.segments(ctx, from, to)
+	// 多取一行判断还有没有下一页
+	want := f.Limit
+	f.Limit++
+	rows, err := s.Index.Find(ctx, f)
 	if err != nil {
-		s.Log.ErrorContext(ctx, "列出审计段失败", slog.Any("err", err))
+		s.Log.ErrorContext(ctx, "查审计索引失败", slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "暂时不可用")
 	}
-	i := 0
-	if start.Key != "" {
-		i = slices.IndexFunc(segs, func(g segment) bool { return g.key == start.Key })
-		if i < 0 {
-			return nil, status.Error(codes.InvalidArgument, "page_token 不合法")
-		}
-	}
 	out := &adminv1.QueryAuditResponse{}
-	for ; i < len(segs); i++ {
-		body, err := s.Store.Get(ctx, segs[i].key)
+	if len(rows) > want {
+		rows = rows[:want]
+		last := rows[want-1]
+		tok, _ := json.Marshal(Cursor{TS: last.TS, RecordID: last.RecordID})
+		out.NextPageToken = base64.RawURLEncoding.EncodeToString(tok)
+	}
+	objects := map[string][][]byte{}
+	for _, row := range rows {
+		lines, ok := objects[row.ObjectKey]
+		if !ok {
+			body, err := s.Bucket.Get(ctx, row.ObjectKey)
+			if err != nil {
+				s.Log.ErrorContext(ctx, "读取审计原文失败", slog.String("key", row.ObjectKey), slog.Any("err", err))
+				return nil, status.Error(codes.Unavailable, "暂时不可用")
+			}
+			lines = splitLines(body)
+			objects[row.ObjectKey] = lines
+		}
+		rec, err := row.proto(lines, f.DocID)
 		if err != nil {
-			s.Log.ErrorContext(ctx, "读取审计段失败", slog.String("key", segs[i].key), slog.Any("err", err))
-			return nil, status.Error(codes.Unavailable, "暂时不可用")
+			// 索引与原文对不上：原文只追加、不会变，说明索引写错了；不返回拼凑的结果
+			s.Log.ErrorContext(ctx, "审计原文与索引不符", slog.String("key", row.ObjectKey), slog.Int("line", row.Line), slog.Any("err", err))
+			return nil, status.Error(codes.Internal, "审计索引与原文不符")
 		}
-		line := 0
-		sc := bufio.NewScanner(bytes.NewReader(body))
-		sc.Buffer(make([]byte, 64<<10), 16<<20)
-		for sc.Scan() {
-			line++
-			if segs[i].key == start.Key && line <= start.Line {
-				continue
-			}
-			var rec record
-			if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
-				// 审计段由 gateway 写入、对象锁保护，不会是坏数据；万一读到，跳过并告警，不让整个查询失败
-				s.Log.ErrorContext(ctx, "审计段里有无法解析的行", slog.String("key", segs[i].key), slog.Int("line", line))
-				continue
-			}
-			if rec.Time.Before(from) || rec.Time.After(to) || (r.GetSub() != "" && rec.Sub != r.GetSub()) {
-				continue
-			}
-			matched := matchDoc(rec, r.GetDocId())
-			if r.GetDocId() != "" && len(matched) == 0 {
-				continue
-			}
-			if len(out.Records) == size {
-				tok, _ := json.Marshal(cursor{Key: segs[i].key, Line: line - 1})
-				out.NextPageToken = base64.RawURLEncoding.EncodeToString(tok)
-				return out, nil
-			}
-			out.Records = append(out.Records, rec.proto(matched))
-		}
-		if err := sc.Err(); err != nil {
-			s.Log.ErrorContext(ctx, "读取审计段失败", slog.String("key", segs[i].key), slog.Any("err", err))
-			return nil, status.Error(codes.Unavailable, "暂时不可用")
-		}
+		out.Records = append(out.Records, rec)
 	}
 	return out, nil
 }
 
-// segments 列出可能含有 [from, to] 内记录的审计段，按封存时刻排序：封存时刻不早于 from、不晚于 to + segmentSlack。
-func (s *Server) segments(ctx context.Context, from, to time.Time) ([]segment, error) {
-	keys, err := s.Store.List(ctx, SegmentPrefix)
-	if err != nil {
+func splitLines(body []byte) [][]byte {
+	var out [][]byte
+	sc := bufio.NewScanner(bytes.NewReader(body))
+	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	for sc.Scan() {
+		out = append(out, slices.Clone(sc.Bytes()))
+	}
+	return out
+}
+
+// proto 从原文行组装返回的记录。
+func (row Row) proto(lines [][]byte, docID string) (*adminv1.AuditRecord, error) {
+	if row.Line > len(lines) {
+		return nil, errLineMissing
+	}
+	raw := lines[row.Line-1]
+	if row.Kind == "change" {
+		var c change
+		if err := json.Unmarshal(raw, &c); err != nil {
+			return nil, err
+		}
+		out := &adminv1.AuditRecord{Kind: row.Kind, Source: row.Source, Time: timestamppb.New(c.Time), TraceId: c.TraceID, Sub: c.Actor,
+			Roles: c.Roles, Action: c.Action, ObjectId: c.ObjectID}
+		if len(c.Detail) > 0 && string(c.Detail) != "null" {
+			out.DetailJson = string(c.Detail)
+		}
+		if docID != "" && c.ObjectID == docID {
+			out.MatchedIn = []string{"object"}
+		}
+		return out, nil
+	}
+	var r record
+	if err := json.Unmarshal(raw, &r); err != nil {
 		return nil, err
 	}
-	var out []segment
-	for _, k := range keys {
-		dot := strings.LastIndexByte(k, '.')
-		if dot < 0 {
-			continue
-		}
-		ns, err := strconv.ParseInt(k[dot+1:], 10, 64)
-		if err != nil {
-			continue
-		}
-		if ns >= from.UnixNano() && ns <= to.Add(segmentSlack).UnixNano() {
-			out = append(out, segment{key: k, sealed: ns})
-		}
-	}
-	slices.SortFunc(out, func(a, b segment) int {
-		return cmp.Or(cmp.Compare(a.sealed, b.sealed), strings.Compare(a.key, b.key))
-	})
+	out := r.proto(matchDoc(r, docID))
+	out.Kind, out.Source, out.GateId = row.Kind, row.Source, r.GateID
 	return out, nil
 }
 
@@ -242,7 +255,14 @@ func (r record) proto(matched []string) *adminv1.AuditRecord {
 		Time: timestamppb.New(r.Time), TraceId: r.TraceID, AnswerId: r.AnswerID, BatchId: r.BatchID, Sub: r.Sub, Tenant: r.Tenant,
 		Actor: r.Actor, Endpoint: r.Endpoint, Status: r.Status, Reason: r.Reason, LatencyMs: r.LatencyMS,
 		CandidateChunkIds: r.CandidateChunkIDs, ContextChunkIds: r.ContextChunkIDs, ShownChunkIds: r.ShownChunkIDs,
-		ListedDocIds: r.ListedDocIDs, MatchedIn: matched,
+		ListedDocIds: r.ListedDocIDs, MatchedIn: matched, AnswerStatus: r.AnswerStatus, AnswerSha256: r.AnswerSHA,
+	}
+	if v := r.Versions; v != nil {
+		out.Versions = &adminv1.AuditVersions{IndexVersion: v.IndexVersion, PolicyVersion: v.PolicyVersion,
+			EmbeddingModel: v.EmbeddingModel, RerankModel: v.RerankModel, GenerationModel: v.GenerationModel,
+			PromptVersion: v.PromptVersion, NliModel: v.NLIModel, CalculatorVersion: v.CalculatorVersion,
+			ExperimentId: v.ExperimentID, ExperimentArm: v.ExperimentArm, PipelineVersion: v.PipelineVersion,
+			RoutingVersion: v.RoutingVersion, Degraded: v.Degraded}
 	}
 	if r.Admin != nil {
 		out.AdminMethod, out.AdminPath = r.Admin.Method, r.Admin.Path

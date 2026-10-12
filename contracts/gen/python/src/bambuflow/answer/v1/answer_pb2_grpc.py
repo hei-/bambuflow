@@ -36,6 +36,11 @@ class AnswerServiceStub:
                 request_serializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.CreateFeedbackRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.CreateFeedbackResponse.FromString,
                 _registered_method=True)
+        self.DeleteConversation = channel.unary_unary(
+                '/bambuflow.answer.v1.AnswerService/DeleteConversation',
+                request_serializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.DeleteConversationRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.DeleteConversationResponse.FromString,
+                _registered_method=True)
 
 
 class AnswerServiceServicer:
@@ -74,6 +79,14 @@ class AnswerServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def DeleteConversation(self, request, context):
+        """删除调用者自己的会话（orchestrator 详设 10.4，部署配置清单 P14）：只删会话存储里的摘要、问题与上轮引用，
+        审计记录与回答记录不受影响。会话不存在、已过期或不属于调用者时同样成功返回，不让调用方据此判断别人的会话是否存在。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AnswerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -96,6 +109,11 @@ def add_AnswerServiceServicer_to_server(servicer, server):
                     servicer.CreateFeedback,
                     request_deserializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.CreateFeedbackRequest.FromString,
                     response_serializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.CreateFeedbackResponse.SerializeToString,
+            ),
+            'DeleteConversation': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteConversation,
+                    request_deserializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.DeleteConversationRequest.FromString,
+                    response_serializer=bambuflow_dot_answer_dot_v1_dot_answer__pb2.DeleteConversationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -208,6 +226,33 @@ class AnswerService:
             '/bambuflow.answer.v1.AnswerService/CreateFeedback',
             bambuflow_dot_answer_dot_v1_dot_answer__pb2.CreateFeedbackRequest.SerializeToString,
             bambuflow_dot_answer_dot_v1_dot_answer__pb2.CreateFeedbackResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteConversation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.answer.v1.AnswerService/DeleteConversation',
+            bambuflow_dot_answer_dot_v1_dot_answer__pb2.DeleteConversationRequest.SerializeToString,
+            bambuflow_dot_answer_dot_v1_dot_answer__pb2.DeleteConversationResponse.FromString,
             options,
             channel_credentials,
             insecure,

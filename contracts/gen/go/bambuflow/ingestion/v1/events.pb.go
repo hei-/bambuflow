@@ -7,6 +7,7 @@
 package ingestionv1
 
 import (
+	v1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -184,7 +185,9 @@ func (RefetchReason) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{2}
 }
 
-// DocumentChanged 由 connectors 发出，表示源系统中一份文档发生了变化。
+// DocumentChanged 由 connectors 发出，表示源系统中一份文档发生了变化。内容变更（upsert）发到 ingest:document-changed，
+// 由 processing 处理；仅权限变化（acl_only）与删除（delete）发到单独的 ingest:document-access，由 indexing 直接消费
+// （入库管道详设第 9 节：不与内容入库排队，processing 不可用时撤权照常生效）。
 type DocumentChanged struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 前缀 evt_。
@@ -201,9 +204,13 @@ type DocumentChanged struct {
 	DetectedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=detected_at,json=detectedAt,proto3" json:"detected_at,omitempty"`
 	Detection  Detection              `protobuf:"varint,9,opt,name=detection,proto3,enum=bambuflow.ingestion.v1.Detection" json:"detection,omitempty"`
 	// 原文在对象存储中的引用；delete 和 acl_only 时为空。
-	RawRef        string `protobuf:"bytes,10,opt,name=raw_ref,json=rawRef,proto3" json:"raw_ref,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RawRef string `protobuf:"bytes,10,opt,name=raw_ref,json=rawRef,proto3" json:"raw_ref,omitempty"`
+	// 仅权限变化（acl_only）时带上归一化后的新权限与密级，indexing 直接据此更新、不读文档包；其他类型为空。
+	// 源端取不到权限时为空列表，按“无人可见”处理，不能当成公开。
+	AclTokens      []string          `protobuf:"bytes,11,rep,name=acl_tokens,json=aclTokens,proto3" json:"acl_tokens,omitempty"`
+	Classification v1.Classification `protobuf:"varint,12,opt,name=classification,proto3,enum=bambuflow.common.v1.Classification" json:"classification,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DocumentChanged) Reset() {
@@ -306,6 +313,185 @@ func (x *DocumentChanged) GetRawRef() string {
 	return ""
 }
 
+func (x *DocumentChanged) GetAclTokens() []string {
+	if x != nil {
+		return x.AclTokens
+	}
+	return nil
+}
+
+func (x *DocumentChanged) GetClassification() v1.Classification {
+	if x != nil {
+		return x.Classification
+	}
+	return v1.Classification(0)
+}
+
+// PartitionGrantChanged 由 connectors 发出（总体设计 ADR-14，入库管道详设第 5 节）：分区级数据源的一个分区的授权变了，
+// 带上这个分区现在的全部被授权方。与仅权限变化同在 ingest:document-access 上（消息字段 kind = partition_grant），
+// 由 indexing 的快速通道直接改分区授权表，不改索引、不经 processing。
+type PartitionGrantChanged struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 前缀 evt_。
+	EventId  string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	SourceId string `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	// 分区名（源系统的知识库或目录路径），文档的分区 token 为 part:<source_id>/<partition>
+	Partition string `protobuf:"bytes,3,opt,name=partition,proto3" json:"partition,omitempty"`
+	// 现在的全部被授权方（group:、dept:、user: 开头的 token）；为空表示这个分区不再授权给任何人
+	Grantees []string `protobuf:"bytes,4,rep,name=grantees,proto3" json:"grantees,omitempty"`
+	// 发现授权变化的时间；早于已记录的变化时视为乱序到达的旧事件，不生效
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PartitionGrantChanged) Reset() {
+	*x = PartitionGrantChanged{}
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PartitionGrantChanged) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PartitionGrantChanged) ProtoMessage() {}
+
+func (x *PartitionGrantChanged) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PartitionGrantChanged.ProtoReflect.Descriptor instead.
+func (*PartitionGrantChanged) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PartitionGrantChanged) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *PartitionGrantChanged) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *PartitionGrantChanged) GetPartition() string {
+	if x != nil {
+		return x.Partition
+	}
+	return ""
+}
+
+func (x *PartitionGrantChanged) GetGrantees() []string {
+	if x != nil {
+		return x.Grantees
+	}
+	return nil
+}
+
+func (x *PartitionGrantChanged) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
+// DocumentPurged 表示一份文档在索引侧的全部副本已物理删除（技术设计文档 9.2，评估报告 K6），由 indexing 的
+// purge-deleted 产生，经事件流 ingest:document-purged 发出。connectors 据此删掉它持有的对象存储原文与文档包，
+// 再经 IndexWriterService.RecordPurge 把完成时间写进同一份删除凭证。
+type DocumentPurged struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 前缀 evt_。
+	EventId string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	// 前缀 src_。
+	SourceId string `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	DocId    string `protobuf:"bytes,3,opt,name=doc_id,json=docId,proto3" json:"doc_id,omitempty"`
+	// 删除凭证，前缀 del_。
+	ReceiptId     string                 `protobuf:"bytes,4,opt,name=receipt_id,json=receiptId,proto3" json:"receipt_id,omitempty"`
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DocumentPurged) Reset() {
+	*x = DocumentPurged{}
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DocumentPurged) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DocumentPurged) ProtoMessage() {}
+
+func (x *DocumentPurged) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DocumentPurged.ProtoReflect.Descriptor instead.
+func (*DocumentPurged) Descriptor() ([]byte, []int) {
+	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DocumentPurged) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *DocumentPurged) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *DocumentPurged) GetDocId() string {
+	if x != nil {
+		return x.DocId
+	}
+	return ""
+}
+
+func (x *DocumentPurged) GetReceiptId() string {
+	if x != nil {
+		return x.ReceiptId
+	}
+	return ""
+}
+
+func (x *DocumentPurged) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
 // RefetchRequested 要求 connectors 重新从源系统拉取这些文档（入库管道详设第 5、14 节），由 indexing 产生，
 // 经事件流 ingest:refetch-requested 发出。connectors 下一轮同步前把它们从已同步状态里去掉，
 // 源端仍存在的就作为新文档重新发出 DocumentChanged。
@@ -324,7 +510,7 @@ type RefetchRequested struct {
 
 func (x *RefetchRequested) Reset() {
 	*x = RefetchRequested{}
-	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[1]
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -336,7 +522,7 @@ func (x *RefetchRequested) String() string {
 func (*RefetchRequested) ProtoMessage() {}
 
 func (x *RefetchRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[1]
+	mi := &file_bambuflow_ingestion_v1_events_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -349,7 +535,7 @@ func (x *RefetchRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefetchRequested.ProtoReflect.Descriptor instead.
 func (*RefetchRequested) Descriptor() ([]byte, []int) {
-	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_ingestion_v1_events_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RefetchRequested) GetEventId() string {
@@ -391,7 +577,7 @@ var File_bambuflow_ingestion_v1_events_proto protoreflect.FileDescriptor
 
 const file_bambuflow_ingestion_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"#bambuflow/ingestion/v1/events.proto\x12\x16bambuflow.ingestion.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc5\x03\n" +
+	"#bambuflow/ingestion/v1/events.proto\x12\x16bambuflow.ingestion.v1\x1a\x1fbambuflow/common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb1\x04\n" +
 	"\x0fDocumentChanged\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1b\n" +
 	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x15\n" +
@@ -406,7 +592,25 @@ const file_bambuflow_ingestion_v1_events_proto_rawDesc = "" +
 	"detectedAt\x12?\n" +
 	"\tdetection\x18\t \x01(\x0e2!.bambuflow.ingestion.v1.DetectionR\tdetection\x12\x17\n" +
 	"\araw_ref\x18\n" +
-	" \x01(\tR\x06rawRef\"\xdf\x01\n" +
+	" \x01(\tR\x06rawRef\x12\x1d\n" +
+	"\n" +
+	"acl_tokens\x18\v \x03(\tR\taclTokens\x12K\n" +
+	"\x0eclassification\x18\f \x01(\x0e2#.bambuflow.common.v1.ClassificationR\x0eclassification\"\xc6\x01\n" +
+	"\x15PartitionGrantChanged\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1b\n" +
+	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x1c\n" +
+	"\tpartition\x18\x03 \x01(\tR\tpartition\x12\x1a\n" +
+	"\bgrantees\x18\x04 \x03(\tR\bgrantees\x12;\n" +
+	"\voccurred_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\"\xbb\x01\n" +
+	"\x0eDocumentPurged\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1b\n" +
+	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x15\n" +
+	"\x06doc_id\x18\x03 \x01(\tR\x05docId\x12\x1d\n" +
+	"\n" +
+	"receipt_id\x18\x04 \x01(\tR\treceiptId\x12;\n" +
+	"\voccurred_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\"\xdf\x01\n" +
 	"\x10RefetchRequested\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1b\n" +
 	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x17\n" +
@@ -430,8 +634,8 @@ const file_bambuflow_ingestion_v1_events_proto_rawDesc = "" +
 	"\rRefetchReason\x12\x1e\n" +
 	"\x1aREFETCH_REASON_UNSPECIFIED\x10\x00\x12$\n" +
 	" REFETCH_REASON_TOMBSTONE_REVOKED\x10\x01\x12\x1f\n" +
-	"\x1bREFETCH_REASON_FULL_REBUILD\x10\x02B\xf6\x01\n" +
-	"\x1acom.bambuflow.ingestion.v1B\vEventsProtoP\x01ZQgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\xa2\x02\x03BIX\xaa\x02\x16Bambuflow.Ingestion.V1\xca\x02\x16Bambuflow\\Ingestion\\V1\xe2\x02\"Bambuflow\\Ingestion\\V1\\GPBMetadata\xea\x02\x18Bambuflow::Ingestion::V1b\x06proto3"
+	"\x1bREFETCH_REASON_FULL_REBUILD\x10\x02B\xf2\x01\n" +
+	"\x1acom.bambuflow.ingestion.v1B\vEventsProtoP\x01ZMgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1;ingestionv1\xa2\x02\x03BIX\xaa\x02\x16Bambuflow.Ingestion.V1\xca\x02\x16Bambuflow\\Ingestion\\V1\xe2\x02\"Bambuflow\\Ingestion\\V1\\GPBMetadata\xea\x02\x18Bambuflow::Ingestion::V1b\x06proto3"
 
 var (
 	file_bambuflow_ingestion_v1_events_proto_rawDescOnce sync.Once
@@ -446,27 +650,33 @@ func file_bambuflow_ingestion_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_bambuflow_ingestion_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_bambuflow_ingestion_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_bambuflow_ingestion_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_bambuflow_ingestion_v1_events_proto_goTypes = []any{
 	(ChangeType)(0),               // 0: bambuflow.ingestion.v1.ChangeType
 	(Detection)(0),                // 1: bambuflow.ingestion.v1.Detection
 	(RefetchReason)(0),            // 2: bambuflow.ingestion.v1.RefetchReason
 	(*DocumentChanged)(nil),       // 3: bambuflow.ingestion.v1.DocumentChanged
-	(*RefetchRequested)(nil),      // 4: bambuflow.ingestion.v1.RefetchRequested
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*PartitionGrantChanged)(nil), // 4: bambuflow.ingestion.v1.PartitionGrantChanged
+	(*DocumentPurged)(nil),        // 5: bambuflow.ingestion.v1.DocumentPurged
+	(*RefetchRequested)(nil),      // 6: bambuflow.ingestion.v1.RefetchRequested
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(v1.Classification)(0),        // 8: bambuflow.common.v1.Classification
 }
 var file_bambuflow_ingestion_v1_events_proto_depIdxs = []int32{
 	0, // 0: bambuflow.ingestion.v1.DocumentChanged.change_type:type_name -> bambuflow.ingestion.v1.ChangeType
-	5, // 1: bambuflow.ingestion.v1.DocumentChanged.occurred_at:type_name -> google.protobuf.Timestamp
-	5, // 2: bambuflow.ingestion.v1.DocumentChanged.detected_at:type_name -> google.protobuf.Timestamp
+	7, // 1: bambuflow.ingestion.v1.DocumentChanged.occurred_at:type_name -> google.protobuf.Timestamp
+	7, // 2: bambuflow.ingestion.v1.DocumentChanged.detected_at:type_name -> google.protobuf.Timestamp
 	1, // 3: bambuflow.ingestion.v1.DocumentChanged.detection:type_name -> bambuflow.ingestion.v1.Detection
-	2, // 4: bambuflow.ingestion.v1.RefetchRequested.reason:type_name -> bambuflow.ingestion.v1.RefetchReason
-	5, // 5: bambuflow.ingestion.v1.RefetchRequested.occurred_at:type_name -> google.protobuf.Timestamp
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	8, // 4: bambuflow.ingestion.v1.DocumentChanged.classification:type_name -> bambuflow.common.v1.Classification
+	7, // 5: bambuflow.ingestion.v1.PartitionGrantChanged.occurred_at:type_name -> google.protobuf.Timestamp
+	7, // 6: bambuflow.ingestion.v1.DocumentPurged.occurred_at:type_name -> google.protobuf.Timestamp
+	2, // 7: bambuflow.ingestion.v1.RefetchRequested.reason:type_name -> bambuflow.ingestion.v1.RefetchReason
+	7, // 8: bambuflow.ingestion.v1.RefetchRequested.occurred_at:type_name -> google.protobuf.Timestamp
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_ingestion_v1_events_proto_init() }
@@ -480,7 +690,7 @@ func file_bambuflow_ingestion_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_ingestion_v1_events_proto_rawDesc), len(file_bambuflow_ingestion_v1_events_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

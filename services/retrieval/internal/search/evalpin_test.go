@@ -15,15 +15,40 @@ func pinned(v string) context.Context {
 	return metadata.NewIncomingContext(context.Background(), metadata.Pairs(EvalIndexHeader, v))
 }
 
+type candKey struct{}
+
+// fakeCandidates 把版本号放进 ctx；cfv_ 开头以外的当作取不到
+type fakeCandidates struct{}
+
+func (fakeCandidates) WithCandidate(ctx context.Context, v string) (context.Context, error) {
+	if v != "cfv_000000000000000000000001" {
+		return nil, status.Error(codes.FailedPrecondition, "候选配置不可用")
+	}
+	return context.WithValue(ctx, candKey{}, v), nil
+}
+
 func TestEvalPinOnlyInEvalMode(t *testing.T) {
 	called := false
 	handler := func(context.Context, any) (any, error) { called = true; return nil, nil }
-	// 线上实例：带了指定索引版本就拒绝，处理函数根本不执行
-	if _, err := EvalPinInterceptor(false)(pinned("ix-2"), nil, &grpc.UnaryServerInfo{}, handler); status.Code(err) != codes.PermissionDenied || called {
-		t.Fatalf("线上实例应拒绝: %v called=%v", err, called)
+	// 线上实例：带了指定索引版本或候选配置就拒绝，处理函数根本不执行
+	candidate := metadata.NewIncomingContext(context.Background(), metadata.Pairs(EvalConfigHeader, "cfv_000000000000000000000001"))
+	for _, ctx := range []context.Context{pinned("ix-2"), candidate} {
+		if _, err := EvalPinInterceptor(false, fakeCandidates{})(ctx, nil, &grpc.UnaryServerInfo{}, handler); status.Code(err) != codes.PermissionDenied || called {
+			t.Fatalf("线上实例应拒绝: %v called=%v", err, called)
+		}
 	}
-	if _, err := EvalPinInterceptor(false)(context.Background(), nil, &grpc.UnaryServerInfo{}, handler); err != nil || !called {
+	if _, err := EvalPinInterceptor(false, fakeCandidates{})(context.Background(), nil, &grpc.UnaryServerInfo{}, handler); err != nil || !called {
 		t.Fatalf("不带时照常处理: %v", err)
+	}
+	// 评测副本：候选放进 ctx；取不到候选就拒绝，不拿生效的配置冒充
+	got := ""
+	keep := func(ctx context.Context, _ any) (any, error) { got, _ = ctx.Value(candKey{}).(string); return nil, nil }
+	if _, err := EvalPinInterceptor(true, fakeCandidates{})(candidate, nil, &grpc.UnaryServerInfo{}, keep); err != nil || got == "" {
+		t.Fatalf("%v %q", err, got)
+	}
+	missing := metadata.NewIncomingContext(context.Background(), metadata.Pairs(EvalConfigHeader, "cfv_000000000000000000000009"))
+	if _, err := EvalPinInterceptor(true, fakeCandidates{})(missing, nil, &grpc.UnaryServerInfo{}, keep); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("%v", err)
 	}
 
 	st := &fakeStore{}

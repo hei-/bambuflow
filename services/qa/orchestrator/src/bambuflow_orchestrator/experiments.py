@@ -5,7 +5,8 @@
 实验配置只在允许范围内调阈值，旧配置多用几十秒没有安全影响。
 
 分组按 user_id 与实验 id 的哈希计算，同一用户在同一实验中始终在同一组；
-实验组只替换快照里给出的阈值，上下文里有受限级内容时退回基线（由回答流程判断，见 flow.Answer）。
+实验组替换快照里给出的阈值与配置版本（plans.Plans.settings 的 experiment），
+上下文里有受限级内容时生成一侧退回基线（由回答流程判断，见 flow.Answer._apply_experiment）。
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from bambuflow_vocabulary import Vocabularies
 
 from bambuflow.answer.v1 import answer_pb2
 from bambuflow.config.v1 import config_pb2
+from bambuflow_orchestrator.plans import Plans
 from bambuflow_platform.snapshot import InvalidSnapshotError
 
 _log = logging.getLogger(__name__)
@@ -33,9 +35,8 @@ REFRESH_SECONDS = 30.0
 class Assignment:
     exp_id: str
     arm: answer_pb2.ExperimentArm
-    # 实验组替换的阈值；对照组与未替换的项为 None
-    support_threshold: float | None = None
-    min_coverage: float | None = None
+    # 实验组要替换的内容；对照组为 None
+    variant: config_pb2.RunningExperiment | None = None
 
     @property
     def treatment(self) -> bool:
@@ -50,12 +51,7 @@ def bucket(exp_id: str, user: str) -> int:
 
 def assign(exp: config_pb2.RunningExperiment, user: str) -> Assignment:
     if bucket(exp.exp_id, user) < exp.traffic_percent:
-        return Assignment(
-            exp.exp_id,
-            answer_pb2.EXPERIMENT_ARM_TREATMENT,
-            exp.support_threshold if exp.HasField("support_threshold") else None,
-            exp.min_coverage if exp.HasField("min_coverage") else None,
-        )
+        return Assignment(exp.exp_id, answer_pb2.EXPERIMENT_ARM_TREATMENT, exp)
     return Assignment(exp.exp_id, answer_pb2.EXPERIMENT_ARM_CONTROL)
 
 
@@ -80,8 +76,9 @@ async def refresh(
     wake: asyncio.Event | None = None,
     ack: Callable[[str, str], Awaitable[None]] | None = None,
     on_vocab: Callable[[Vocabularies], None] | None = None,
+    plans: Plans | None = None,
 ) -> None:
-    """拉取快照并替换运行中的实验与受控词表（on_vocab），直到被取消。
+    """拉取快照并替换运行中的实验、受控词表（on_vocab）与 pipeline、routing（plans），直到被取消。
 
     收到版本变化的通知（wake）立即拉，否则每 every 秒兜底拉一次。
 
@@ -114,6 +111,13 @@ async def refresh(
                 await ack(snap.snapshot_version, "invalid_vocabulary")
             continue
         experiments.replace(list(snap.experiments))
+        if plans is not None:
+            plans.replace(
+                list(snap.pipelines),
+                snap.routing if snap.HasField("routing") else None,
+                list(snap.prompts),
+                list(snap.canaries),
+            )
         if on_vocab is not None and vocab is not None:
             on_vocab(vocab)
         if ack is not None:

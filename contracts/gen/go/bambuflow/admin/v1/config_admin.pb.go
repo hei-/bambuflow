@@ -22,13 +22,277 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type PromoteReleaseRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReleaseId     string                 `protobuf:"bytes,1,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PromoteReleaseRequest) Reset() {
+	*x = PromoteReleaseRequest{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PromoteReleaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PromoteReleaseRequest) ProtoMessage() {}
+
+func (x *PromoteReleaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PromoteReleaseRequest.ProtoReflect.Descriptor instead.
+func (*PromoteReleaseRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *PromoteReleaseRequest) GetReleaseId() string {
+	if x != nil {
+		return x.ReleaseId
+	}
+	return ""
+}
+
+type PromoteReleaseResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Release       *Release               `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PromoteReleaseResponse) Reset() {
+	*x = PromoteReleaseResponse{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PromoteReleaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PromoteReleaseResponse) ProtoMessage() {}
+
+func (x *PromoteReleaseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PromoteReleaseResponse.ProtoReflect.Descriptor instead.
+func (*PromoteReleaseResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PromoteReleaseResponse) GetRelease() *Release {
+	if x != nil {
+		return x.Release
+	}
+	return nil
+}
+
+type AbortRolloutRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ReleaseId string                 `protobuf:"bytes,1,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
+	// 必填，最多 500 字
+	Reason        string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AbortRolloutRequest) Reset() {
+	*x = AbortRolloutRequest{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AbortRolloutRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AbortRolloutRequest) ProtoMessage() {}
+
+func (x *AbortRolloutRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AbortRolloutRequest.ProtoReflect.Descriptor instead.
+func (*AbortRolloutRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AbortRolloutRequest) GetReleaseId() string {
+	if x != nil {
+		return x.ReleaseId
+	}
+	return ""
+}
+
+func (x *AbortRolloutRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type AbortRolloutResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Release       *Release               `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AbortRolloutResponse) Reset() {
+	*x = AbortRolloutResponse{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AbortRolloutResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AbortRolloutResponse) ProtoMessage() {}
+
+func (x *AbortRolloutResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AbortRolloutResponse.ProtoReflect.Descriptor instead.
+func (*AbortRolloutResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AbortRolloutResponse) GetRelease() *Release {
+	if x != nil {
+		return x.Release
+	}
+	return nil
+}
+
+// Rollout 是灰度中的发布的范围：tenant 是灰度的租户，percent 是该租户里按用户分流的比例。
+type Rollout struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Tenant    string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	Percent   int32                  `protobuf:"varint,2,opt,name=percent,proto3" json:"percent,omitempty"`
+	StartedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	// evaluation 最近一次观察的结果（governance 详设 4.1 第 ⑨ 步）：两组样本数与各项指标；还没观察过时为空
+	Observation   string                 `protobuf:"bytes,4,opt,name=observation,proto3" json:"observation,omitempty"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Rollout) Reset() {
+	*x = Rollout{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Rollout) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Rollout) ProtoMessage() {}
+
+func (x *Rollout) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Rollout.ProtoReflect.Descriptor instead.
+func (*Rollout) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Rollout) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *Rollout) GetPercent() int32 {
+	if x != nil {
+		return x.Percent
+	}
+	return 0
+}
+
+func (x *Rollout) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *Rollout) GetObservation() string {
+	if x != nil {
+		return x.Observation
+	}
+	return ""
+}
+
+func (x *Rollout) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
 type ConfigVersion struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// cfv_ 前缀
 	VersionId string `protobuf:"bytes,1,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
-	// tenant
+	// tenant、pipeline、routing、policy
 	Object string `protobuf:"bytes,2,opt,name=object,proto3" json:"object,omitempty"`
-	Scope  string `protobuf:"bytes,3,opt,name=scope,proto3" json:"scope,omitempty"`
+	// 租户名；routing 为 global；policy 为 global、source:<数据源>、tenant:<租户>
+	Scope string `protobuf:"bytes,3,opt,name=scope,proto3" json:"scope,omitempty"`
 	// 同一对象内递增的序号
 	Number  int32  `protobuf:"varint,4,opt,name=number,proto3" json:"number,omitempty"`
 	Content string `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`
@@ -39,14 +303,17 @@ type ConfigVersion struct {
 	// bootstrap:<文件>、git:<提交>、chg_…、rel_…（回退）
 	SourceRef string `protobuf:"bytes,9,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`
 	// 是否当前生效
-	Active        bool `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`
+	Active bool `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`
+	// 策略层发布前的差异分析（governance 详设 5.2 第 4 步）：这个版本生效后可见范围变大的代表性主体与变大的内容，
+	// 审批时重点核对；其他对象为空。
+	Widened       []string `protobuf:"bytes,11,rep,name=widened,proto3" json:"widened,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ConfigVersion) Reset() {
 	*x = ConfigVersion{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[0]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -58,7 +325,7 @@ func (x *ConfigVersion) String() string {
 func (*ConfigVersion) ProtoMessage() {}
 
 func (x *ConfigVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[0]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -71,7 +338,7 @@ func (x *ConfigVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigVersion.ProtoReflect.Descriptor instead.
 func (*ConfigVersion) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{0}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ConfigVersion) GetVersionId() string {
@@ -144,6 +411,13 @@ func (x *ConfigVersion) GetActive() bool {
 	return false
 }
 
+func (x *ConfigVersion) GetWidened() []string {
+	if x != nil {
+		return x.Widened
+	}
+	return nil
+}
+
 type TenantSummary struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Tenant string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
@@ -156,7 +430,7 @@ type TenantSummary struct {
 
 func (x *TenantSummary) Reset() {
 	*x = TenantSummary{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -168,7 +442,7 @@ func (x *TenantSummary) String() string {
 func (*TenantSummary) ProtoMessage() {}
 
 func (x *TenantSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -181,7 +455,7 @@ func (x *TenantSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantSummary.ProtoReflect.Descriptor instead.
 func (*TenantSummary) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *TenantSummary) GetTenant() string {
@@ -213,7 +487,7 @@ type ListTenantsRequest struct {
 
 func (x *ListTenantsRequest) Reset() {
 	*x = ListTenantsRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -225,7 +499,7 @@ func (x *ListTenantsRequest) String() string {
 func (*ListTenantsRequest) ProtoMessage() {}
 
 func (x *ListTenantsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -238,7 +512,7 @@ func (x *ListTenantsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTenantsRequest.ProtoReflect.Descriptor instead.
 func (*ListTenantsRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{7}
 }
 
 type ListTenantsResponse struct {
@@ -250,7 +524,7 @@ type ListTenantsResponse struct {
 
 func (x *ListTenantsResponse) Reset() {
 	*x = ListTenantsResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -262,7 +536,7 @@ func (x *ListTenantsResponse) String() string {
 func (*ListTenantsResponse) ProtoMessage() {}
 
 func (x *ListTenantsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -275,7 +549,7 @@ func (x *ListTenantsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTenantsResponse.ProtoReflect.Descriptor instead.
 func (*ListTenantsResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListTenantsResponse) GetTenants() []*TenantSummary {
@@ -295,7 +569,7 @@ type ListConfigVersionsRequest struct {
 
 func (x *ListConfigVersionsRequest) Reset() {
 	*x = ListConfigVersionsRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +581,7 @@ func (x *ListConfigVersionsRequest) String() string {
 func (*ListConfigVersionsRequest) ProtoMessage() {}
 
 func (x *ListConfigVersionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,7 +594,7 @@ func (x *ListConfigVersionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListConfigVersionsRequest.ProtoReflect.Descriptor instead.
 func (*ListConfigVersionsRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListConfigVersionsRequest) GetObject() string {
@@ -347,7 +621,7 @@ type ListConfigVersionsResponse struct {
 
 func (x *ListConfigVersionsResponse) Reset() {
 	*x = ListConfigVersionsResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +633,7 @@ func (x *ListConfigVersionsResponse) String() string {
 func (*ListConfigVersionsResponse) ProtoMessage() {}
 
 func (x *ListConfigVersionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +646,7 @@ func (x *ListConfigVersionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListConfigVersionsResponse.ProtoReflect.Descriptor instead.
 func (*ListConfigVersionsResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListConfigVersionsResponse) GetVersions() []*ConfigVersion {
@@ -397,20 +671,24 @@ type ChangeRequest struct {
 	GateId    string                 `protobuf:"bytes,7,opt,name=gate_id,json=gateId,proto3" json:"gate_id,omitempty"`
 	Author    string                 `protobuf:"bytes,8,opt,name=author,proto3" json:"author,omitempty"`
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// open、approved、rejected、stale（审批时生效版本已不是 base，须重新提交）
+	// open、approved、rejected、stale（审批时生效版本已不是 base，须重新提交）、
+	// merge_request（Git 类对象 pipeline、routing、policy、prompt：已写成合并请求，在 Git 里评审，合并后由 CI 发布）、
+	// expired（7 天未审批自动关闭）
 	Status       string                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
 	DecidedBy    string                 `protobuf:"bytes,11,opt,name=decided_by,json=decidedBy,proto3" json:"decided_by,omitempty"`
 	DecidedAt    *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
 	RejectReason string                 `protobuf:"bytes,13,opt,name=reject_reason,json=rejectReason,proto3" json:"reject_reason,omitempty"`
 	// 审批后生成的发布，rel_ 前缀
-	ReleaseId     string `protobuf:"bytes,14,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ReleaseId string `protobuf:"bytes,14,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
+	// status 为 merge_request 时的合并请求链接（governance 详设 3.1）
+	MergeRequestUrl string `protobuf:"bytes,15,opt,name=merge_request_url,json=mergeRequestUrl,proto3" json:"merge_request_url,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ChangeRequest) Reset() {
 	*x = ChangeRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -422,7 +700,7 @@ func (x *ChangeRequest) String() string {
 func (*ChangeRequest) ProtoMessage() {}
 
 func (x *ChangeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -435,7 +713,7 @@ func (x *ChangeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChangeRequest.ProtoReflect.Descriptor instead.
 func (*ChangeRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ChangeRequest) GetChgId() string {
@@ -536,6 +814,13 @@ func (x *ChangeRequest) GetReleaseId() string {
 	return ""
 }
 
+func (x *ChangeRequest) GetMergeRequestUrl() string {
+	if x != nil {
+		return x.MergeRequestUrl
+	}
+	return ""
+}
+
 type CreateChangeRequestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Object        string                 `protobuf:"bytes,1,opt,name=object,proto3" json:"object,omitempty"`
@@ -551,7 +836,7 @@ type CreateChangeRequestRequest struct {
 
 func (x *CreateChangeRequestRequest) Reset() {
 	*x = CreateChangeRequestRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -563,7 +848,7 @@ func (x *CreateChangeRequestRequest) String() string {
 func (*CreateChangeRequestRequest) ProtoMessage() {}
 
 func (x *CreateChangeRequestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -576,7 +861,7 @@ func (x *CreateChangeRequestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateChangeRequestRequest.ProtoReflect.Descriptor instead.
 func (*CreateChangeRequestRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateChangeRequestRequest) GetObject() string {
@@ -630,7 +915,7 @@ type CreateChangeRequestResponse struct {
 
 func (x *CreateChangeRequestResponse) Reset() {
 	*x = CreateChangeRequestResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[8]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +927,7 @@ func (x *CreateChangeRequestResponse) String() string {
 func (*CreateChangeRequestResponse) ProtoMessage() {}
 
 func (x *CreateChangeRequestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[8]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,12 +940,101 @@ func (x *CreateChangeRequestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateChangeRequestResponse.ProtoReflect.Descriptor instead.
 func (*CreateChangeRequestResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{8}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateChangeRequestResponse) GetChangeRequest() *ChangeRequest {
 	if x != nil {
 		return x.ChangeRequest
+	}
+	return nil
+}
+
+type ListChangeRequestsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// open、approved、rejected、stale；不填为全部
+	Status        string `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListChangeRequestsRequest) Reset() {
+	*x = ListChangeRequestsRequest{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListChangeRequestsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListChangeRequestsRequest) ProtoMessage() {}
+
+func (x *ListChangeRequestsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListChangeRequestsRequest.ProtoReflect.Descriptor instead.
+func (*ListChangeRequestsRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListChangeRequestsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type ListChangeRequestsResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ChangeRequests []*ChangeRequest       `protobuf:"bytes,1,rep,name=change_requests,json=changeRequests,proto3" json:"change_requests,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ListChangeRequestsResponse) Reset() {
+	*x = ListChangeRequestsResponse{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListChangeRequestsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListChangeRequestsResponse) ProtoMessage() {}
+
+func (x *ListChangeRequestsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListChangeRequestsResponse.ProtoReflect.Descriptor instead.
+func (*ListChangeRequestsResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListChangeRequestsResponse) GetChangeRequests() []*ChangeRequest {
+	if x != nil {
+		return x.ChangeRequests
 	}
 	return nil
 }
@@ -674,7 +1048,7 @@ type ApproveChangeRequestRequest struct {
 
 func (x *ApproveChangeRequestRequest) Reset() {
 	*x = ApproveChangeRequestRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[9]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -686,7 +1060,7 @@ func (x *ApproveChangeRequestRequest) String() string {
 func (*ApproveChangeRequestRequest) ProtoMessage() {}
 
 func (x *ApproveChangeRequestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[9]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -699,7 +1073,7 @@ func (x *ApproveChangeRequestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveChangeRequestRequest.ProtoReflect.Descriptor instead.
 func (*ApproveChangeRequestRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{9}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ApproveChangeRequestRequest) GetChgId() string {
@@ -718,7 +1092,7 @@ type ApproveChangeRequestResponse struct {
 
 func (x *ApproveChangeRequestResponse) Reset() {
 	*x = ApproveChangeRequestResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[10]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -730,7 +1104,7 @@ func (x *ApproveChangeRequestResponse) String() string {
 func (*ApproveChangeRequestResponse) ProtoMessage() {}
 
 func (x *ApproveChangeRequestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[10]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -743,7 +1117,7 @@ func (x *ApproveChangeRequestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveChangeRequestResponse.ProtoReflect.Descriptor instead.
 func (*ApproveChangeRequestResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ApproveChangeRequestResponse) GetChangeRequest() *ChangeRequest {
@@ -763,7 +1137,7 @@ type RejectChangeRequestRequest struct {
 
 func (x *RejectChangeRequestRequest) Reset() {
 	*x = RejectChangeRequestRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[11]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -775,7 +1149,7 @@ func (x *RejectChangeRequestRequest) String() string {
 func (*RejectChangeRequestRequest) ProtoMessage() {}
 
 func (x *RejectChangeRequestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[11]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -788,7 +1162,7 @@ func (x *RejectChangeRequestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RejectChangeRequestRequest.ProtoReflect.Descriptor instead.
 func (*RejectChangeRequestRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{11}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RejectChangeRequestRequest) GetChgId() string {
@@ -814,7 +1188,7 @@ type RejectChangeRequestResponse struct {
 
 func (x *RejectChangeRequestResponse) Reset() {
 	*x = RejectChangeRequestResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[12]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -826,7 +1200,7 @@ func (x *RejectChangeRequestResponse) String() string {
 func (*RejectChangeRequestResponse) ProtoMessage() {}
 
 func (x *RejectChangeRequestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[12]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -839,7 +1213,7 @@ func (x *RejectChangeRequestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RejectChangeRequestResponse.ProtoReflect.Descriptor instead.
 func (*RejectChangeRequestResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{12}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *RejectChangeRequestResponse) GetChangeRequest() *ChangeRequest {
@@ -862,22 +1236,32 @@ type Release struct {
 	Source    string `protobuf:"bytes,6,opt,name=source,proto3" json:"source,omitempty"`
 	SourceRef string `protobuf:"bytes,7,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`
 	GateId    string `protobuf:"bytes,8,opt,name=gate_id,json=gateId,proto3" json:"gate_id,omitempty"`
-	// pending_approval、active、superseded、rolled_back、rejected、stale
-	Status        string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"`
-	RequestedBy   string                 `protobuf:"bytes,10,opt,name=requested_by,json=requestedBy,proto3" json:"requested_by,omitempty"`
-	RequestedAt   *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=requested_at,json=requestedAt,proto3" json:"requested_at,omitempty"`
-	ApprovedBy    string                 `protobuf:"bytes,12,opt,name=approved_by,json=approvedBy,proto3" json:"approved_by,omitempty"`
-	ApprovedAt    *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=approved_at,json=approvedAt,proto3" json:"approved_at,omitempty"`
-	RolledBackBy  string                 `protobuf:"bytes,14,opt,name=rolled_back_by,json=rolledBackBy,proto3" json:"rolled_back_by,omitempty"`
-	RolledBackAt  *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=rolled_back_at,json=rolledBackAt,proto3" json:"rolled_back_at,omitempty"`
-	Reason        string                 `protobuf:"bytes,16,opt,name=reason,proto3" json:"reason,omitempty"`
+	// gating（评测门禁中：影响回答的对象与策略包发布后由 governance 发起门禁，通过后才转为 pending_approval）、
+	// gate_failed（门禁不通过、无法判定或超时，原因见 gate_id 的门禁报告）、
+	// pending_approval、pending_second_approval（策略层已有第一位审批人，等第二位）、rolling_out（灰度中）、active、
+	// superseded、rolled_back、rejected、stale、expired（7 天未审批自动关闭）
+	Status       string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"`
+	RequestedBy  string                 `protobuf:"bytes,10,opt,name=requested_by,json=requestedBy,proto3" json:"requested_by,omitempty"`
+	RequestedAt  *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=requested_at,json=requestedAt,proto3" json:"requested_at,omitempty"`
+	ApprovedBy   string                 `protobuf:"bytes,12,opt,name=approved_by,json=approvedBy,proto3" json:"approved_by,omitempty"`
+	ApprovedAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=approved_at,json=approvedAt,proto3" json:"approved_at,omitempty"`
+	RolledBackBy string                 `protobuf:"bytes,14,opt,name=rolled_back_by,json=rolledBackBy,proto3" json:"rolled_back_by,omitempty"`
+	RolledBackAt *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=rolled_back_at,json=rolledBackAt,proto3" json:"rolled_back_at,omitempty"`
+	Reason       string                 `protobuf:"bytes,16,opt,name=reason,proto3" json:"reason,omitempty"`
+	// 策略层的第二位审批人（两位须是不同的人，至少一位是信息安全或数据属主）
+	SecondApprovedBy string                 `protobuf:"bytes,17,opt,name=second_approved_by,json=secondApprovedBy,proto3" json:"second_approved_by,omitempty"`
+	SecondApprovedAt *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=second_approved_at,json=secondApprovedAt,proto3" json:"second_approved_at,omitempty"`
+	// 全局对象灰度的试点租户（发起时指定，不指定则审批时选第一个试点阶段的租户）
+	CanaryTenant string `protobuf:"bytes,19,opt,name=canary_tenant,json=canaryTenant,proto3" json:"canary_tenant,omitempty"`
+	// status 为 rolling_out 时的灰度范围
+	Rollout       *Rollout `protobuf:"bytes,20,opt,name=rollout,proto3" json:"rollout,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Release) Reset() {
 	*x = Release{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[13]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -889,7 +1273,7 @@ func (x *Release) String() string {
 func (*Release) ProtoMessage() {}
 
 func (x *Release) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[13]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -902,7 +1286,7 @@ func (x *Release) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Release.ProtoReflect.Descriptor instead.
 func (*Release) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{13}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Release) GetReleaseId() string {
@@ -1017,22 +1401,54 @@ func (x *Release) GetReason() string {
 	return ""
 }
 
+func (x *Release) GetSecondApprovedBy() string {
+	if x != nil {
+		return x.SecondApprovedBy
+	}
+	return ""
+}
+
+func (x *Release) GetSecondApprovedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SecondApprovedAt
+	}
+	return nil
+}
+
+func (x *Release) GetCanaryTenant() string {
+	if x != nil {
+		return x.CanaryTenant
+	}
+	return ""
+}
+
+func (x *Release) GetRollout() *Rollout {
+	if x != nil {
+		return x.Rollout
+	}
+	return nil
+}
+
 type CreateReleaseRequest struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Object  string                 `protobuf:"bytes,1,opt,name=object,proto3" json:"object,omitempty"`
 	Scope   string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
 	Content string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
 	// Git 提交，如 git:3f2a…
-	SourceRef     string `protobuf:"bytes,4,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`
-	GateId        string `protobuf:"bytes,5,opt,name=gate_id,json=gateId,proto3" json:"gate_id,omitempty"`
-	Reason        string `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	SourceRef string `protobuf:"bytes,4,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`
+	// 只有租户配置用：切到全量时附已通过、覆盖该租户的门禁。影响回答的对象（pipeline、routing、prompt）与策略包
+	// 由 governance 用候选版本自己发起门禁，这里给了也不用（门禁要评的是这个候选，别处跑过的门禁评的不是它）
+	GateId string `protobuf:"bytes,5,opt,name=gate_id,json=gateId,proto3" json:"gate_id,omitempty"`
+	Reason string `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	// 全局对象（routing、prompt、全局与数据源策略层）灰度的试点租户；不填则审批时选第一个试点阶段的租户
+	CanaryTenant  string `protobuf:"bytes,7,opt,name=canary_tenant,json=canaryTenant,proto3" json:"canary_tenant,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateReleaseRequest) Reset() {
 	*x = CreateReleaseRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[14]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1044,7 +1460,7 @@ func (x *CreateReleaseRequest) String() string {
 func (*CreateReleaseRequest) ProtoMessage() {}
 
 func (x *CreateReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[14]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1057,7 +1473,7 @@ func (x *CreateReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateReleaseRequest.ProtoReflect.Descriptor instead.
 func (*CreateReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{14}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CreateReleaseRequest) GetObject() string {
@@ -1102,6 +1518,13 @@ func (x *CreateReleaseRequest) GetReason() string {
 	return ""
 }
 
+func (x *CreateReleaseRequest) GetCanaryTenant() string {
+	if x != nil {
+		return x.CanaryTenant
+	}
+	return ""
+}
+
 type CreateReleaseResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Release       *Release               `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
@@ -1111,7 +1534,7 @@ type CreateReleaseResponse struct {
 
 func (x *CreateReleaseResponse) Reset() {
 	*x = CreateReleaseResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[15]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1123,7 +1546,7 @@ func (x *CreateReleaseResponse) String() string {
 func (*CreateReleaseResponse) ProtoMessage() {}
 
 func (x *CreateReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[15]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1136,7 +1559,7 @@ func (x *CreateReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateReleaseResponse.ProtoReflect.Descriptor instead.
 func (*CreateReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{15}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CreateReleaseResponse) GetRelease() *Release {
@@ -1155,7 +1578,7 @@ type ApproveReleaseRequest struct {
 
 func (x *ApproveReleaseRequest) Reset() {
 	*x = ApproveReleaseRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[16]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1167,7 +1590,7 @@ func (x *ApproveReleaseRequest) String() string {
 func (*ApproveReleaseRequest) ProtoMessage() {}
 
 func (x *ApproveReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[16]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1180,7 +1603,7 @@ func (x *ApproveReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveReleaseRequest.ProtoReflect.Descriptor instead.
 func (*ApproveReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{16}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ApproveReleaseRequest) GetReleaseId() string {
@@ -1199,7 +1622,7 @@ type ApproveReleaseResponse struct {
 
 func (x *ApproveReleaseResponse) Reset() {
 	*x = ApproveReleaseResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[17]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1211,7 +1634,7 @@ func (x *ApproveReleaseResponse) String() string {
 func (*ApproveReleaseResponse) ProtoMessage() {}
 
 func (x *ApproveReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[17]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1224,7 +1647,7 @@ func (x *ApproveReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveReleaseResponse.ProtoReflect.Descriptor instead.
 func (*ApproveReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{17}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ApproveReleaseResponse) GetRelease() *Release {
@@ -1243,7 +1666,7 @@ type GetReleaseRequest struct {
 
 func (x *GetReleaseRequest) Reset() {
 	*x = GetReleaseRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[18]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1255,7 +1678,7 @@ func (x *GetReleaseRequest) String() string {
 func (*GetReleaseRequest) ProtoMessage() {}
 
 func (x *GetReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[18]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1268,7 +1691,7 @@ func (x *GetReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReleaseRequest.ProtoReflect.Descriptor instead.
 func (*GetReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{18}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetReleaseRequest) GetReleaseId() string {
@@ -1287,7 +1710,7 @@ type GetReleaseResponse struct {
 
 func (x *GetReleaseResponse) Reset() {
 	*x = GetReleaseResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[19]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1299,7 +1722,7 @@ func (x *GetReleaseResponse) String() string {
 func (*GetReleaseResponse) ProtoMessage() {}
 
 func (x *GetReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[19]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1312,12 +1735,101 @@ func (x *GetReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReleaseResponse.ProtoReflect.Descriptor instead.
 func (*GetReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{19}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetReleaseResponse) GetRelease() *Release {
 	if x != nil {
 		return x.Release
+	}
+	return nil
+}
+
+type ListReleasesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// pending_approval、active、superseded、rolled_back、rejected、stale；不填为全部
+	Status        string `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReleasesRequest) Reset() {
+	*x = ListReleasesRequest{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReleasesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReleasesRequest) ProtoMessage() {}
+
+func (x *ListReleasesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReleasesRequest.ProtoReflect.Descriptor instead.
+func (*ListReleasesRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ListReleasesRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type ListReleasesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Releases      []*Release             `protobuf:"bytes,1,rep,name=releases,proto3" json:"releases,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReleasesResponse) Reset() {
+	*x = ListReleasesResponse{}
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReleasesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReleasesResponse) ProtoMessage() {}
+
+func (x *ListReleasesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReleasesResponse.ProtoReflect.Descriptor instead.
+func (*ListReleasesResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ListReleasesResponse) GetReleases() []*Release {
+	if x != nil {
+		return x.Releases
 	}
 	return nil
 }
@@ -1333,7 +1845,7 @@ type RollbackReleaseRequest struct {
 
 func (x *RollbackReleaseRequest) Reset() {
 	*x = RollbackReleaseRequest{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[20]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1345,7 +1857,7 @@ func (x *RollbackReleaseRequest) String() string {
 func (*RollbackReleaseRequest) ProtoMessage() {}
 
 func (x *RollbackReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[20]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1358,7 +1870,7 @@ func (x *RollbackReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackReleaseRequest.ProtoReflect.Descriptor instead.
 func (*RollbackReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{20}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RollbackReleaseRequest) GetReleaseId() string {
@@ -1385,7 +1897,7 @@ type RollbackReleaseResponse struct {
 
 func (x *RollbackReleaseResponse) Reset() {
 	*x = RollbackReleaseResponse{}
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[21]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1397,7 +1909,7 @@ func (x *RollbackReleaseResponse) String() string {
 func (*RollbackReleaseResponse) ProtoMessage() {}
 
 func (x *RollbackReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[21]
+	mi := &file_bambuflow_admin_v1_config_admin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1410,7 +1922,7 @@ func (x *RollbackReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackReleaseResponse.ProtoReflect.Descriptor instead.
 func (*RollbackReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{21}
+	return file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *RollbackReleaseResponse) GetRelease() *Release {
@@ -1424,7 +1936,26 @@ var File_bambuflow_admin_v1_config_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"\n" +
-	"%bambuflow/admin/v1/config_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc2\x02\n" +
+	"%bambuflow/admin/v1/config_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"6\n" +
+	"\x15PromoteReleaseRequest\x12\x1d\n" +
+	"\n" +
+	"release_id\x18\x01 \x01(\tR\treleaseId\"O\n" +
+	"\x16PromoteReleaseResponse\x125\n" +
+	"\arelease\x18\x01 \x01(\v2\x1b.bambuflow.admin.v1.ReleaseR\arelease\"L\n" +
+	"\x13AbortRolloutRequest\x12\x1d\n" +
+	"\n" +
+	"release_id\x18\x01 \x01(\tR\treleaseId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"M\n" +
+	"\x14AbortRolloutResponse\x125\n" +
+	"\arelease\x18\x01 \x01(\v2\x1b.bambuflow.admin.v1.ReleaseR\arelease\"\xd5\x01\n" +
+	"\aRollout\x12\x16\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x18\n" +
+	"\apercent\x18\x02 \x01(\x05R\apercent\x129\n" +
+	"\n" +
+	"started_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12 \n" +
+	"\vobservation\x18\x04 \x01(\tR\vobservation\x12;\n" +
+	"\vobserved_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\"\xdc\x02\n" +
 	"\rConfigVersion\x12\x1d\n" +
 	"\n" +
 	"version_id\x18\x01 \x01(\tR\tversionId\x12\x16\n" +
@@ -1440,7 +1971,8 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"\n" +
 	"source_ref\x18\t \x01(\tR\tsourceRef\x12\x16\n" +
 	"\x06active\x18\n" +
-	" \x01(\bR\x06active\"|\n" +
+	" \x01(\bR\x06active\x12\x18\n" +
+	"\awidened\x18\v \x03(\tR\awidened\"|\n" +
 	"\rTenantSummary\x12\x16\n" +
 	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x18\n" +
 	"\arollout\x18\x02 \x01(\tR\arollout\x129\n" +
@@ -1452,7 +1984,7 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"\x06object\x18\x01 \x01(\tR\x06object\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\"[\n" +
 	"\x1aListConfigVersionsResponse\x12=\n" +
-	"\bversions\x18\x01 \x03(\v2!.bambuflow.admin.v1.ConfigVersionR\bversions\"\xf3\x03\n" +
+	"\bversions\x18\x01 \x03(\v2!.bambuflow.admin.v1.ConfigVersionR\bversions\"\x9f\x04\n" +
 	"\rChangeRequest\x12\x15\n" +
 	"\x06chg_id\x18\x01 \x01(\tR\x05chgId\x12\x16\n" +
 	"\x06object\x18\x02 \x01(\tR\x06object\x12\x14\n" +
@@ -1472,7 +2004,8 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"decided_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\x12#\n" +
 	"\rreject_reason\x18\r \x01(\tR\frejectReason\x12\x1d\n" +
 	"\n" +
-	"release_id\x18\x0e \x01(\tR\treleaseId\"\xbd\x01\n" +
+	"release_id\x18\x0e \x01(\tR\treleaseId\x12*\n" +
+	"\x11merge_request_url\x18\x0f \x01(\tR\x0fmergeRequestUrl\"\xbd\x01\n" +
 	"\x1aCreateChangeRequestRequest\x12\x16\n" +
 	"\x06object\x18\x01 \x01(\tR\x06object\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12&\n" +
@@ -1481,7 +2014,11 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"\x06reason\x18\x05 \x01(\tR\x06reason\x12\x17\n" +
 	"\agate_id\x18\x06 \x01(\tR\x06gateId\"g\n" +
 	"\x1bCreateChangeRequestResponse\x12H\n" +
-	"\x0echange_request\x18\x01 \x01(\v2!.bambuflow.admin.v1.ChangeRequestR\rchangeRequest\"4\n" +
+	"\x0echange_request\x18\x01 \x01(\v2!.bambuflow.admin.v1.ChangeRequestR\rchangeRequest\"3\n" +
+	"\x19ListChangeRequestsRequest\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"h\n" +
+	"\x1aListChangeRequestsResponse\x12J\n" +
+	"\x0fchange_requests\x18\x01 \x03(\v2!.bambuflow.admin.v1.ChangeRequestR\x0echangeRequests\"4\n" +
 	"\x1bApproveChangeRequestRequest\x12\x15\n" +
 	"\x06chg_id\x18\x01 \x01(\tR\x05chgId\"h\n" +
 	"\x1cApproveChangeRequestResponse\x12H\n" +
@@ -1490,7 +2027,7 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"\x06chg_id\x18\x01 \x01(\tR\x05chgId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"g\n" +
 	"\x1bRejectChangeRequestResponse\x12H\n" +
-	"\x0echange_request\x18\x01 \x01(\v2!.bambuflow.admin.v1.ChangeRequestR\rchangeRequest\"\xe3\x04\n" +
+	"\x0echange_request\x18\x01 \x01(\v2!.bambuflow.admin.v1.ChangeRequestR\rchangeRequest\"\xb7\x06\n" +
 	"\aRelease\x12\x1d\n" +
 	"\n" +
 	"release_id\x18\x01 \x01(\tR\treleaseId\x12\x16\n" +
@@ -1512,7 +2049,11 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"approvedAt\x12$\n" +
 	"\x0erolled_back_by\x18\x0e \x01(\tR\frolledBackBy\x12@\n" +
 	"\x0erolled_back_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\frolledBackAt\x12\x16\n" +
-	"\x06reason\x18\x10 \x01(\tR\x06reason\"\xae\x01\n" +
+	"\x06reason\x18\x10 \x01(\tR\x06reason\x12,\n" +
+	"\x12second_approved_by\x18\x11 \x01(\tR\x10secondApprovedBy\x12H\n" +
+	"\x12second_approved_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\x10secondApprovedAt\x12#\n" +
+	"\rcanary_tenant\x18\x13 \x01(\tR\fcanaryTenant\x125\n" +
+	"\arollout\x18\x14 \x01(\v2\x1b.bambuflow.admin.v1.RolloutR\arollout\"\xd3\x01\n" +
 	"\x14CreateReleaseRequest\x12\x16\n" +
 	"\x06object\x18\x01 \x01(\tR\x06object\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\x18\n" +
@@ -1520,7 +2061,8 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"\n" +
 	"source_ref\x18\x04 \x01(\tR\tsourceRef\x12\x17\n" +
 	"\agate_id\x18\x05 \x01(\tR\x06gateId\x12\x16\n" +
-	"\x06reason\x18\x06 \x01(\tR\x06reason\"N\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x12#\n" +
+	"\rcanary_tenant\x18\a \x01(\tR\fcanaryTenant\"N\n" +
 	"\x15CreateReleaseResponse\x125\n" +
 	"\arelease\x18\x01 \x01(\v2\x1b.bambuflow.admin.v1.ReleaseR\arelease\"6\n" +
 	"\x15ApproveReleaseRequest\x12\x1d\n" +
@@ -1532,25 +2074,33 @@ const file_bambuflow_admin_v1_config_admin_proto_rawDesc = "" +
 	"\n" +
 	"release_id\x18\x01 \x01(\tR\treleaseId\"K\n" +
 	"\x12GetReleaseResponse\x125\n" +
-	"\arelease\x18\x01 \x01(\v2\x1b.bambuflow.admin.v1.ReleaseR\arelease\"O\n" +
+	"\arelease\x18\x01 \x01(\v2\x1b.bambuflow.admin.v1.ReleaseR\arelease\"-\n" +
+	"\x13ListReleasesRequest\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"O\n" +
+	"\x14ListReleasesResponse\x127\n" +
+	"\breleases\x18\x01 \x03(\v2\x1b.bambuflow.admin.v1.ReleaseR\breleases\"O\n" +
 	"\x16RollbackReleaseRequest\x12\x1d\n" +
 	"\n" +
 	"release_id\x18\x01 \x01(\tR\treleaseId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"P\n" +
 	"\x17RollbackReleaseResponse\x125\n" +
-	"\arelease\x18\x01 \x01(\v2\x1b.bambuflow.admin.v1.ReleaseR\arelease2\xec\a\n" +
+	"\arelease\x18\x01 \x01(\v2\x1b.bambuflow.admin.v1.ReleaseR\arelease2\x90\v\n" +
 	"\x12ConfigAdminService\x12^\n" +
 	"\vListTenants\x12&.bambuflow.admin.v1.ListTenantsRequest\x1a'.bambuflow.admin.v1.ListTenantsResponse\x12s\n" +
 	"\x12ListConfigVersions\x12-.bambuflow.admin.v1.ListConfigVersionsRequest\x1a..bambuflow.admin.v1.ListConfigVersionsResponse\x12v\n" +
-	"\x13CreateChangeRequest\x12..bambuflow.admin.v1.CreateChangeRequestRequest\x1a/.bambuflow.admin.v1.CreateChangeRequestResponse\x12y\n" +
+	"\x13CreateChangeRequest\x12..bambuflow.admin.v1.CreateChangeRequestRequest\x1a/.bambuflow.admin.v1.CreateChangeRequestResponse\x12s\n" +
+	"\x12ListChangeRequests\x12-.bambuflow.admin.v1.ListChangeRequestsRequest\x1a..bambuflow.admin.v1.ListChangeRequestsResponse\x12y\n" +
 	"\x14ApproveChangeRequest\x12/.bambuflow.admin.v1.ApproveChangeRequestRequest\x1a0.bambuflow.admin.v1.ApproveChangeRequestResponse\x12v\n" +
 	"\x13RejectChangeRequest\x12..bambuflow.admin.v1.RejectChangeRequestRequest\x1a/.bambuflow.admin.v1.RejectChangeRequestResponse\x12d\n" +
 	"\rCreateRelease\x12(.bambuflow.admin.v1.CreateReleaseRequest\x1a).bambuflow.admin.v1.CreateReleaseResponse\x12g\n" +
 	"\x0eApproveRelease\x12).bambuflow.admin.v1.ApproveReleaseRequest\x1a*.bambuflow.admin.v1.ApproveReleaseResponse\x12[\n" +
 	"\n" +
-	"GetRelease\x12%.bambuflow.admin.v1.GetReleaseRequest\x1a&.bambuflow.admin.v1.GetReleaseResponse\x12j\n" +
-	"\x0fRollbackRelease\x12*.bambuflow.admin.v1.RollbackReleaseRequest\x1a+.bambuflow.admin.v1.RollbackReleaseResponseB\xdf\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x10ConfigAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"GetRelease\x12%.bambuflow.admin.v1.GetReleaseRequest\x1a&.bambuflow.admin.v1.GetReleaseResponse\x12a\n" +
+	"\fListReleases\x12'.bambuflow.admin.v1.ListReleasesRequest\x1a(.bambuflow.admin.v1.ListReleasesResponse\x12j\n" +
+	"\x0fRollbackRelease\x12*.bambuflow.admin.v1.RollbackReleaseRequest\x1a+.bambuflow.admin.v1.RollbackReleaseResponse\x12g\n" +
+	"\x0ePromoteRelease\x12).bambuflow.admin.v1.PromoteReleaseRequest\x1a*.bambuflow.admin.v1.PromoteReleaseResponse\x12a\n" +
+	"\fAbortRollout\x12'.bambuflow.admin.v1.AbortRolloutRequest\x1a(.bambuflow.admin.v1.AbortRolloutResponseB\xdb\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x10ConfigAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_config_admin_proto_rawDescOnce sync.Once
@@ -1564,74 +2114,99 @@ func file_bambuflow_admin_v1_config_admin_proto_rawDescGZIP() []byte {
 	return file_bambuflow_admin_v1_config_admin_proto_rawDescData
 }
 
-var file_bambuflow_admin_v1_config_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_bambuflow_admin_v1_config_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_bambuflow_admin_v1_config_admin_proto_goTypes = []any{
-	(*ConfigVersion)(nil),                // 0: bambuflow.admin.v1.ConfigVersion
-	(*TenantSummary)(nil),                // 1: bambuflow.admin.v1.TenantSummary
-	(*ListTenantsRequest)(nil),           // 2: bambuflow.admin.v1.ListTenantsRequest
-	(*ListTenantsResponse)(nil),          // 3: bambuflow.admin.v1.ListTenantsResponse
-	(*ListConfigVersionsRequest)(nil),    // 4: bambuflow.admin.v1.ListConfigVersionsRequest
-	(*ListConfigVersionsResponse)(nil),   // 5: bambuflow.admin.v1.ListConfigVersionsResponse
-	(*ChangeRequest)(nil),                // 6: bambuflow.admin.v1.ChangeRequest
-	(*CreateChangeRequestRequest)(nil),   // 7: bambuflow.admin.v1.CreateChangeRequestRequest
-	(*CreateChangeRequestResponse)(nil),  // 8: bambuflow.admin.v1.CreateChangeRequestResponse
-	(*ApproveChangeRequestRequest)(nil),  // 9: bambuflow.admin.v1.ApproveChangeRequestRequest
-	(*ApproveChangeRequestResponse)(nil), // 10: bambuflow.admin.v1.ApproveChangeRequestResponse
-	(*RejectChangeRequestRequest)(nil),   // 11: bambuflow.admin.v1.RejectChangeRequestRequest
-	(*RejectChangeRequestResponse)(nil),  // 12: bambuflow.admin.v1.RejectChangeRequestResponse
-	(*Release)(nil),                      // 13: bambuflow.admin.v1.Release
-	(*CreateReleaseRequest)(nil),         // 14: bambuflow.admin.v1.CreateReleaseRequest
-	(*CreateReleaseResponse)(nil),        // 15: bambuflow.admin.v1.CreateReleaseResponse
-	(*ApproveReleaseRequest)(nil),        // 16: bambuflow.admin.v1.ApproveReleaseRequest
-	(*ApproveReleaseResponse)(nil),       // 17: bambuflow.admin.v1.ApproveReleaseResponse
-	(*GetReleaseRequest)(nil),            // 18: bambuflow.admin.v1.GetReleaseRequest
-	(*GetReleaseResponse)(nil),           // 19: bambuflow.admin.v1.GetReleaseResponse
-	(*RollbackReleaseRequest)(nil),       // 20: bambuflow.admin.v1.RollbackReleaseRequest
-	(*RollbackReleaseResponse)(nil),      // 21: bambuflow.admin.v1.RollbackReleaseResponse
-	(*timestamppb.Timestamp)(nil),        // 22: google.protobuf.Timestamp
+	(*PromoteReleaseRequest)(nil),        // 0: bambuflow.admin.v1.PromoteReleaseRequest
+	(*PromoteReleaseResponse)(nil),       // 1: bambuflow.admin.v1.PromoteReleaseResponse
+	(*AbortRolloutRequest)(nil),          // 2: bambuflow.admin.v1.AbortRolloutRequest
+	(*AbortRolloutResponse)(nil),         // 3: bambuflow.admin.v1.AbortRolloutResponse
+	(*Rollout)(nil),                      // 4: bambuflow.admin.v1.Rollout
+	(*ConfigVersion)(nil),                // 5: bambuflow.admin.v1.ConfigVersion
+	(*TenantSummary)(nil),                // 6: bambuflow.admin.v1.TenantSummary
+	(*ListTenantsRequest)(nil),           // 7: bambuflow.admin.v1.ListTenantsRequest
+	(*ListTenantsResponse)(nil),          // 8: bambuflow.admin.v1.ListTenantsResponse
+	(*ListConfigVersionsRequest)(nil),    // 9: bambuflow.admin.v1.ListConfigVersionsRequest
+	(*ListConfigVersionsResponse)(nil),   // 10: bambuflow.admin.v1.ListConfigVersionsResponse
+	(*ChangeRequest)(nil),                // 11: bambuflow.admin.v1.ChangeRequest
+	(*CreateChangeRequestRequest)(nil),   // 12: bambuflow.admin.v1.CreateChangeRequestRequest
+	(*CreateChangeRequestResponse)(nil),  // 13: bambuflow.admin.v1.CreateChangeRequestResponse
+	(*ListChangeRequestsRequest)(nil),    // 14: bambuflow.admin.v1.ListChangeRequestsRequest
+	(*ListChangeRequestsResponse)(nil),   // 15: bambuflow.admin.v1.ListChangeRequestsResponse
+	(*ApproveChangeRequestRequest)(nil),  // 16: bambuflow.admin.v1.ApproveChangeRequestRequest
+	(*ApproveChangeRequestResponse)(nil), // 17: bambuflow.admin.v1.ApproveChangeRequestResponse
+	(*RejectChangeRequestRequest)(nil),   // 18: bambuflow.admin.v1.RejectChangeRequestRequest
+	(*RejectChangeRequestResponse)(nil),  // 19: bambuflow.admin.v1.RejectChangeRequestResponse
+	(*Release)(nil),                      // 20: bambuflow.admin.v1.Release
+	(*CreateReleaseRequest)(nil),         // 21: bambuflow.admin.v1.CreateReleaseRequest
+	(*CreateReleaseResponse)(nil),        // 22: bambuflow.admin.v1.CreateReleaseResponse
+	(*ApproveReleaseRequest)(nil),        // 23: bambuflow.admin.v1.ApproveReleaseRequest
+	(*ApproveReleaseResponse)(nil),       // 24: bambuflow.admin.v1.ApproveReleaseResponse
+	(*GetReleaseRequest)(nil),            // 25: bambuflow.admin.v1.GetReleaseRequest
+	(*GetReleaseResponse)(nil),           // 26: bambuflow.admin.v1.GetReleaseResponse
+	(*ListReleasesRequest)(nil),          // 27: bambuflow.admin.v1.ListReleasesRequest
+	(*ListReleasesResponse)(nil),         // 28: bambuflow.admin.v1.ListReleasesResponse
+	(*RollbackReleaseRequest)(nil),       // 29: bambuflow.admin.v1.RollbackReleaseRequest
+	(*RollbackReleaseResponse)(nil),      // 30: bambuflow.admin.v1.RollbackReleaseResponse
+	(*timestamppb.Timestamp)(nil),        // 31: google.protobuf.Timestamp
 }
 var file_bambuflow_admin_v1_config_admin_proto_depIdxs = []int32{
-	22, // 0: bambuflow.admin.v1.ConfigVersion.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 1: bambuflow.admin.v1.TenantSummary.active:type_name -> bambuflow.admin.v1.ConfigVersion
-	1,  // 2: bambuflow.admin.v1.ListTenantsResponse.tenants:type_name -> bambuflow.admin.v1.TenantSummary
-	0,  // 3: bambuflow.admin.v1.ListConfigVersionsResponse.versions:type_name -> bambuflow.admin.v1.ConfigVersion
-	0,  // 4: bambuflow.admin.v1.ChangeRequest.version:type_name -> bambuflow.admin.v1.ConfigVersion
-	22, // 5: bambuflow.admin.v1.ChangeRequest.created_at:type_name -> google.protobuf.Timestamp
-	22, // 6: bambuflow.admin.v1.ChangeRequest.decided_at:type_name -> google.protobuf.Timestamp
-	6,  // 7: bambuflow.admin.v1.CreateChangeRequestResponse.change_request:type_name -> bambuflow.admin.v1.ChangeRequest
-	6,  // 8: bambuflow.admin.v1.ApproveChangeRequestResponse.change_request:type_name -> bambuflow.admin.v1.ChangeRequest
-	6,  // 9: bambuflow.admin.v1.RejectChangeRequestResponse.change_request:type_name -> bambuflow.admin.v1.ChangeRequest
-	0,  // 10: bambuflow.admin.v1.Release.version:type_name -> bambuflow.admin.v1.ConfigVersion
-	22, // 11: bambuflow.admin.v1.Release.requested_at:type_name -> google.protobuf.Timestamp
-	22, // 12: bambuflow.admin.v1.Release.approved_at:type_name -> google.protobuf.Timestamp
-	22, // 13: bambuflow.admin.v1.Release.rolled_back_at:type_name -> google.protobuf.Timestamp
-	13, // 14: bambuflow.admin.v1.CreateReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
-	13, // 15: bambuflow.admin.v1.ApproveReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
-	13, // 16: bambuflow.admin.v1.GetReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
-	13, // 17: bambuflow.admin.v1.RollbackReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
-	2,  // 18: bambuflow.admin.v1.ConfigAdminService.ListTenants:input_type -> bambuflow.admin.v1.ListTenantsRequest
-	4,  // 19: bambuflow.admin.v1.ConfigAdminService.ListConfigVersions:input_type -> bambuflow.admin.v1.ListConfigVersionsRequest
-	7,  // 20: bambuflow.admin.v1.ConfigAdminService.CreateChangeRequest:input_type -> bambuflow.admin.v1.CreateChangeRequestRequest
-	9,  // 21: bambuflow.admin.v1.ConfigAdminService.ApproveChangeRequest:input_type -> bambuflow.admin.v1.ApproveChangeRequestRequest
-	11, // 22: bambuflow.admin.v1.ConfigAdminService.RejectChangeRequest:input_type -> bambuflow.admin.v1.RejectChangeRequestRequest
-	14, // 23: bambuflow.admin.v1.ConfigAdminService.CreateRelease:input_type -> bambuflow.admin.v1.CreateReleaseRequest
-	16, // 24: bambuflow.admin.v1.ConfigAdminService.ApproveRelease:input_type -> bambuflow.admin.v1.ApproveReleaseRequest
-	18, // 25: bambuflow.admin.v1.ConfigAdminService.GetRelease:input_type -> bambuflow.admin.v1.GetReleaseRequest
-	20, // 26: bambuflow.admin.v1.ConfigAdminService.RollbackRelease:input_type -> bambuflow.admin.v1.RollbackReleaseRequest
-	3,  // 27: bambuflow.admin.v1.ConfigAdminService.ListTenants:output_type -> bambuflow.admin.v1.ListTenantsResponse
-	5,  // 28: bambuflow.admin.v1.ConfigAdminService.ListConfigVersions:output_type -> bambuflow.admin.v1.ListConfigVersionsResponse
-	8,  // 29: bambuflow.admin.v1.ConfigAdminService.CreateChangeRequest:output_type -> bambuflow.admin.v1.CreateChangeRequestResponse
-	10, // 30: bambuflow.admin.v1.ConfigAdminService.ApproveChangeRequest:output_type -> bambuflow.admin.v1.ApproveChangeRequestResponse
-	12, // 31: bambuflow.admin.v1.ConfigAdminService.RejectChangeRequest:output_type -> bambuflow.admin.v1.RejectChangeRequestResponse
-	15, // 32: bambuflow.admin.v1.ConfigAdminService.CreateRelease:output_type -> bambuflow.admin.v1.CreateReleaseResponse
-	17, // 33: bambuflow.admin.v1.ConfigAdminService.ApproveRelease:output_type -> bambuflow.admin.v1.ApproveReleaseResponse
-	19, // 34: bambuflow.admin.v1.ConfigAdminService.GetRelease:output_type -> bambuflow.admin.v1.GetReleaseResponse
-	21, // 35: bambuflow.admin.v1.ConfigAdminService.RollbackRelease:output_type -> bambuflow.admin.v1.RollbackReleaseResponse
-	27, // [27:36] is the sub-list for method output_type
-	18, // [18:27] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	20, // 0: bambuflow.admin.v1.PromoteReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
+	20, // 1: bambuflow.admin.v1.AbortRolloutResponse.release:type_name -> bambuflow.admin.v1.Release
+	31, // 2: bambuflow.admin.v1.Rollout.started_at:type_name -> google.protobuf.Timestamp
+	31, // 3: bambuflow.admin.v1.Rollout.observed_at:type_name -> google.protobuf.Timestamp
+	31, // 4: bambuflow.admin.v1.ConfigVersion.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 5: bambuflow.admin.v1.TenantSummary.active:type_name -> bambuflow.admin.v1.ConfigVersion
+	6,  // 6: bambuflow.admin.v1.ListTenantsResponse.tenants:type_name -> bambuflow.admin.v1.TenantSummary
+	5,  // 7: bambuflow.admin.v1.ListConfigVersionsResponse.versions:type_name -> bambuflow.admin.v1.ConfigVersion
+	5,  // 8: bambuflow.admin.v1.ChangeRequest.version:type_name -> bambuflow.admin.v1.ConfigVersion
+	31, // 9: bambuflow.admin.v1.ChangeRequest.created_at:type_name -> google.protobuf.Timestamp
+	31, // 10: bambuflow.admin.v1.ChangeRequest.decided_at:type_name -> google.protobuf.Timestamp
+	11, // 11: bambuflow.admin.v1.CreateChangeRequestResponse.change_request:type_name -> bambuflow.admin.v1.ChangeRequest
+	11, // 12: bambuflow.admin.v1.ListChangeRequestsResponse.change_requests:type_name -> bambuflow.admin.v1.ChangeRequest
+	11, // 13: bambuflow.admin.v1.ApproveChangeRequestResponse.change_request:type_name -> bambuflow.admin.v1.ChangeRequest
+	11, // 14: bambuflow.admin.v1.RejectChangeRequestResponse.change_request:type_name -> bambuflow.admin.v1.ChangeRequest
+	5,  // 15: bambuflow.admin.v1.Release.version:type_name -> bambuflow.admin.v1.ConfigVersion
+	31, // 16: bambuflow.admin.v1.Release.requested_at:type_name -> google.protobuf.Timestamp
+	31, // 17: bambuflow.admin.v1.Release.approved_at:type_name -> google.protobuf.Timestamp
+	31, // 18: bambuflow.admin.v1.Release.rolled_back_at:type_name -> google.protobuf.Timestamp
+	31, // 19: bambuflow.admin.v1.Release.second_approved_at:type_name -> google.protobuf.Timestamp
+	4,  // 20: bambuflow.admin.v1.Release.rollout:type_name -> bambuflow.admin.v1.Rollout
+	20, // 21: bambuflow.admin.v1.CreateReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
+	20, // 22: bambuflow.admin.v1.ApproveReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
+	20, // 23: bambuflow.admin.v1.GetReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
+	20, // 24: bambuflow.admin.v1.ListReleasesResponse.releases:type_name -> bambuflow.admin.v1.Release
+	20, // 25: bambuflow.admin.v1.RollbackReleaseResponse.release:type_name -> bambuflow.admin.v1.Release
+	7,  // 26: bambuflow.admin.v1.ConfigAdminService.ListTenants:input_type -> bambuflow.admin.v1.ListTenantsRequest
+	9,  // 27: bambuflow.admin.v1.ConfigAdminService.ListConfigVersions:input_type -> bambuflow.admin.v1.ListConfigVersionsRequest
+	12, // 28: bambuflow.admin.v1.ConfigAdminService.CreateChangeRequest:input_type -> bambuflow.admin.v1.CreateChangeRequestRequest
+	14, // 29: bambuflow.admin.v1.ConfigAdminService.ListChangeRequests:input_type -> bambuflow.admin.v1.ListChangeRequestsRequest
+	16, // 30: bambuflow.admin.v1.ConfigAdminService.ApproveChangeRequest:input_type -> bambuflow.admin.v1.ApproveChangeRequestRequest
+	18, // 31: bambuflow.admin.v1.ConfigAdminService.RejectChangeRequest:input_type -> bambuflow.admin.v1.RejectChangeRequestRequest
+	21, // 32: bambuflow.admin.v1.ConfigAdminService.CreateRelease:input_type -> bambuflow.admin.v1.CreateReleaseRequest
+	23, // 33: bambuflow.admin.v1.ConfigAdminService.ApproveRelease:input_type -> bambuflow.admin.v1.ApproveReleaseRequest
+	25, // 34: bambuflow.admin.v1.ConfigAdminService.GetRelease:input_type -> bambuflow.admin.v1.GetReleaseRequest
+	27, // 35: bambuflow.admin.v1.ConfigAdminService.ListReleases:input_type -> bambuflow.admin.v1.ListReleasesRequest
+	29, // 36: bambuflow.admin.v1.ConfigAdminService.RollbackRelease:input_type -> bambuflow.admin.v1.RollbackReleaseRequest
+	0,  // 37: bambuflow.admin.v1.ConfigAdminService.PromoteRelease:input_type -> bambuflow.admin.v1.PromoteReleaseRequest
+	2,  // 38: bambuflow.admin.v1.ConfigAdminService.AbortRollout:input_type -> bambuflow.admin.v1.AbortRolloutRequest
+	8,  // 39: bambuflow.admin.v1.ConfigAdminService.ListTenants:output_type -> bambuflow.admin.v1.ListTenantsResponse
+	10, // 40: bambuflow.admin.v1.ConfigAdminService.ListConfigVersions:output_type -> bambuflow.admin.v1.ListConfigVersionsResponse
+	13, // 41: bambuflow.admin.v1.ConfigAdminService.CreateChangeRequest:output_type -> bambuflow.admin.v1.CreateChangeRequestResponse
+	15, // 42: bambuflow.admin.v1.ConfigAdminService.ListChangeRequests:output_type -> bambuflow.admin.v1.ListChangeRequestsResponse
+	17, // 43: bambuflow.admin.v1.ConfigAdminService.ApproveChangeRequest:output_type -> bambuflow.admin.v1.ApproveChangeRequestResponse
+	19, // 44: bambuflow.admin.v1.ConfigAdminService.RejectChangeRequest:output_type -> bambuflow.admin.v1.RejectChangeRequestResponse
+	22, // 45: bambuflow.admin.v1.ConfigAdminService.CreateRelease:output_type -> bambuflow.admin.v1.CreateReleaseResponse
+	24, // 46: bambuflow.admin.v1.ConfigAdminService.ApproveRelease:output_type -> bambuflow.admin.v1.ApproveReleaseResponse
+	26, // 47: bambuflow.admin.v1.ConfigAdminService.GetRelease:output_type -> bambuflow.admin.v1.GetReleaseResponse
+	28, // 48: bambuflow.admin.v1.ConfigAdminService.ListReleases:output_type -> bambuflow.admin.v1.ListReleasesResponse
+	30, // 49: bambuflow.admin.v1.ConfigAdminService.RollbackRelease:output_type -> bambuflow.admin.v1.RollbackReleaseResponse
+	1,  // 50: bambuflow.admin.v1.ConfigAdminService.PromoteRelease:output_type -> bambuflow.admin.v1.PromoteReleaseResponse
+	3,  // 51: bambuflow.admin.v1.ConfigAdminService.AbortRollout:output_type -> bambuflow.admin.v1.AbortRolloutResponse
+	39, // [39:52] is the sub-list for method output_type
+	26, // [26:39] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_config_admin_proto_init() }
@@ -1645,7 +2220,7 @@ func file_bambuflow_admin_v1_config_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_admin_v1_config_admin_proto_rawDesc), len(file_bambuflow_admin_v1_config_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

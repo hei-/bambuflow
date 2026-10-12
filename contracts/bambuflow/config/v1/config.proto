@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package bambuflow.config.v1;
 
+import "bambuflow/common/v1/types.proto";
+
 // ConfigService 是 governance 向各服务下发配置的接口（governance 详设 7.1）。
 // retrieval 拿到的是租户可访问的数据源，其他服务拿到受控词表，orchestrator 另有运行中的实验。
 // 快照带签名：使用方只信任签名，不信任传输通道（governance 详设 9.2）；验签不过时保留旧快照并 Ack 失败原因。
@@ -14,6 +16,22 @@ service ConfigService {
   rpc Ack(AckRequest) returns (AckResponse);
   // GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。
   rpc GetSigningKeys(GetSigningKeysRequest) returns (GetSigningKeysResponse);
+  // GetCandidate 按版本取一个还没生效的候选配置，供评测副本跑配置发布的门禁（governance 详设 4.1 第 ③④ 步、evaluation 详设 4.2）。
+  // 只对评测身份开放：authorization 里要带 evaluation 签发的评测身份（评测副本转发正在回答的那道题的身份），
+  // 线上实例只持有 gateway 签发的 Principal，取不到候选。
+  rpc GetCandidate(GetCandidateRequest) returns (GetCandidateResponse);
+}
+
+message GetCandidateRequest {
+  // retrieval 或 orchestrator：retrieval 拿 pipeline 与 policy 的候选，orchestrator 拿 pipeline、routing 与 prompt 的候选
+  string service = 1;
+  // 候选版本，cfv_ 前缀
+  string version_id = 2;
+}
+
+message GetCandidateResponse {
+  // 只有 canaries 一项（percent 为 100、没有 release_id）的快照，与 GetSnapshot 同样签名，使用方用同一套验签
+  GetSnapshotResponse snapshot = 1;
 }
 
 message WatchRequest {
@@ -65,7 +83,8 @@ message GetSnapshotResponse {
   // 租户可访问的数据源（source_grants 中已审批、未撤销的数据源），只在 retrieval 的快照里。
   // 这是租户授权的唯一来源：没有授权的数据源不能检索（技术设计文档 9.1）。
   repeated SourceGrant source_grants = 3;
-  // 运行中的 A/B 实验，只在 orchestrator 的快照里；每个租户至多一个（governance 详设 3.1）。
+  // 运行中的 A/B 实验，每个租户至多一个（governance 详设 3.1）。orchestrator 的快照里是完整的；
+  // retrieval 的快照里只有带检索计划变体（pipeline）的实验，且只有 exp_id、tenant 与 pipeline。
   repeated RunningExperiment experiments = 4;
   // 签过名的快照本体：GetSnapshotResponse 序列化后的字节（其中 signed_payload、signature、signing_key_id 为空）。
   // 使用方先验签，再从它解析出快照使用，不读外层的同名字段，避免两种语言的序列化差异影响验签。
@@ -74,6 +93,138 @@ message GetSnapshotResponse {
   string signing_key_id = 7;
   // 生效的租户配置（tenant.yaml，governance 详设 3.1、4），只在 gateway 的快照里；按租户名排序。
   repeated TenantConfig tenants = 8;
+  // 各租户生效的 pipeline（检索计划与回答阈值，governance 详设 3.1），在 retrieval 与 orchestrator 的快照里；
+  // 按租户名排序。没有 pipeline 的租户按各服务的默认值。
+  repeated PipelineConfig pipelines = 9;
+  // 全局生效的 routing（置信度权重等，governance 详设 3.1），只在 orchestrator 的快照里；没有生效版本时不设。
+  RoutingConfig routing = 10;
+  // 合成好的检索权限策略包（governance 详设第 5 节），只在 retrieval 的快照里；随快照签名下发，retrieval 验签后编译加载，
+  // 编译失败时继续用当前的包。没有生效的全局基线时不设：retrieval 拒绝全部检索（fail-closed）。
+  PolicyBundle policy = 11;
+  // 经 governance 发布的回答模板（answer、agent-answer），只在 orchestrator 的快照里；没有发布的用内置模板。
+  repeated PromptTemplate prompts = 12;
+  // 灰度中的候选版本（governance 详设 3.2、4.1）：retrieval 的快照里有 pipeline 与 policy，orchestrator 的快照里有
+  // pipeline、routing、prompt。使用方按 tenant 与用户分流：同一用户在同一次灰度里始终用同一个版本。
+  // orchestrator 的快照另有 policy 灰度、但不带候选包（candidate 为空）：只用来把提问人所在的灰度写进 why.canary_releases。
+  repeated Canary canaries = 13;
+  // 可以经推送入库 API 写入的数据源（入库管道详设 14.5）：已审批、未撤销且登记了推送客户端的，只在 gateway 的快照里；
+  // 按 source_id 排序。gateway 据此判断调用方能否向这个数据源推送。
+  repeated PushSource push_sources = 14;
+}
+
+// PushSource 是一个接受推送的数据源。
+message PushSource {
+  string source_id = 1;
+  // 登记的推送客户端（平台授权服务里的服务账号所属客户端 ID）；只有它能推送
+  string push_client = 2;
+  // 推送的文档密级不能低于它
+  bambuflow.common.v1.Classification default_classification = 3;
+}
+
+// Canary 是一个灰度中的候选版本。
+message Canary {
+  string object = 1;
+  string scope = 2;
+  string release_id = 3;
+  // 候选版本，cfv_ 前缀
+  string version_id = 4;
+  // 只对这个租户的请求生效（GetCandidate 返回的候选：pipeline 为它的租户，其他对象为空，表示不限租户）
+  string tenant = 5;
+  // 该租户里按 sha256(release_id + 用户) 分桶，桶号小于 percent 的用户用候选版本（1–100）
+  int32 percent = 6;
+  oneof candidate {
+    PipelineConfig pipeline = 7;
+    RoutingConfig routing = 8;
+    PromptTemplate prompt = 9;
+    // 用候选策略层替换后合成的整个策略包
+    PolicyBundle policy = 10;
+  }
+}
+
+// PromptTemplate 是一个回答模板（技术设计文档 7.7 的五个区）。发布前 governance 已做五分区检查：system 里只有
+// {{tenant_rules}}，user 里按顺序各有一次 {{summary}}、{{evidence}}（agent-answer 另有 {{subquestions}}、{{unresolved}}）、
+// {{question}}；不可信的区只能在 user 里。
+message PromptTemplate {
+  // answer 或 agent-answer
+  string scope = 1;
+  // 配置版本，cfv_ 前缀；回答的 why.prompt_version 写成 <scope>@<version_id>
+  string version_id = 2;
+  string system = 3;
+  string user = 4;
+}
+
+// PolicyBundle 是三层（全局基线、数据源、租户）策略合成后的模块（libs/platform-go/policy.Build 的结果）。
+message PolicyBundle {
+  // 全部模块的摘要（sha256: 前缀），写进检索响应的 policy_version、回答的 why 与审计
+  string version = 1;
+  repeated PolicyModule modules = 2;
+}
+
+message PolicyModule {
+  // global.rego、source/<数据源>.rego、tenant/<租户>.rego
+  string path = 1;
+  // 带 package 声明的完整 rego 模块
+  string source = 2;
+}
+
+// PipelineConfig 是一个租户生效的 pipeline，由 governance 从 pipeline.yaml 解析并校验后下发，使用方不再解析 YAML。
+message PipelineConfig {
+  string tenant = 1;
+  // 配置版本，cfv_ 前缀；写进回答的 why
+  string version_id = 2;
+  RetrievalPlan retrieval = 3;
+  AnswerPlan answer = 4;
+}
+
+// RetrievalPlan 是 retrieval 执行的检索计划（retrieval 详设 10.1）。只能在平台能力范围内关闭召回路、调整权重与精排。
+message RetrievalPlan {
+  // 关闭的召回路（keyword、dense、graph、identifier）：不执行，也不算降级。
+  repeated string disabled_routes = 1;
+  // 召回路在融合中的权重（0.1–5）；没列出的为 1.0。关系类问题对图召回的加权在此基础上再乘。
+  map<string, double> route_weights = 2;
+  // 设为 false 时不精排，即使请求要求精排；不设时按请求与调用目的。
+  optional bool rerank = 3;
+}
+
+// AnswerPlan 是 orchestrator 用的回答阈值与开关（orchestrator 详设 12.2）。不设的项用默认值；A/B 实验组在此基础上替换。
+message AnswerPlan {
+  // 逐句校验的支持度阈值，0.3–0.9。
+  optional double support_threshold = 1;
+  // 回答为 answered 所需的引用覆盖率，0.3–1。
+  optional double min_coverage = 2;
+  // 单跳也用 LLM 从精排后的候选里挑选证据（技术设计文档 6.7）：会把首句时间推到约 2.3 秒，
+  // 只对书面同意放宽 SLO 的租户开放（pipeline.yaml 里须写明同意记录，governance 校验）。
+  bool single_hop_llm_rerank = 3;
+  // 租户规则（技术设计文档 7.7 提示词第 2 区）：业务口径、术语、禁止话题、回答风格，放在系统消息末尾，
+  // 与系统规则冲突时以系统规则为准。不超过 2000 字。
+  string tenant_rules = 4;
+  // agent 预算（orchestrator 详设第 6 节）：多跳的最多轮数（1–3）与每轮最多子问题数（1–4），只能在平台上限内调小。
+  optional int32 agent_max_rounds = 5;
+  optional int32 agent_max_sub_questions = 6;
+}
+
+// RoutingConfig 是全局生效的 routing（governance 详设 3.1 “模型路由与阈值”）。
+message RoutingConfig {
+  // 配置版本，cfv_ 前缀；写进回答的 why
+  string version_id = 1;
+  // 置信度权重（技术设计文档 7.8），来自 evaluation 的校准报告；不设时 orchestrator 用默认权重。
+  ConfidenceWeights confidence = 2;
+  // 回答生成用的模型（orchestrator 详设 8.1、12.3）：须是部署里允许的模型之一（BF_LLM_ALT_MODELS），
+  // 不在其中时不调用模型、回答只返回证据。为空用默认模型。只影响公开、内部、机密级的回答生成，受限级仍用专用实例。
+  // 与置信度权重放在同一个对象里：换模型时一起换配套的权重（详设 12.4）。
+  string generation_model = 3;
+}
+
+// ConfidenceWeights：confidence = σ(coverage·c + support·s̄ + rerank·r + diversity·d − conflict·k + bias)。
+message ConfidenceWeights {
+  // 权重版本，如 confidence-3f2a…（evaluation 校准报告给出），写进回答的置信度
+  string version = 1;
+  double coverage = 2;
+  double support = 3;
+  double rerank = 4;
+  double diversity = 5;
+  double conflict = 6;
+  double bias = 7;
 }
 
 // TenantConfig 是一个租户当前生效的配置版本。
@@ -94,6 +245,12 @@ message RunningExperiment {
   // 实验组的句支持度门槛与引用覆盖率门槛；不填沿用基线
   optional double support_threshold = 4;
   optional double min_coverage = 5;
+  // 实验组替换的配置版本（都已单独过评测门禁，governance 详设 3.1）：租户的 pipeline（检索计划、agent 预算、阈值）、
+  // routing（生成模型与置信度权重）、回答模板（每个 scope 至多一个）。不设的沿用基线（含灰度中的候选）。
+  // 阈值字段在 pipeline 变体之上再替换。
+  PipelineConfig pipeline = 6;
+  RoutingConfig routing = 7;
+  repeated PromptTemplate prompts = 8;
 }
 
 message SourceGrant {

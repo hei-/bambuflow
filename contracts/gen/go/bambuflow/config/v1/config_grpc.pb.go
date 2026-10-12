@@ -23,6 +23,7 @@ const (
 	ConfigService_Watch_FullMethodName          = "/bambuflow.config.v1.ConfigService/Watch"
 	ConfigService_Ack_FullMethodName            = "/bambuflow.config.v1.ConfigService/Ack"
 	ConfigService_GetSigningKeys_FullMethodName = "/bambuflow.config.v1.ConfigService/GetSigningKeys"
+	ConfigService_GetCandidate_FullMethodName   = "/bambuflow.config.v1.ConfigService/GetCandidate"
 )
 
 // ConfigServiceClient is the client API for ConfigService service.
@@ -41,6 +42,10 @@ type ConfigServiceClient interface {
 	Ack(ctx context.Context, in *AckRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。
 	GetSigningKeys(ctx context.Context, in *GetSigningKeysRequest, opts ...grpc.CallOption) (*GetSigningKeysResponse, error)
+	// GetCandidate 按版本取一个还没生效的候选配置，供评测副本跑配置发布的门禁（governance 详设 4.1 第 ③④ 步、evaluation 详设 4.2）。
+	// 只对评测身份开放：authorization 里要带 evaluation 签发的评测身份（评测副本转发正在回答的那道题的身份），
+	// 线上实例只持有 gateway 签发的 Principal，取不到候选。
+	GetCandidate(ctx context.Context, in *GetCandidateRequest, opts ...grpc.CallOption) (*GetCandidateResponse, error)
 }
 
 type configServiceClient struct {
@@ -100,6 +105,16 @@ func (c *configServiceClient) GetSigningKeys(ctx context.Context, in *GetSigning
 	return out, nil
 }
 
+func (c *configServiceClient) GetCandidate(ctx context.Context, in *GetCandidateRequest, opts ...grpc.CallOption) (*GetCandidateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCandidateResponse)
+	err := c.cc.Invoke(ctx, ConfigService_GetCandidate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConfigServiceServer is the server API for ConfigService service.
 // All implementations must embed UnimplementedConfigServiceServer
 // for forward compatibility.
@@ -116,6 +131,10 @@ type ConfigServiceServer interface {
 	Ack(context.Context, *AckRequest) (*AckResponse, error)
 	// GetSigningKeys 返回验签用的公钥。私钥只在 governance（来自 Vault），按 key_id 轮换。
 	GetSigningKeys(context.Context, *GetSigningKeysRequest) (*GetSigningKeysResponse, error)
+	// GetCandidate 按版本取一个还没生效的候选配置，供评测副本跑配置发布的门禁（governance 详设 4.1 第 ③④ 步、evaluation 详设 4.2）。
+	// 只对评测身份开放：authorization 里要带 evaluation 签发的评测身份（评测副本转发正在回答的那道题的身份），
+	// 线上实例只持有 gateway 签发的 Principal，取不到候选。
+	GetCandidate(context.Context, *GetCandidateRequest) (*GetCandidateResponse, error)
 	mustEmbedUnimplementedConfigServiceServer()
 }
 
@@ -137,6 +156,9 @@ func (UnimplementedConfigServiceServer) Ack(context.Context, *AckRequest) (*AckR
 }
 func (UnimplementedConfigServiceServer) GetSigningKeys(context.Context, *GetSigningKeysRequest) (*GetSigningKeysResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSigningKeys not implemented")
+}
+func (UnimplementedConfigServiceServer) GetCandidate(context.Context, *GetCandidateRequest) (*GetCandidateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCandidate not implemented")
 }
 func (UnimplementedConfigServiceServer) mustEmbedUnimplementedConfigServiceServer() {}
 func (UnimplementedConfigServiceServer) testEmbeddedByValue()                       {}
@@ -224,6 +246,24 @@ func _ConfigService_GetSigningKeys_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConfigService_GetCandidate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCandidateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigServiceServer).GetCandidate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigService_GetCandidate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigServiceServer).GetCandidate(ctx, req.(*GetCandidateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConfigService_ServiceDesc is the grpc.ServiceDesc for ConfigService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -242,6 +282,10 @@ var ConfigService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSigningKeys",
 			Handler:    _ConfigService_GetSigningKeys_Handler,
+		},
+		{
+			MethodName: "GetCandidate",
+			Handler:    _ConfigService_GetCandidate_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

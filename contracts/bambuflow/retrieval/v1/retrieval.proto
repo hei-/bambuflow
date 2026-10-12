@@ -42,6 +42,12 @@ message SearchRequest {
   // 调用方判定的问题意图（orchestrator 详设 5.3）。关系类问题提高图召回在融合中的权重（详设 7.1，
   // 权重属于检索计划，由 retrieval 决定）；只影响排序，不改变召回范围与权限。不设时按普通问题处理。
   SearchIntent intent = 5;
+  // 是否在每个 Hit 里返回各路分数 score_details（详设 3.2、7.5）；matched_by 总是返回。
+  bool include_score_details = 6;
+  // 用哪个检索计划版本（cfv_ 前缀，retrieval 详设 3.2 plan_override、10.4）：A/B 实验组由 orchestrator 传入，
+  // 只能是该租户运行中实验登记的 pipeline 变体。不认识的版本（实验刚停止等）按租户生效的计划执行，
+  // 实际用的版本见响应的 plan_version。不设时按租户生效的计划（含灰度）。
+  string plan_version = 7;
 }
 
 enum SearchIntent {
@@ -60,6 +66,8 @@ message SearchResponse {
   string embedding_model = 5;
   // 本次实际使用的精排模型版本；未精排（关闭、不可用或时间不足）时为空，原因见 degraded。
   string rerank_model = 6;
+  // 本次使用的租户 pipeline 版本（检索计划，cfv_ 前缀）；租户没有 pipeline 时为空。
+  string plan_version = 7;
 }
 
 message Hit {
@@ -84,6 +92,36 @@ message Hit {
   repeated GraphEdge graph_path = 14;
   // 入库时检测到可疑指令（retrieval 详设 3.3）。调用方把它当作不可信内容：不能成为陈述的唯一依据，返回给 agent 时继续携带。
   bool injection_flag = 15;
+  // 各路分数（详设 7.5）；请求的 include_score_details 为 true 时才填。
+  ScoreDetails score_details = 16;
+  // 命中这一块的召回路、子查询与名次（详设 7.5），按召回路、子查询排序。
+  repeated RouteMatch matched_by = 17;
+}
+
+// ScoreDetails 是一块在各环节的得分。各路原始分数归一化到 0–1，该路没有命中时不设。
+message ScoreDetails {
+  // 关键词：全文检索相关度 r 归一化为 r / (r + 1)。
+  optional double keyword = 1;
+  // 稠密向量：1 − 余弦距离，截断到 0–1。
+  optional double dense = 2;
+  // 图召回：关系置信度 × 跳数衰减。
+  optional double graph = 3;
+  // 编号精确匹配：命中为 1。命中的块不参与融合排序，直接置顶（详设 7.1）。
+  optional double identifier = 4;
+  // 融合分（加权 RRF，多个子查询取最大）；只由编号精确匹配命中时为 0。
+  double rrf = 5;
+  // 精排分；未精排时不设。
+  optional double rerank = 6;
+  // 学习型稀疏向量：内积 p 归一化为 p / (p + 1)。
+  optional double sparse = 7;
+}
+
+// RouteMatch 是一路召回在一个子查询上命中这一块的名次（从 1 开始）。
+message RouteMatch {
+  // keyword / dense / graph / identifier
+  string route = 1;
+  string query_id = 2;
+  int32 rank = 3;
 }
 
 message GraphEdge {

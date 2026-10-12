@@ -9,18 +9,34 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // Admin 实现 IndexAdminService。命令行的 publish 与它调用同一个函数；Rollback 已停用（改为 VersionAdmin 双人复核）。
 type Admin struct {
 	adminv1.UnimplementedIndexAdminServiceServer
-	Pool *pgxpool.Pool
-	Log  *slog.Logger
+	Pool  *pgxpool.Pool
+	Audit Auditor
+	Log   *slog.Logger
 }
 
+// Publish 发布增量的待发布版本；没有时发布全量重建的版本（仍要写完全部在用文档）。
 func (a *Admin) Publish(ctx context.Context, _ *adminv1.PublishRequest) (*adminv1.PublishResponse, error) {
-	version, carried, err := Publish(ctx, a.Pool)
+	incremental, rebuild, err := PendingVersions(ctx, a.Pool)
+	var carried int64
+	version := ""
+	switch {
+	case err != nil:
+	case incremental != nil:
+		version = incremental.Version
+	case rebuild != nil:
+		version = rebuild.Version
+	default:
+		err = ErrNoPending
+	}
+	if err == nil {
+		carried, err = Publish(ctx, a.Pool, version, a.Audit)
+	}
 	if err != nil {
 		a.Log.WarnContext(ctx, "发布失败", slog.Any("err", err))
 		return nil, status.Error(codes.FailedPrecondition, err.Error())

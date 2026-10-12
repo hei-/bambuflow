@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/docmeta"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/docmeta"
 )
 
 // MetaSuffix 是旁挂元数据文件的后缀。
@@ -47,11 +47,12 @@ type File struct {
 	ContentHash string
 }
 
-// List 读取目录下的全部文件及其元数据；任一文件不合法就整体失败，不发出半批事件。
-func List(dir string) ([]*File, error) {
+// List 读取目录下的全部文件及其元数据。单个文件不合法（格式不支持、元数据错、过大、空文件、id 重复）时跳过并记进
+// skipped，其余照常返回；读不了目录才返回错误。
+func List(dir string) ([]*File, []docmeta.Skipped, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	names := map[string]bool{}
 	for _, e := range entries {
@@ -60,10 +61,11 @@ func List(dir string) ([]*File, error) {
 		}
 	}
 	var files []string
+	var skipped []docmeta.Skipped
 	for n := range names {
 		if base, ok := strings.CutSuffix(n, MetaSuffix); ok {
 			if !names[base] {
-				return nil, fmt.Errorf("%s 没有对应的文件", n)
+				skipped = append(skipped, docmeta.Skipped{Name: n, Reason: "没有对应的文件"})
 			}
 			continue
 		}
@@ -73,7 +75,7 @@ func List(dir string) ([]*File, error) {
 	// 只在样例目录内读取：文件名来自目录列表，os.Root 再保证不会经符号链接或 .. 读到目录之外
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { _ = root.Close() }()
 	seen := map[string]string{}
@@ -81,15 +83,18 @@ func List(dir string) ([]*File, error) {
 	for _, n := range files {
 		f, err := read(root, n)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", n, err)
+			skipped = append(skipped, docmeta.Skipped{Name: n, Reason: err.Error()})
+			continue
 		}
 		if prev, dup := seen[f.DocID]; dup {
-			return nil, fmt.Errorf("%s 与 %s 的 id 重复", n, prev)
+			skipped = append(skipped, docmeta.Skipped{Name: n, Reason: fmt.Sprintf("与 %s 的 id 重复", prev)})
+			continue
 		}
 		seen[f.DocID] = n
 		out = append(out, f)
 	}
-	return out, nil
+	sort.Slice(skipped, func(i, j int) bool { return skipped[i].Name < skipped[j].Name })
+	return out, skipped, nil
 }
 
 func read(root *os.Root, name string) (*File, error) {

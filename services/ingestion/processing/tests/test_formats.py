@@ -187,6 +187,76 @@ def test_image_is_one_chunk_with_region() -> None:
     assert c.page is None and c.bbox == (290, 130, 1150, 420)
 
 
+class FakeDescriber:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.calls = 0
+
+    def describe(self, image: bytes) -> str:
+        self.calls += 1
+        return self.text
+
+
+def text_pdf_with_image() -> bytes:
+    """手写的一页 PDF（400 × 400）：有文字层，(50, 100)–(170, 180) 处嵌一张 120 × 80 的图，
+    (300, 300) 处另有一张 30 × 30 的图标。"""
+    content = (
+        b"BT /F1 12 Tf 20 360 Td (Loan rate notice for the fourth quarter.) Tj ET\n"
+        b"q 120 0 0 80 50 100 cm /Im1 Do Q\nq 30 0 0 30 300 300 cm /Im2 Do Q\n"
+    )
+
+    def image(w: int, h: int) -> bytes:
+        head = f"<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /DeviceGray"
+        head += f" /BitsPerComponent 8 /Length {w * h} >>\nstream\n"
+        return head.encode() + b"\xff" * (w * h) + b"\nendstream"
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Contents 4 0 R /Resources"
+        b" << /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R /Im2 7 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"endstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        image(120, 80),
+        image(30, 30),
+    ]
+    out = b"%PDF-1.7\n"
+    offsets = []
+    for n, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % n + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    out += b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (
+        len(objects) + 1,
+        xref,
+    )
+    return out
+
+
+def test_embedded_image_in_text_pdf_becomes_image_chunk() -> None:
+    data = text_pdf_with_image()
+    # 没配 OCR 与描述：图片只是补充，正文照常入库
+    assert [b.kind for b in parse("application/pdf", data, "利率通知", None)] == ["paragraph"]
+    ocr = FakeOcr([[line("2026 年第四季度利率表", 10, 10, 110, 30)]])
+    describe = FakeDescriber("柱状图：各期限贷款利率对比")
+    blocks = parse("application/pdf", data, "利率通知", ocr, describe)
+    images = [b for b in blocks if b.kind == "image"]
+    # 图标（30 × 30）跳过；图片块正文是描述加 OCR 文字，区域是图片在页面上的位置（原点在左上角）
+    assert len(images) == 1 and describe.calls == 1 and len(ocr.images) == 1
+    assert images[0].text == "图片说明：柱状图：各期限贷款利率对比\n2026 年第四季度利率表"
+    assert images[0].page == 1 and images[0].bbox == (50, 220, 170, 300)
+
+
+def test_image_description_goes_before_ocr_text() -> None:
+    ocr = FakeOcr([[line("访客登记须知", 290, 130, 720, 200)]])
+    blocks = parse(
+        "image/png", sample("visitor-notice.png"), "x", ocr, FakeDescriber("前台张贴的告示")
+    )
+    assert blocks[0].text == "图片说明：前台张贴的告示\n访客登记须知"
+
+
 def test_tiny_images_are_skipped() -> None:
     buf = io.BytesIO()
     Image.new("L", (30, 30), 255).save(buf, format="PNG")

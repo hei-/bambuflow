@@ -1,0 +1,33 @@
+{{- /*
+connectors-admin 的“立即同步”（入库管道详设 14.4）：按 bambuflow.io/source-id 标签找到数据源的 CronJob，从模板建一个 Job，
+并查看是否已有这个源的同步在跑。只给本命名空间内 cronjobs 的读与 jobs 的读、建，不能改、不能删。
+*/ -}}
+{{- $ctx := dict "root" $ "component" "connectors-admin" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+rules:
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [list]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [list, create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "bambuflow.name" $ctx }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "bambuflow.name" $ctx }}

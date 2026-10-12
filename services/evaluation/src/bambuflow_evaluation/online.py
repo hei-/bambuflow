@@ -18,7 +18,7 @@ import hashlib
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 import grpc
@@ -26,7 +26,15 @@ import psycopg
 
 from bambuflow.admin.v1 import quality_trend_pb2, quality_trend_pb2_grpc
 from bambuflow.answer.v1 import answer_pb2, records_pb2
-from bambuflow_evaluation.service import CALL_TIMEOUT, PLATFORM_ADMIN, Ctx, Records, abort
+from bambuflow_evaluation import audit, feedback, llm_judge
+from bambuflow_evaluation.service import (
+    CALL_TIMEOUT,
+    PLATFORM_ADMIN,
+    Ctx,
+    Records,
+    abort,
+    owned_tenants,
+)
 from bambuflow_grounding import GroundingUnavailableError
 from bambuflow_platform.grpc_server import current_principal
 
@@ -50,6 +58,22 @@ CREATE TABLE IF NOT EXISTS evaluation.online_quality (
     computed_at        timestamptz      NOT NULL DEFAULT now(),
     PRIMARY KEY (tenant, day)
 );
+-- 反馈聚合（技术设计文档 F8）：当天全部回答数与收到各类反馈的回答数
+ALTER TABLE evaluation.online_quality
+    ADD COLUMN IF NOT EXISTS answers integer NOT NULL DEFAULT 0;
+ALTER TABLE evaluation.online_quality
+    ADD COLUMN IF NOT EXISTS feedback_useful integer NOT NULL DEFAULT 0;
+ALTER TABLE evaluation.online_quality
+    ADD COLUMN IF NOT EXISTS feedback_wrong integer NOT NULL DEFAULT 0;
+ALTER TABLE evaluation.online_quality
+    ADD COLUMN IF NOT EXISTS feedback_bad_citation integer NOT NULL DEFAULT 0;
+-- LLM 评审的 Faithfulness（评测详设 7.1）：没配评审模型时为空
+ALTER TABLE evaluation.online_quality
+    ADD COLUMN IF NOT EXISTS faithfulness double precision;
+ALTER TABLE evaluation.online_quality
+    ADD COLUMN IF NOT EXISTS faithfulness_judged integer NOT NULL DEFAULT 0;
+ALTER TABLE evaluation.online_quality
+    ADD COLUMN IF NOT EXISTS llm_judge text NOT NULL DEFAULT '';
 """
 
 
@@ -67,6 +91,11 @@ class Daily:
     citation_precision: float
     judge_model: str
     computed_at: dt.datetime | None = None
+    feedback: feedback.Counts = feedback.Counts()
+    # LLM 评审：评审成功的回答里忠于引文的比例；没配评审模型或一条都没评成时为 None
+    faithfulness: float | None = None
+    faithfulness_judged: int = 0
+    llm_judge: str = ""
 
 
 def _rank(day: dt.date, answer_id: str) -> str:
@@ -183,13 +212,20 @@ class PGStore:
             await conn.execute(
                 """INSERT INTO evaluation.online_quality
                      (tenant, day, sampled, sentences, groundedness, citation_precision,
-                      judge_model)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                      judge_model, answers, feedback_useful, feedback_wrong, feedback_bad_citation,
+                      faithfulness, faithfulness_judged, llm_judge)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (tenant, day) DO UPDATE SET
                      sampled = EXCLUDED.sampled, sentences = EXCLUDED.sentences,
                      groundedness = EXCLUDED.groundedness,
                      citation_precision = EXCLUDED.citation_precision,
-                     judge_model = EXCLUDED.judge_model, computed_at = now()""",
+                     judge_model = EXCLUDED.judge_model, answers = EXCLUDED.answers,
+                     feedback_useful = EXCLUDED.feedback_useful,
+                     feedback_wrong = EXCLUDED.feedback_wrong,
+                     feedback_bad_citation = EXCLUDED.feedback_bad_citation,
+                     faithfulness = EXCLUDED.faithfulness,
+                     faithfulness_judged = EXCLUDED.faithfulness_judged,
+                     llm_judge = EXCLUDED.llm_judge, computed_at = now()""",
                 (
                     d.tenant,
                     d.day,
@@ -198,6 +234,13 @@ class PGStore:
                     d.groundedness,
                     d.citation_precision,
                     d.judge_model,
+                    d.feedback.answers,
+                    d.feedback.useful,
+                    d.feedback.wrong,
+                    d.feedback.bad_citation,
+                    d.faithfulness,
+                    d.faithfulness_judged,
+                    d.llm_judge,
                 ),
             )
 
@@ -205,26 +248,67 @@ class PGStore:
         async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
             cur = await conn.execute(
                 """SELECT tenant, day, sampled, sentences, groundedness, citation_precision,
-                          judge_model, computed_at
+                          judge_model, computed_at, answers, feedback_useful, feedback_wrong,
+                          feedback_bad_citation, faithfulness, faithfulness_judged, llm_judge
                      FROM evaluation.online_quality WHERE tenant = %s AND day >= %s
                     ORDER BY day""",
                 (tenant, since),
             )
-            return [Daily(*row) for row in await cur.fetchall()]
+            return [
+                Daily(
+                    tenant=r[0],
+                    day=r[1],
+                    sampled=r[2],
+                    sentences=r[3],
+                    groundedness=r[4],
+                    citation_precision=r[5],
+                    judge_model=r[6],
+                    computed_at=r[7],
+                    feedback=feedback.Counts(r[8], r[9], r[10], r[11]),
+                    faithfulness=r[12],
+                    faithfulness_judged=r[13],
+                    llm_judge=r[14],
+                )
+                for r in await cur.fetchall()
+            ]
 
 
 async def run_day(
-    stub: Records, nli: NLI, store: Store, tenants: Sequence[str], day: dt.date
+    stub: Records,
+    nli: NLI,
+    store: Store,
+    tenants: Sequence[str],
+    day: dt.date,
+    trail: audit.Writer,
+    cases: feedback.Store | None = None,
+    llm: llm_judge.Judge | None = None,
 ) -> list[Daily]:
-    """评审一天的抽样并写入；返回各租户结果。某个租户失败只记日志，继续下一个。"""
+    """评审一天的抽样并写入，同时汇总当天的反馈、登记负反馈案例；返回各租户结果。
+    读回答原文之前先写访问审计，写不进去就不读这个租户。某个租户失败只记日志，继续下一个。"""
     out: list[Daily] = []
     for tenant in tenants:
         try:
+            await trail.write(
+                "answer_records.read",
+                tenant,
+                {"purpose": "online_sample", "day": day.isoformat(), "include_answer": True},
+            )
             records = await fetch_day(stub, tenant, day)
-            d = await judge(tenant, day, sample(day, records), nli)
+            picked = sample(day, records)
+            d = await judge(tenant, day, picked, nli)
+            d = replace(d, feedback=feedback.count(records))
+            if llm is not None:
+                d = await faithfulness(d, picked, llm)
             await store.put(d)
+            if cases is not None:
+                await cases.upsert(feedback.cases(tenant, records))
             days = await store.days(tenant, day - dt.timedelta(days=29))
-        except (grpc.aio.AioRpcError, psycopg.Error, GroundingUnavailableError) as e:
+        except (
+            grpc.aio.AioRpcError,
+            psycopg.Error,
+            GroundingUnavailableError,
+            audit.AuditUnavailableError,
+        ) as e:
             _log.warning("在线抽样评审失败", extra={"tenant": tenant, "err": type(e).__name__})
             continue
         out.append(d)
@@ -241,6 +325,28 @@ async def run_day(
     return out
 
 
+async def faithfulness(
+    d: Daily, answers: Sequence[answer_pb2.AnswerResponse], llm: llm_judge.Judge
+) -> Daily:
+    """抽样回答逐条做 LLM 评审（评测详设 7.1）。在线没有标准答案，不算正确率；
+    受限级回答本来就不抽样。评审失败的回答不计入。"""
+    judged = faithful = 0
+    for a in answers:
+        quotes = [x.quote for s in a.sentences for x in s.quotes]
+        try:
+            got = await llm.judge("", a.answer, quotes, ())
+        except llm_judge.JudgeError:
+            continue
+        judged += 1
+        faithful += bool(got.faithful)
+    return replace(
+        d,
+        faithfulness=faithful / judged if judged else None,
+        faithfulness_judged=judged,
+        llm_judge=llm.version,
+    )
+
+
 TENANT = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 
 
@@ -252,8 +358,13 @@ class TrendService(quality_trend_pb2_grpc.QualityTrendServiceServicer):
         self, request: quality_trend_pb2.GetQualityTrendsRequest, context: Ctx
     ) -> quality_trend_pb2.GetQualityTrendsResponse:
         p = current_principal()
-        if p is None or PLATFORM_ADMIN not in p.roles:
-            await abort(context, grpc.StatusCode.PERMISSION_DENIED, "需要平台管理员")
+        # 平台管理员看全部租户，租户负责人只看自己负责的租户
+        if p is None or (
+            PLATFORM_ADMIN not in p.roles and request.tenant not in owned_tenants(p.roles)
+        ):
+            await abort(
+                context, grpc.StatusCode.PERMISSION_DENIED, "需要平台管理员或该租户的负责人"
+            )
         n = request.days or 30
         if not TENANT.match(request.tenant) or not 1 <= n <= 90:
             await abort(context, grpc.StatusCode.INVALID_ARGUMENT, "tenant 或 days 不合法")
@@ -280,7 +391,15 @@ class TrendService(quality_trend_pb2_grpc.QualityTrendServiceServicer):
                 groundedness=d.groundedness,
                 citation_precision=d.citation_precision,
                 judge_model=d.judge_model,
+                answers=d.feedback.answers,
+                feedback_useful=d.feedback.useful,
+                feedback_wrong=d.feedback.wrong,
+                feedback_bad_citation=d.feedback.bad_citation,
+                faithfulness_judged=d.faithfulness_judged,
+                llm_judge=d.llm_judge,
             )
+            if d.faithfulness is not None:
+                q.faithfulness = d.faithfulness
             if d.computed_at is not None:
                 q.computed_at.FromDatetime(d.computed_at)
         return out

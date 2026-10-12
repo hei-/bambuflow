@@ -4,11 +4,12 @@ from collections.abc import AsyncGenerator, Sequence
 
 from bambuflow.answer.v1 import answer_pb2
 from bambuflow.common.v1 import types_pb2
+from bambuflow.config.v1 import config_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2
 from bambuflow_grounding import CALCULATOR_VERSION, Grounder, GroundingUnavailableError
-from bambuflow_orchestrator import flow, prompt
+from bambuflow_orchestrator import confidence, flow, plans, prompt
 from bambuflow_orchestrator.experiments import Assignment
-from bambuflow_orchestrator.llm import LLMUnavailableError
+from bambuflow_orchestrator.llm import LLMUnavailableError, RefusedGeneration
 from bambuflow_orchestrator.parse import Parser
 
 LOAN = "第五条 个人消费贷款单户额度原则上不超过 30 万元。"
@@ -48,13 +49,15 @@ class FakeRetrieval:
         hits: Sequence[retrieval_pb2.Hit] = HITS,
         rerank_model: str = "",
         degraded: Sequence[types_pb2.Degradation] = (),
+        plan_version: str = "",
     ) -> None:
+        self.plan_version = plan_version
         self.hits = list(hits)
         self.rerank_model = rerank_model
         self.degraded = list(degraded)
 
     async def search(
-        self, question: str, filters: types_pb2.Filters | None
+        self, question: str, filters: types_pb2.Filters | None, variants: Sequence[str] = ()
     ) -> retrieval_pb2.SearchResponse:
         return retrieval_pb2.SearchResponse(
             hits=self.hits,
@@ -63,6 +66,7 @@ class FakeRetrieval:
             embedding_model="bge-m3@t",
             rerank_model=self.rerank_model,
             degraded=self.degraded,
+            plan_version=self.plan_version,
         )
 
 
@@ -86,14 +90,30 @@ class FakeGeneration:
 
 class FakeLLM:
     def __init__(
-        self, output: str = "\n".join(GOOD), fail: bool = False, fail_after: int | None = None
+        self,
+        output: str = "\n".join(GOOD),
+        fail: bool = False,
+        fail_after: int | None = None,
+        max_level: int = types_pb2.CLASSIFICATION_RESTRICTED,
     ) -> None:
         self.output = output
         self.fail_after = 0 if fail else fail_after
+        # 模拟 llm.Router：输入密级高于 max_level 时没有允许的模型
+        self.max_level = max_level
+        self.levels: list[int] = []
+        self.models: list[str] = []
+        self.systems: list[str] = []
         self.prompts: list[str] = []
         self.generations: list[FakeGeneration] = []
 
-    def generate(self, system: str, user: str) -> FakeGeneration:
+    def generate(
+        self, system: str, user: str, level: int = 2, model: str = ""
+    ) -> FakeGeneration | RefusedGeneration:
+        self.levels.append(level)
+        self.models.append(model)
+        if level > self.max_level:
+            return RefusedGeneration(level)
+        self.systems.append(system)
         self.prompts.append(user)
         g = FakeGeneration(self.output, self.fail_after)
         self.generations.append(g)
@@ -101,13 +121,20 @@ class FakeLLM:
 
 
 class OverlapNLI:
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: bool = False, against: frozenset[str] = frozenset()) -> None:
         self.fail = fail
+        # 与任何陈述都矛盾的前提
+        self.against = against
 
     async def support(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
         if self.fail:
             raise GroundingUnavailableError("down")
         return [sum(ch in p for ch in h) / len(h) for p, h in pairs], "nli@t"
+
+    async def contradiction(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
+        if self.fail:
+            raise GroundingUnavailableError("down")
+        return [0.9 if p in self.against else 0.0 for p, _ in pairs], "nli@t"
 
 
 class FlakyNLI(OverlapNLI):
@@ -138,8 +165,9 @@ def run(
     nli: OverlapNLI | None = None,
     access: Access | None = None,
     question: str = "额度是多少？",
+    settings: plans.Settings = plans.DEFAULT,
 ) -> answer_pb2.AnswerResponse:
-    req = flow.Request(question, None, 8)
+    req = flow.Request(question, None, 8, settings=settings)
     grounder = Grounder(nli or OverlapNLI(), access or Access())
     return asyncio.run(flow.answer(req, retrieval or FakeRetrieval(), llm or FakeLLM(), grounder))
 
@@ -196,7 +224,7 @@ def test_answered_with_versions_in_why() -> None:
         "bge-m3@t",
     )
     assert (w.generation_model, w.nli_model, w.support_threshold) == ("chat@t", "nli@t", 0.5)
-    assert w.prompt_version == prompt.PROMPT_VERSION and list(w.retrievers) == ["dense", "keyword"]
+    assert w.prompt_version == prompt.ANSWER.version and list(w.retrievers) == ["dense", "keyword"]
 
 
 def test_ungrounded_sentence_never_reaches_the_answer() -> None:
@@ -555,18 +583,36 @@ def test_graph_path_in_stream_final_and_evidence_only() -> None:
     assert [p.chunk_id for p in final.why.graph_path] == ["wiki:hb#b"]
 
 
+# 实验组的配置：阈值放宽、换回答模板与生成模型、换 pipeline 版本
+VARIANT = plans.Settings(
+    support_threshold=0.4,
+    min_coverage=0.5,
+    templates={"answer": prompt.Template("answer@cfv_t", prompt.ANSWER.system, prompt.ANSWER.user)},
+    generation_model="alt-model",
+    pipeline_version="cfv_v",
+    routing_version="cfv_r2",
+    plan_version="cfv_v",
+)
+
+
 def run_in(
-    exp: Assignment, retrieval: FakeRetrieval | None = None
+    exp: Assignment, retrieval: FakeRetrieval | None = None, llm: FakeLLM | None = None
 ) -> tuple[answer_pb2.AnswerResponse, flow.Answer]:
     """以给定的实验分组回答；返回回答与流程（why 里的分组由 server 写，这里只看流程改的部分）。"""
     flagged = retrieval_pb2.Hit()
     flagged.CopyFrom(HITS[1])
     flagged.injection_flag = True
-    req = flow.Request("额度是多少？", None, 8, experiment=exp)
+    req = flow.Request(
+        "额度是多少？",
+        None,
+        8,
+        experiment=exp,
+        variant=VARIANT if exp.treatment else None,
+    )
     a = flow.Answer(
         req,
-        retrieval or FakeRetrieval([HITS[0], flagged]),
-        FakeLLM(),
+        retrieval or FakeRetrieval([HITS[0], flagged], plan_version="cfv_v"),
+        llm or FakeLLM(),
         Grounder(OverlapNLI(), Access()),
     )
 
@@ -578,15 +624,28 @@ def run_in(
     return a.response(), a
 
 
-def test_treatment_thresholds_apply_after_context() -> None:
+def test_treatment_uses_the_variant_config() -> None:
     # 与上一个用例同样的证据：基线覆盖率门槛 0.8 下证据不足，实验组门槛 0.5 下算 answered
-    treat = Assignment("exp_1", answer_pb2.EXPERIMENT_ARM_TREATMENT, 0.4, 0.5)
-    r, _ = run_in(treat)
+    llm = FakeLLM()
+    treat = Assignment("exp_1", answer_pb2.EXPERIMENT_ARM_TREATMENT, config_pb2.RunningExperiment())
+    r, _ = run_in(treat, llm=llm)
     assert r.status == answer_pb2.STATUS_ANSWERED
     assert r.why.support_threshold == 0.4
-    control, _ = run_in(Assignment("exp_1", answer_pb2.EXPERIMENT_ARM_CONTROL))
-    assert control.status == answer_pb2.STATUS_INSUFFICIENT_EVIDENCE
-    assert control.why.support_threshold == 0.5
+    assert llm.models == ["alt-model"]
+    assert (r.why.prompt_version, r.why.pipeline_version, r.why.routing_version) == (
+        "answer@cfv_t",
+        "cfv_v",
+        "cfv_r2",
+    )
+    assert not [d for d in r.why.degraded if d.stage == "pipeline_version"]
+    llm = FakeLLM()
+    control, _ = run_in(
+        Assignment("exp_1", answer_pb2.EXPERIMENT_ARM_CONTROL),
+        FakeRetrieval([HITS[0], HITS[1]]),
+        llm,
+    )
+    assert control.why.support_threshold == 0.5 and llm.models == [""]
+    assert control.why.prompt_version == prompt.ANSWER.version
 
 
 def test_restricted_context_falls_back_to_baseline() -> None:
@@ -596,10 +655,15 @@ def test_restricted_context_falls_back_to_baseline() -> None:
     flagged = retrieval_pb2.Hit()
     flagged.CopyFrom(HITS[1])
     flagged.injection_flag = True
-    treat = Assignment("exp_1", answer_pb2.EXPERIMENT_ARM_TREATMENT, 0.4, 0.5)
-    r, _ = run_in(treat, FakeRetrieval([restricted, flagged]))
+    llm = FakeLLM()
+    treat = Assignment("exp_1", answer_pb2.EXPERIMENT_ARM_TREATMENT, config_pb2.RunningExperiment())
+    r, _ = run_in(treat, FakeRetrieval([restricted, flagged], plan_version="cfv_v"), llm)
     assert r.why.experiment_arm == answer_pb2.EXPERIMENT_ARM_EXCLUDED
     assert r.status == answer_pb2.STATUS_INSUFFICIENT_EVIDENCE and r.why.support_threshold == 0.5
+    # 生成一侧全部退回基线；检索计划已经用过，仍记实验组的版本
+    assert llm.models == [""]
+    assert (r.why.prompt_version, r.why.routing_version) == (prompt.ANSWER.version, "")
+    assert r.why.pipeline_version == "cfv_v"
 
 
 def test_answer_carries_confidence() -> None:
@@ -610,3 +674,114 @@ def test_answer_carries_confidence() -> None:
     # 没有陈述经过校验（没有证据）时不给置信度
     empty = run(retrieval=FakeRetrieval([]))
     assert not empty.HasField("confidence")
+
+
+def test_context_above_allowed_level_returns_evidence_only() -> None:
+    confidential = [retrieval_pb2.Hit() for _ in HITS]
+    for h, src in zip(confidential, HITS, strict=True):
+        h.CopyFrom(src)
+    confidential[1].classification = types_pb2.CLASSIFICATION_CONFIDENTIAL
+    llm = FakeLLM(max_level=types_pb2.CLASSIFICATION_INTERNAL)
+    r = run(llm, FakeRetrieval(confidential))
+    assert llm.levels == [types_pb2.CLASSIFICATION_CONFIDENTIAL] and not llm.prompts
+    assert r.status == answer_pb2.STATUS_EVIDENCE_ONLY and r.answer == ""
+    assert [(d.stage, d.reason) for d in r.why.degraded] == [("generation", "model_not_allowed")]
+
+
+def test_uncited_contradicting_source_lowers_confidence_and_adds_note() -> None:
+    old = "第五条 个人消费贷款单户额度原则上不超过 20 万元。"
+    stale = retrieval_pb2.Hit(chunk_id="wiki:old#a", doc_id="old", text=old, title="旧版贷款")
+    hits = [*HITS, stale]
+    calm = run(retrieval=FakeRetrieval(hits))
+    r = run(retrieval=FakeRetrieval(hits), nli=OverlapNLI(against=frozenset({old})))
+    assert r.status == answer_pb2.STATUS_ANSWERED
+    assert r.confidence.conflict and r.confidence.score < calm.confidence.score
+    note = r.sentences[-1]
+    assert note.text == flow.CONFLICT_NOTE + "[S3]" and list(note.ref_ids) == [3]
+    assert r.blocks[-1].block_type == answer_pb2.BLOCK_TYPE_NOTE
+    assert [c.chunk_id for c in r.citations][-1] == "wiki:old#a"
+    assert not calm.confidence.conflict and flow.CONFLICT_NOTE not in calm.answer
+    # 无权查看的来源不提示
+    hidden = run(
+        retrieval=FakeRetrieval(hits),
+        nli=OverlapNLI(against=frozenset({old})),
+        access=Access(frozenset({"wiki:old#a"})),
+    )
+    assert not hidden.confidence.conflict and flow.CONFLICT_NOTE not in hidden.answer
+
+
+def test_cited_evidence_carries_score_explanation() -> None:
+    explained = retrieval_pb2.Hit()
+    explained.CopyFrom(HITS[0])
+    explained.matched_by.add(route="identifier", query_id="q1", rank=1)
+    explained.matched_by.add(route="dense", query_id="q1", rank=3)
+    explained.score_details.rrf = 0.016
+    explained.score_details.identifier = 1.0
+    explained.score_details.rerank = 0.8
+    r = run(retrieval=FakeRetrieval([explained, HITS[1]]))
+    (e,) = r.why.evidence_scores  # 第二条证据没有解释，不输出
+    assert e.ref_id == 1 and e.chunk_id == "wiki:loan#a"
+    assert [(m.route, m.rank) for m in e.matched_by] == [("identifier", 1), ("dense", 3)]
+    d = e.score_details
+    assert d.identifier == 1.0 and d.rerank == 0.8 and not d.HasField("keyword")
+
+
+def test_pipeline_thresholds_and_routing_weights_apply_and_reach_why() -> None:
+    weights = confidence.Weights("confidence-x", 1, 1, 1, 1, 1, 0)
+    s = plans.Settings(
+        support_threshold=0.9,
+        min_coverage=1.0,
+        weights=weights,
+        pipeline_version="cfv_p",
+        routing_version="cfv_r",
+    )
+    r = run(retrieval=FakeRetrieval(plan_version="cfv_p"), settings=s)
+    assert r.why.support_threshold == 0.9
+    assert (r.why.pipeline_version, r.why.routing_version) == ("cfv_p", "cfv_r")
+    assert r.confidence.weights_version == "confidence-x"
+    assert not [d for d in r.why.degraded if d.stage == "pipeline_version"]
+    # retrieval 用的 pipeline 版本不同（快照切换中）：记进降级
+    r = run(retrieval=FakeRetrieval(plan_version="cfv_old"), settings=s)
+    assert ("pipeline_version", "cfv_old") in [(d.stage, d.reason) for d in r.why.degraded]
+
+
+def test_single_hop_llm_rerank_reorders_context() -> None:
+    extra = [
+        retrieval_pb2.Hit(chunk_id=f"wiki:x#{i}", doc_id=f"x{i}", text=f"无关内容{i}", title="x")
+        for i in range(8)
+    ]
+    hits = [*extra, *HITS]
+
+    async def rerank(
+        question: str, hs: Sequence[retrieval_pb2.Hit]
+    ) -> tuple[list[retrieval_pb2.Hit], str, str]:
+        assert len(hs) == 10
+        return [HITS[0], HITS[1], *extra], "chat@t+rerank@1", ""
+
+    req = flow.Request("额度是多少？", None, 8)
+    grounder = Grounder(OverlapNLI(), Access())
+    a = flow.Answer(req, FakeRetrieval(hits), FakeLLM(), grounder, rerank=rerank)
+
+    async def go() -> answer_pb2.AnswerResponse:
+        async for _ in a.events():
+            pass
+        return a.response()
+
+    r = asyncio.run(go())
+    assert list(r.audit.context_chunk_ids)[:2] == ["wiki:loan#a", "wiki:hb#b"]
+    assert r.why.llm_rerank == "chat@t+rerank@1" and r.status == answer_pb2.STATUS_ANSWERED
+
+
+def test_published_template_tenant_rules_and_summary_reach_the_prompt() -> None:
+    t = prompt.Template(
+        "answer@cfv_t1",
+        prompt.SYSTEM + "{{tenant_rules}}",
+        "{{summary}}\n{{evidence}}\n{{question}}",
+    )
+    s = plans.Settings(tenant_rules="金额一律写成万元。", templates={"answer": t})
+    llm = FakeLLM()
+    req = flow.Request("额度是多少？", None, 8, settings=s, summary="此前在问个人消费贷款")
+    r = asyncio.run(flow.answer(req, FakeRetrieval(), llm, Grounder(OverlapNLI(), Access())))
+    assert r.why.prompt_version == "answer@cfv_t1"
+    assert llm.systems[0].endswith("金额一律写成万元。")
+    assert llm.prompts[0].startswith("<summary>\n此前在问个人消费贷款\n</summary>")

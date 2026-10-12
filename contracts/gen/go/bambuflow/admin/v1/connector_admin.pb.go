@@ -25,11 +25,11 @@ const (
 // SyncRun 是一轮同步的结果。
 type SyncRun struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// sync-wiki、sync-fileshare、sync-logs、sync-dbschema
+	// sync-wiki、sync-fileshare、sync-logs、sync-dbschema、reconcile-wiki、reconcile-fileshare
 	Command    string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
 	StartedAt  *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	FinishedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
-	// succeeded、failed、skipped_paused
+	// succeeded、failed、skipped_paused、skipped_revoked
 	Result string `protobuf:"bytes,4,opt,name=result,proto3" json:"result,omitempty"`
 	// 失败原因摘要，最多 200 字
 	Error     string `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
@@ -42,7 +42,13 @@ type SyncRun struct {
 	// empty_listing 或 over_threshold
 	DeletesPausedReason string `protobuf:"bytes,11,opt,name=deletes_paused_reason,json=deletesPausedReason,proto3" json:"deletes_paused_reason,omitempty"`
 	// 按 RefetchRequested 重新拉取的文档数
-	Refetched     int32 `protobuf:"varint,12,opt,name=refetched,proto3" json:"refetched,omitempty"`
+	Refetched int32 `protobuf:"varint,12,opt,name=refetched,proto3" json:"refetched,omitempty"`
+	// 对账（reconcile-*）才有：源端全量清单与已入库文档的比对结果
+	Reconciliation *Reconciliation `protobuf:"bytes,13,opt,name=reconciliation,proto3" json:"reconciliation,omitempty"`
+	// 清单里没能读出、本轮跳过的文档数与前 20 项（“名称：原因”）。单份文档读不出不中止整轮，但这一轮不推断删除
+	// （deletes_paused_reason 为 incomplete_listing）
+	Skipped       int32    `protobuf:"varint,14,opt,name=skipped,proto3" json:"skipped,omitempty"`
+	SkippedItems  []string `protobuf:"bytes,15,rep,name=skipped_items,json=skippedItems,proto3" json:"skipped_items,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -161,6 +167,118 @@ func (x *SyncRun) GetRefetched() int32 {
 	return 0
 }
 
+func (x *SyncRun) GetReconciliation() *Reconciliation {
+	if x != nil {
+		return x.Reconciliation
+	}
+	return nil
+}
+
+func (x *SyncRun) GetSkipped() int32 {
+	if x != nil {
+		return x.Skipped
+	}
+	return 0
+}
+
+func (x *SyncRun) GetSkippedItems() []string {
+	if x != nil {
+		return x.SkippedItems
+	}
+	return nil
+}
+
+// Reconciliation 是一次每日对账的结果（技术设计文档 5.5）。差异都已补发对应的变更事件，删除仍受删除保护约束。
+type Reconciliation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 源端有、索引里没有（事件丢失或入库失败）：补发 UPSERT
+	Missing int32 `protobuf:"varint,1,opt,name=missing,proto3" json:"missing,omitempty"`
+	// 内容摘要不一致：补发 UPSERT
+	ContentMismatch int32 `protobuf:"varint,2,opt,name=content_mismatch,json=contentMismatch,proto3" json:"content_mismatch,omitempty"`
+	// 权限或密级不一致：补发 ACL_ONLY
+	AclMismatch int32 `protobuf:"varint,3,opt,name=acl_mismatch,json=aclMismatch,proto3" json:"acl_mismatch,omitempty"`
+	// 索引里在用、源端已没有：补发 DELETE（超过阈值时进待删批次）
+	Orphaned int32 `protobuf:"varint,4,opt,name=orphaned,proto3" json:"orphaned,omitempty"`
+	// 已打删除标记、源端仍有：不补发（可能是按保留期到期，或待撤销的删除），只计数
+	TombstonedInSource int32 `protobuf:"varint,5,opt,name=tombstoned_in_source,json=tombstonedInSource,proto3" json:"tombstoned_in_source,omitempty"`
+	// 索引里已入库的文档数（含删除标记）
+	Indexed       int32 `protobuf:"varint,6,opt,name=indexed,proto3" json:"indexed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Reconciliation) Reset() {
+	*x = Reconciliation{}
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Reconciliation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Reconciliation) ProtoMessage() {}
+
+func (x *Reconciliation) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Reconciliation.ProtoReflect.Descriptor instead.
+func (*Reconciliation) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Reconciliation) GetMissing() int32 {
+	if x != nil {
+		return x.Missing
+	}
+	return 0
+}
+
+func (x *Reconciliation) GetContentMismatch() int32 {
+	if x != nil {
+		return x.ContentMismatch
+	}
+	return 0
+}
+
+func (x *Reconciliation) GetAclMismatch() int32 {
+	if x != nil {
+		return x.AclMismatch
+	}
+	return 0
+}
+
+func (x *Reconciliation) GetOrphaned() int32 {
+	if x != nil {
+		return x.Orphaned
+	}
+	return 0
+}
+
+func (x *Reconciliation) GetTombstonedInSource() int32 {
+	if x != nil {
+		return x.TombstonedInSource
+	}
+	return 0
+}
+
+func (x *Reconciliation) GetIndexed() int32 {
+	if x != nil {
+		return x.Indexed
+	}
+	return 0
+}
+
 type Pause struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PausedBy      string                 `protobuf:"bytes,1,opt,name=paused_by,json=pausedBy,proto3" json:"paused_by,omitempty"`
@@ -172,7 +290,7 @@ type Pause struct {
 
 func (x *Pause) Reset() {
 	*x = Pause{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -184,7 +302,7 @@ func (x *Pause) String() string {
 func (*Pause) ProtoMessage() {}
 
 func (x *Pause) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[1]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -197,7 +315,7 @@ func (x *Pause) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pause.ProtoReflect.Descriptor instead.
 func (*Pause) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{1}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Pause) GetPausedBy() string {
@@ -230,7 +348,7 @@ type GetSyncStatusRequest struct {
 
 func (x *GetSyncStatusRequest) Reset() {
 	*x = GetSyncStatusRequest{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -242,7 +360,7 @@ func (x *GetSyncStatusRequest) String() string {
 func (*GetSyncStatusRequest) ProtoMessage() {}
 
 func (x *GetSyncStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[2]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -255,7 +373,7 @@ func (x *GetSyncStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSyncStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetSyncStatusRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{2}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetSyncStatusRequest) GetSourceId() string {
@@ -275,14 +393,22 @@ type GetSyncStatusResponse struct {
 	// 距最近一次成功同步结束的秒数；从没成功过时为 -1
 	FreshnessSeconds int64 `protobuf:"varint,4,opt,name=freshness_seconds,json=freshnessSeconds,proto3" json:"freshness_seconds,omitempty"`
 	// 暂停时有值
-	Pause         *Pause `protobuf:"bytes,5,opt,name=pause,proto3" json:"pause,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Pause *Pause `protobuf:"bytes,5,opt,name=pause,proto3" json:"pause,omitempty"`
+	// 最近一次对账；没有对账过时为空
+	LastReconcile *SyncRun `protobuf:"bytes,6,opt,name=last_reconcile,json=lastReconcile,proto3" json:"last_reconcile,omitempty"`
+	// 数据源被撤销的时间（governance 详设 6.2）：全部文档已写删除标记，之后的同步都跳过，不能恢复。没有撤销时为空
+	RevokedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
+	// 常驻清单轮询的当前间隔（秒，5–15 分钟按源系统的响应自动调整，入库管道详设第 5 节）与下一轮的时间；
+	// 按定时任务同步的源为 0 与空。间隔计入这个源的撤权与删除时效
+	ListingIntervalSeconds int64                  `protobuf:"varint,8,opt,name=listing_interval_seconds,json=listingIntervalSeconds,proto3" json:"listing_interval_seconds,omitempty"`
+	NextRoundAt            *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=next_round_at,json=nextRoundAt,proto3" json:"next_round_at,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *GetSyncStatusResponse) Reset() {
 	*x = GetSyncStatusResponse{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -294,7 +420,7 @@ func (x *GetSyncStatusResponse) String() string {
 func (*GetSyncStatusResponse) ProtoMessage() {}
 
 func (x *GetSyncStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[3]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -307,7 +433,7 @@ func (x *GetSyncStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSyncStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetSyncStatusResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{3}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetSyncStatusResponse) GetSourceId() string {
@@ -345,6 +471,34 @@ func (x *GetSyncStatusResponse) GetPause() *Pause {
 	return nil
 }
 
+func (x *GetSyncStatusResponse) GetLastReconcile() *SyncRun {
+	if x != nil {
+		return x.LastReconcile
+	}
+	return nil
+}
+
+func (x *GetSyncStatusResponse) GetRevokedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RevokedAt
+	}
+	return nil
+}
+
+func (x *GetSyncStatusResponse) GetListingIntervalSeconds() int64 {
+	if x != nil {
+		return x.ListingIntervalSeconds
+	}
+	return 0
+}
+
+func (x *GetSyncStatusResponse) GetNextRoundAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NextRoundAt
+	}
+	return nil
+}
+
 type PauseSourceRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	SourceId string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
@@ -356,7 +510,7 @@ type PauseSourceRequest struct {
 
 func (x *PauseSourceRequest) Reset() {
 	*x = PauseSourceRequest{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -368,7 +522,7 @@ func (x *PauseSourceRequest) String() string {
 func (*PauseSourceRequest) ProtoMessage() {}
 
 func (x *PauseSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[4]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -381,7 +535,7 @@ func (x *PauseSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PauseSourceRequest.ProtoReflect.Descriptor instead.
 func (*PauseSourceRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{4}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PauseSourceRequest) GetSourceId() string {
@@ -409,7 +563,7 @@ type PauseSourceResponse struct {
 
 func (x *PauseSourceResponse) Reset() {
 	*x = PauseSourceResponse{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -421,7 +575,7 @@ func (x *PauseSourceResponse) String() string {
 func (*PauseSourceResponse) ProtoMessage() {}
 
 func (x *PauseSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[5]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -434,7 +588,7 @@ func (x *PauseSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PauseSourceResponse.ProtoReflect.Descriptor instead.
 func (*PauseSourceResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{5}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PauseSourceResponse) GetPause() *Pause {
@@ -451,6 +605,112 @@ func (x *PauseSourceResponse) GetChanged() bool {
 	return false
 }
 
+type SyncNowRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	SourceId string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	// 必填，最多 500 字
+	Reason        string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncNowRequest) Reset() {
+	*x = SyncNowRequest{}
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncNowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncNowRequest) ProtoMessage() {}
+
+func (x *SyncNowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncNowRequest.ProtoReflect.Descriptor instead.
+func (*SyncNowRequest) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SyncNowRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *SyncNowRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type SyncNowResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 拉起的同步任务名（调度方的任务标识）
+	Job           string                 `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	RequestedAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=requested_at,json=requestedAt,proto3" json:"requested_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncNowResponse) Reset() {
+	*x = SyncNowResponse{}
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncNowResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncNowResponse) ProtoMessage() {}
+
+func (x *SyncNowResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncNowResponse.ProtoReflect.Descriptor instead.
+func (*SyncNowResponse) Descriptor() ([]byte, []int) {
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SyncNowResponse) GetJob() string {
+	if x != nil {
+		return x.Job
+	}
+	return ""
+}
+
+func (x *SyncNowResponse) GetRequestedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RequestedAt
+	}
+	return nil
+}
+
 type ResumeSourceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
@@ -460,7 +720,7 @@ type ResumeSourceRequest struct {
 
 func (x *ResumeSourceRequest) Reset() {
 	*x = ResumeSourceRequest{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +732,7 @@ func (x *ResumeSourceRequest) String() string {
 func (*ResumeSourceRequest) ProtoMessage() {}
 
 func (x *ResumeSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[6]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +745,7 @@ func (x *ResumeSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeSourceRequest.ProtoReflect.Descriptor instead.
 func (*ResumeSourceRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{6}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ResumeSourceRequest) GetSourceId() string {
@@ -505,7 +765,7 @@ type ResumeSourceResponse struct {
 
 func (x *ResumeSourceResponse) Reset() {
 	*x = ResumeSourceResponse{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -517,7 +777,7 @@ func (x *ResumeSourceResponse) String() string {
 func (*ResumeSourceResponse) ProtoMessage() {}
 
 func (x *ResumeSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[7]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -530,7 +790,7 @@ func (x *ResumeSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeSourceResponse.ProtoReflect.Descriptor instead.
 func (*ResumeSourceResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{7}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ResumeSourceResponse) GetChanged() bool {
@@ -566,7 +826,7 @@ type DeletionHold struct {
 
 func (x *DeletionHold) Reset() {
 	*x = DeletionHold{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[8]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -578,7 +838,7 @@ func (x *DeletionHold) String() string {
 func (*DeletionHold) ProtoMessage() {}
 
 func (x *DeletionHold) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[8]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -591,7 +851,7 @@ func (x *DeletionHold) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletionHold.ProtoReflect.Descriptor instead.
 func (*DeletionHold) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{8}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeletionHold) GetHoldId() string {
@@ -687,7 +947,7 @@ type ListPendingDeletionsRequest struct {
 
 func (x *ListPendingDeletionsRequest) Reset() {
 	*x = ListPendingDeletionsRequest{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[9]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -699,7 +959,7 @@ func (x *ListPendingDeletionsRequest) String() string {
 func (*ListPendingDeletionsRequest) ProtoMessage() {}
 
 func (x *ListPendingDeletionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[9]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -712,7 +972,7 @@ func (x *ListPendingDeletionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPendingDeletionsRequest.ProtoReflect.Descriptor instead.
 func (*ListPendingDeletionsRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{9}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListPendingDeletionsRequest) GetSourceId() string {
@@ -732,7 +992,7 @@ type ListPendingDeletionsResponse struct {
 
 func (x *ListPendingDeletionsResponse) Reset() {
 	*x = ListPendingDeletionsResponse{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[10]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -744,7 +1004,7 @@ func (x *ListPendingDeletionsResponse) String() string {
 func (*ListPendingDeletionsResponse) ProtoMessage() {}
 
 func (x *ListPendingDeletionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[10]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -757,7 +1017,7 @@ func (x *ListPendingDeletionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPendingDeletionsResponse.ProtoReflect.Descriptor instead.
 func (*ListPendingDeletionsResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{10}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListPendingDeletionsResponse) GetHolds() []*DeletionHold {
@@ -779,7 +1039,7 @@ type ConfirmDeletionRequest struct {
 
 func (x *ConfirmDeletionRequest) Reset() {
 	*x = ConfirmDeletionRequest{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[11]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -791,7 +1051,7 @@ func (x *ConfirmDeletionRequest) String() string {
 func (*ConfirmDeletionRequest) ProtoMessage() {}
 
 func (x *ConfirmDeletionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[11]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -804,7 +1064,7 @@ func (x *ConfirmDeletionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmDeletionRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmDeletionRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{11}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ConfirmDeletionRequest) GetSourceId() string {
@@ -837,7 +1097,7 @@ type ConfirmDeletionResponse struct {
 
 func (x *ConfirmDeletionResponse) Reset() {
 	*x = ConfirmDeletionResponse{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[12]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -849,7 +1109,7 @@ func (x *ConfirmDeletionResponse) String() string {
 func (*ConfirmDeletionResponse) ProtoMessage() {}
 
 func (x *ConfirmDeletionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[12]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -862,7 +1122,7 @@ func (x *ConfirmDeletionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmDeletionResponse.ProtoReflect.Descriptor instead.
 func (*ConfirmDeletionResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{12}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ConfirmDeletionResponse) GetHold() *DeletionHold {
@@ -883,7 +1143,7 @@ type DiscardDeletionRequest struct {
 
 func (x *DiscardDeletionRequest) Reset() {
 	*x = DiscardDeletionRequest{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[13]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -895,7 +1155,7 @@ func (x *DiscardDeletionRequest) String() string {
 func (*DiscardDeletionRequest) ProtoMessage() {}
 
 func (x *DiscardDeletionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[13]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,7 +1168,7 @@ func (x *DiscardDeletionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscardDeletionRequest.ProtoReflect.Descriptor instead.
 func (*DiscardDeletionRequest) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{13}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DiscardDeletionRequest) GetSourceId() string {
@@ -941,7 +1201,7 @@ type DiscardDeletionResponse struct {
 
 func (x *DiscardDeletionResponse) Reset() {
 	*x = DiscardDeletionResponse{}
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[14]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -953,7 +1213,7 @@ func (x *DiscardDeletionResponse) String() string {
 func (*DiscardDeletionResponse) ProtoMessage() {}
 
 func (x *DiscardDeletionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[14]
+	mi := &file_bambuflow_admin_v1_connector_admin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -966,7 +1226,7 @@ func (x *DiscardDeletionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscardDeletionResponse.ProtoReflect.Descriptor instead.
 func (*DiscardDeletionResponse) Descriptor() ([]byte, []int) {
-	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{14}
+	return file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DiscardDeletionResponse) GetHold() *DeletionHold {
@@ -980,7 +1240,7 @@ var File_bambuflow_admin_v1_connector_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_connector_admin_proto_rawDesc = "" +
 	"\n" +
-	"(bambuflow/admin/v1/connector_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaf\x03\n" +
+	"(bambuflow/admin/v1/connector_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xba\x04\n" +
 	"\aSyncRun\x12\x18\n" +
 	"\acommand\x18\x01 \x01(\tR\acommand\x129\n" +
 	"\n" +
@@ -996,25 +1256,46 @@ const file_bambuflow_admin_v1_connector_admin_proto_rawDesc = "" +
 	"\x0edeletes_paused\x18\n" +
 	" \x01(\bR\rdeletesPaused\x122\n" +
 	"\x15deletes_paused_reason\x18\v \x01(\tR\x13deletesPausedReason\x12\x1c\n" +
-	"\trefetched\x18\f \x01(\x05R\trefetched\"u\n" +
+	"\trefetched\x18\f \x01(\x05R\trefetched\x12J\n" +
+	"\x0ereconciliation\x18\r \x01(\v2\".bambuflow.admin.v1.ReconciliationR\x0ereconciliation\x12\x18\n" +
+	"\askipped\x18\x0e \x01(\x05R\askipped\x12#\n" +
+	"\rskipped_items\x18\x0f \x03(\tR\fskippedItems\"\xe0\x01\n" +
+	"\x0eReconciliation\x12\x18\n" +
+	"\amissing\x18\x01 \x01(\x05R\amissing\x12)\n" +
+	"\x10content_mismatch\x18\x02 \x01(\x05R\x0fcontentMismatch\x12!\n" +
+	"\facl_mismatch\x18\x03 \x01(\x05R\vaclMismatch\x12\x1a\n" +
+	"\borphaned\x18\x04 \x01(\x05R\borphaned\x120\n" +
+	"\x14tombstoned_in_source\x18\x05 \x01(\x05R\x12tombstonedInSource\x12\x18\n" +
+	"\aindexed\x18\x06 \x01(\x05R\aindexed\"u\n" +
 	"\x05Pause\x12\x1b\n" +
 	"\tpaused_by\x18\x01 \x01(\tR\bpausedBy\x127\n" +
 	"\tpaused_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bpausedAt\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\"3\n" +
 	"\x14GetSyncStatusRequest\x12\x1b\n" +
-	"\tsource_id\x18\x01 \x01(\tR\bsourceId\"\x8a\x02\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\"\x83\x04\n" +
 	"\x15GetSyncStatusResponse\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x126\n" +
 	"\blast_run\x18\x02 \x01(\v2\x1b.bambuflow.admin.v1.SyncRunR\alastRun\x12>\n" +
 	"\flast_success\x18\x03 \x01(\v2\x1b.bambuflow.admin.v1.SyncRunR\vlastSuccess\x12+\n" +
 	"\x11freshness_seconds\x18\x04 \x01(\x03R\x10freshnessSeconds\x12/\n" +
-	"\x05pause\x18\x05 \x01(\v2\x19.bambuflow.admin.v1.PauseR\x05pause\"I\n" +
+	"\x05pause\x18\x05 \x01(\v2\x19.bambuflow.admin.v1.PauseR\x05pause\x12B\n" +
+	"\x0elast_reconcile\x18\x06 \x01(\v2\x1b.bambuflow.admin.v1.SyncRunR\rlastReconcile\x129\n" +
+	"\n" +
+	"revoked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\x128\n" +
+	"\x18listing_interval_seconds\x18\b \x01(\x03R\x16listingIntervalSeconds\x12>\n" +
+	"\rnext_round_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\vnextRoundAt\"I\n" +
 	"\x12PauseSourceRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"`\n" +
 	"\x13PauseSourceResponse\x12/\n" +
 	"\x05pause\x18\x01 \x01(\v2\x19.bambuflow.admin.v1.PauseR\x05pause\x12\x18\n" +
-	"\achanged\x18\x02 \x01(\bR\achanged\"2\n" +
+	"\achanged\x18\x02 \x01(\bR\achanged\"E\n" +
+	"\x0eSyncNowRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"b\n" +
+	"\x0fSyncNowResponse\x12\x10\n" +
+	"\x03job\x18\x01 \x01(\tR\x03job\x12=\n" +
+	"\frequested_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAt\"2\n" +
 	"\x13ResumeSourceRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\"0\n" +
 	"\x14ResumeSourceResponse\x12\x18\n" +
@@ -1052,15 +1333,16 @@ const file_bambuflow_admin_v1_connector_admin_proto_rawDesc = "" +
 	"\ahold_id\x18\x02 \x01(\tR\x06holdId\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\"O\n" +
 	"\x17DiscardDeletionResponse\x124\n" +
-	"\x04hold\x18\x01 \x01(\v2 .bambuflow.admin.v1.DeletionHoldR\x04hold2\x93\x05\n" +
+	"\x04hold\x18\x01 \x01(\v2 .bambuflow.admin.v1.DeletionHoldR\x04hold2\xe7\x05\n" +
 	"\x15ConnectorAdminService\x12d\n" +
 	"\rGetSyncStatus\x12(.bambuflow.admin.v1.GetSyncStatusRequest\x1a).bambuflow.admin.v1.GetSyncStatusResponse\x12^\n" +
 	"\vPauseSource\x12&.bambuflow.admin.v1.PauseSourceRequest\x1a'.bambuflow.admin.v1.PauseSourceResponse\x12a\n" +
-	"\fResumeSource\x12'.bambuflow.admin.v1.ResumeSourceRequest\x1a(.bambuflow.admin.v1.ResumeSourceResponse\x12y\n" +
+	"\fResumeSource\x12'.bambuflow.admin.v1.ResumeSourceRequest\x1a(.bambuflow.admin.v1.ResumeSourceResponse\x12R\n" +
+	"\aSyncNow\x12\".bambuflow.admin.v1.SyncNowRequest\x1a#.bambuflow.admin.v1.SyncNowResponse\x12y\n" +
 	"\x14ListPendingDeletions\x12/.bambuflow.admin.v1.ListPendingDeletionsRequest\x1a0.bambuflow.admin.v1.ListPendingDeletionsResponse\x12j\n" +
 	"\x0fConfirmDeletion\x12*.bambuflow.admin.v1.ConfirmDeletionRequest\x1a+.bambuflow.admin.v1.ConfirmDeletionResponse\x12j\n" +
-	"\x0fDiscardDeletion\x12*.bambuflow.admin.v1.DiscardDeletionRequest\x1a+.bambuflow.admin.v1.DiscardDeletionResponseB\xe2\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x13ConnectorAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x0fDiscardDeletion\x12*.bambuflow.admin.v1.DiscardDeletionRequest\x1a+.bambuflow.admin.v1.DiscardDeletionResponseB\xde\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x13ConnectorAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_connector_admin_proto_rawDescOnce sync.Once
@@ -1074,55 +1356,65 @@ func file_bambuflow_admin_v1_connector_admin_proto_rawDescGZIP() []byte {
 	return file_bambuflow_admin_v1_connector_admin_proto_rawDescData
 }
 
-var file_bambuflow_admin_v1_connector_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_bambuflow_admin_v1_connector_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_bambuflow_admin_v1_connector_admin_proto_goTypes = []any{
 	(*SyncRun)(nil),                      // 0: bambuflow.admin.v1.SyncRun
-	(*Pause)(nil),                        // 1: bambuflow.admin.v1.Pause
-	(*GetSyncStatusRequest)(nil),         // 2: bambuflow.admin.v1.GetSyncStatusRequest
-	(*GetSyncStatusResponse)(nil),        // 3: bambuflow.admin.v1.GetSyncStatusResponse
-	(*PauseSourceRequest)(nil),           // 4: bambuflow.admin.v1.PauseSourceRequest
-	(*PauseSourceResponse)(nil),          // 5: bambuflow.admin.v1.PauseSourceResponse
-	(*ResumeSourceRequest)(nil),          // 6: bambuflow.admin.v1.ResumeSourceRequest
-	(*ResumeSourceResponse)(nil),         // 7: bambuflow.admin.v1.ResumeSourceResponse
-	(*DeletionHold)(nil),                 // 8: bambuflow.admin.v1.DeletionHold
-	(*ListPendingDeletionsRequest)(nil),  // 9: bambuflow.admin.v1.ListPendingDeletionsRequest
-	(*ListPendingDeletionsResponse)(nil), // 10: bambuflow.admin.v1.ListPendingDeletionsResponse
-	(*ConfirmDeletionRequest)(nil),       // 11: bambuflow.admin.v1.ConfirmDeletionRequest
-	(*ConfirmDeletionResponse)(nil),      // 12: bambuflow.admin.v1.ConfirmDeletionResponse
-	(*DiscardDeletionRequest)(nil),       // 13: bambuflow.admin.v1.DiscardDeletionRequest
-	(*DiscardDeletionResponse)(nil),      // 14: bambuflow.admin.v1.DiscardDeletionResponse
-	(*timestamppb.Timestamp)(nil),        // 15: google.protobuf.Timestamp
+	(*Reconciliation)(nil),               // 1: bambuflow.admin.v1.Reconciliation
+	(*Pause)(nil),                        // 2: bambuflow.admin.v1.Pause
+	(*GetSyncStatusRequest)(nil),         // 3: bambuflow.admin.v1.GetSyncStatusRequest
+	(*GetSyncStatusResponse)(nil),        // 4: bambuflow.admin.v1.GetSyncStatusResponse
+	(*PauseSourceRequest)(nil),           // 5: bambuflow.admin.v1.PauseSourceRequest
+	(*PauseSourceResponse)(nil),          // 6: bambuflow.admin.v1.PauseSourceResponse
+	(*SyncNowRequest)(nil),               // 7: bambuflow.admin.v1.SyncNowRequest
+	(*SyncNowResponse)(nil),              // 8: bambuflow.admin.v1.SyncNowResponse
+	(*ResumeSourceRequest)(nil),          // 9: bambuflow.admin.v1.ResumeSourceRequest
+	(*ResumeSourceResponse)(nil),         // 10: bambuflow.admin.v1.ResumeSourceResponse
+	(*DeletionHold)(nil),                 // 11: bambuflow.admin.v1.DeletionHold
+	(*ListPendingDeletionsRequest)(nil),  // 12: bambuflow.admin.v1.ListPendingDeletionsRequest
+	(*ListPendingDeletionsResponse)(nil), // 13: bambuflow.admin.v1.ListPendingDeletionsResponse
+	(*ConfirmDeletionRequest)(nil),       // 14: bambuflow.admin.v1.ConfirmDeletionRequest
+	(*ConfirmDeletionResponse)(nil),      // 15: bambuflow.admin.v1.ConfirmDeletionResponse
+	(*DiscardDeletionRequest)(nil),       // 16: bambuflow.admin.v1.DiscardDeletionRequest
+	(*DiscardDeletionResponse)(nil),      // 17: bambuflow.admin.v1.DiscardDeletionResponse
+	(*timestamppb.Timestamp)(nil),        // 18: google.protobuf.Timestamp
 }
 var file_bambuflow_admin_v1_connector_admin_proto_depIdxs = []int32{
-	15, // 0: bambuflow.admin.v1.SyncRun.started_at:type_name -> google.protobuf.Timestamp
-	15, // 1: bambuflow.admin.v1.SyncRun.finished_at:type_name -> google.protobuf.Timestamp
-	15, // 2: bambuflow.admin.v1.Pause.paused_at:type_name -> google.protobuf.Timestamp
-	0,  // 3: bambuflow.admin.v1.GetSyncStatusResponse.last_run:type_name -> bambuflow.admin.v1.SyncRun
-	0,  // 4: bambuflow.admin.v1.GetSyncStatusResponse.last_success:type_name -> bambuflow.admin.v1.SyncRun
-	1,  // 5: bambuflow.admin.v1.GetSyncStatusResponse.pause:type_name -> bambuflow.admin.v1.Pause
-	1,  // 6: bambuflow.admin.v1.PauseSourceResponse.pause:type_name -> bambuflow.admin.v1.Pause
-	15, // 7: bambuflow.admin.v1.DeletionHold.detected_at:type_name -> google.protobuf.Timestamp
-	15, // 8: bambuflow.admin.v1.DeletionHold.updated_at:type_name -> google.protobuf.Timestamp
-	8,  // 9: bambuflow.admin.v1.ListPendingDeletionsResponse.holds:type_name -> bambuflow.admin.v1.DeletionHold
-	8,  // 10: bambuflow.admin.v1.ConfirmDeletionResponse.hold:type_name -> bambuflow.admin.v1.DeletionHold
-	8,  // 11: bambuflow.admin.v1.DiscardDeletionResponse.hold:type_name -> bambuflow.admin.v1.DeletionHold
-	2,  // 12: bambuflow.admin.v1.ConnectorAdminService.GetSyncStatus:input_type -> bambuflow.admin.v1.GetSyncStatusRequest
-	4,  // 13: bambuflow.admin.v1.ConnectorAdminService.PauseSource:input_type -> bambuflow.admin.v1.PauseSourceRequest
-	6,  // 14: bambuflow.admin.v1.ConnectorAdminService.ResumeSource:input_type -> bambuflow.admin.v1.ResumeSourceRequest
-	9,  // 15: bambuflow.admin.v1.ConnectorAdminService.ListPendingDeletions:input_type -> bambuflow.admin.v1.ListPendingDeletionsRequest
-	11, // 16: bambuflow.admin.v1.ConnectorAdminService.ConfirmDeletion:input_type -> bambuflow.admin.v1.ConfirmDeletionRequest
-	13, // 17: bambuflow.admin.v1.ConnectorAdminService.DiscardDeletion:input_type -> bambuflow.admin.v1.DiscardDeletionRequest
-	3,  // 18: bambuflow.admin.v1.ConnectorAdminService.GetSyncStatus:output_type -> bambuflow.admin.v1.GetSyncStatusResponse
-	5,  // 19: bambuflow.admin.v1.ConnectorAdminService.PauseSource:output_type -> bambuflow.admin.v1.PauseSourceResponse
-	7,  // 20: bambuflow.admin.v1.ConnectorAdminService.ResumeSource:output_type -> bambuflow.admin.v1.ResumeSourceResponse
-	10, // 21: bambuflow.admin.v1.ConnectorAdminService.ListPendingDeletions:output_type -> bambuflow.admin.v1.ListPendingDeletionsResponse
-	12, // 22: bambuflow.admin.v1.ConnectorAdminService.ConfirmDeletion:output_type -> bambuflow.admin.v1.ConfirmDeletionResponse
-	14, // 23: bambuflow.admin.v1.ConnectorAdminService.DiscardDeletion:output_type -> bambuflow.admin.v1.DiscardDeletionResponse
-	18, // [18:24] is the sub-list for method output_type
-	12, // [12:18] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	18, // 0: bambuflow.admin.v1.SyncRun.started_at:type_name -> google.protobuf.Timestamp
+	18, // 1: bambuflow.admin.v1.SyncRun.finished_at:type_name -> google.protobuf.Timestamp
+	1,  // 2: bambuflow.admin.v1.SyncRun.reconciliation:type_name -> bambuflow.admin.v1.Reconciliation
+	18, // 3: bambuflow.admin.v1.Pause.paused_at:type_name -> google.protobuf.Timestamp
+	0,  // 4: bambuflow.admin.v1.GetSyncStatusResponse.last_run:type_name -> bambuflow.admin.v1.SyncRun
+	0,  // 5: bambuflow.admin.v1.GetSyncStatusResponse.last_success:type_name -> bambuflow.admin.v1.SyncRun
+	2,  // 6: bambuflow.admin.v1.GetSyncStatusResponse.pause:type_name -> bambuflow.admin.v1.Pause
+	0,  // 7: bambuflow.admin.v1.GetSyncStatusResponse.last_reconcile:type_name -> bambuflow.admin.v1.SyncRun
+	18, // 8: bambuflow.admin.v1.GetSyncStatusResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	18, // 9: bambuflow.admin.v1.GetSyncStatusResponse.next_round_at:type_name -> google.protobuf.Timestamp
+	2,  // 10: bambuflow.admin.v1.PauseSourceResponse.pause:type_name -> bambuflow.admin.v1.Pause
+	18, // 11: bambuflow.admin.v1.SyncNowResponse.requested_at:type_name -> google.protobuf.Timestamp
+	18, // 12: bambuflow.admin.v1.DeletionHold.detected_at:type_name -> google.protobuf.Timestamp
+	18, // 13: bambuflow.admin.v1.DeletionHold.updated_at:type_name -> google.protobuf.Timestamp
+	11, // 14: bambuflow.admin.v1.ListPendingDeletionsResponse.holds:type_name -> bambuflow.admin.v1.DeletionHold
+	11, // 15: bambuflow.admin.v1.ConfirmDeletionResponse.hold:type_name -> bambuflow.admin.v1.DeletionHold
+	11, // 16: bambuflow.admin.v1.DiscardDeletionResponse.hold:type_name -> bambuflow.admin.v1.DeletionHold
+	3,  // 17: bambuflow.admin.v1.ConnectorAdminService.GetSyncStatus:input_type -> bambuflow.admin.v1.GetSyncStatusRequest
+	5,  // 18: bambuflow.admin.v1.ConnectorAdminService.PauseSource:input_type -> bambuflow.admin.v1.PauseSourceRequest
+	9,  // 19: bambuflow.admin.v1.ConnectorAdminService.ResumeSource:input_type -> bambuflow.admin.v1.ResumeSourceRequest
+	7,  // 20: bambuflow.admin.v1.ConnectorAdminService.SyncNow:input_type -> bambuflow.admin.v1.SyncNowRequest
+	12, // 21: bambuflow.admin.v1.ConnectorAdminService.ListPendingDeletions:input_type -> bambuflow.admin.v1.ListPendingDeletionsRequest
+	14, // 22: bambuflow.admin.v1.ConnectorAdminService.ConfirmDeletion:input_type -> bambuflow.admin.v1.ConfirmDeletionRequest
+	16, // 23: bambuflow.admin.v1.ConnectorAdminService.DiscardDeletion:input_type -> bambuflow.admin.v1.DiscardDeletionRequest
+	4,  // 24: bambuflow.admin.v1.ConnectorAdminService.GetSyncStatus:output_type -> bambuflow.admin.v1.GetSyncStatusResponse
+	6,  // 25: bambuflow.admin.v1.ConnectorAdminService.PauseSource:output_type -> bambuflow.admin.v1.PauseSourceResponse
+	10, // 26: bambuflow.admin.v1.ConnectorAdminService.ResumeSource:output_type -> bambuflow.admin.v1.ResumeSourceResponse
+	8,  // 27: bambuflow.admin.v1.ConnectorAdminService.SyncNow:output_type -> bambuflow.admin.v1.SyncNowResponse
+	13, // 28: bambuflow.admin.v1.ConnectorAdminService.ListPendingDeletions:output_type -> bambuflow.admin.v1.ListPendingDeletionsResponse
+	15, // 29: bambuflow.admin.v1.ConnectorAdminService.ConfirmDeletion:output_type -> bambuflow.admin.v1.ConfirmDeletionResponse
+	17, // 30: bambuflow.admin.v1.ConnectorAdminService.DiscardDeletion:output_type -> bambuflow.admin.v1.DiscardDeletionResponse
+	24, // [24:31] is the sub-list for method output_type
+	17, // [17:24] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_bambuflow_admin_v1_connector_admin_proto_init() }
@@ -1136,7 +1428,7 @@ func file_bambuflow_admin_v1_connector_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bambuflow_admin_v1_connector_admin_proto_rawDesc), len(file_bambuflow_admin_v1_connector_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

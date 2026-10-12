@@ -3,6 +3,9 @@
 任何一道不过，这句就不出现在回答里。另有一条规则：句子通过检查的依据不能只有带可疑指令标记
 （injection_flag）的证据，否则丢句（详设 9.2）。
 
+矛盾检查（K8 详设 4.2 第 4 步、技术设计文档 7.8）：综合句的任一引文与整句矛盾时丢句；
+回答之外的证据与已通过的陈述矛盾时，作为未解决的证据冲突交给调用方（降低置信度并提示核实原文）。
+
 NLI 或权限复核不可用时，它们的实现抛 GroundingUnavailableError，原样传给调用方
 按 fail-closed 处理（返回 evidence_only），绝不把未经校验的句子当作通过。
 """
@@ -20,6 +23,10 @@ from bambuflow_grounding.calc import Calc, CalcError, render
 SUPPORT_THRESHOLD = 0.5
 # 综合句的“合并推出”与计算句的措辞校验比单条严一档（K7/K8 详设第 9 节待校准的建议值）
 COMBINED_THRESHOLD = 0.6
+# 矛盾概率超过它算冲突（K8 详设 4.2 第 4 步）
+CONTRADICTION_THRESHOLD = 0.5
+# 冲突检查一次最多判多少对（已通过的陈述 × 回答没有引用的证据），超出的不查：控制在一次 NLI 批次内
+MAX_CONFLICT_PAIRS = 64
 MAX_PARTS = 3  # 综合句最多由几条原子事实组成
 CHECK_ACCESS_BATCH = 50  # CheckAccess 单次上限（retrieval 契约）
 
@@ -33,6 +40,8 @@ class Evidence:
     text: str
     # 入库时检测到可疑指令：可以与其他证据一起支撑句子，不能是唯一依据
     suspicious: bool = False
+    # 所属文档：冲突检查只看回答没有引用的文档
+    doc_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -68,11 +77,13 @@ class Verdict:
     quotes: Mapping[int, str]
     support: float
     # passed / no_refs / unsupported_claim_type / quote_mismatch / low_support / access_denied /
-    # calc_invalid / too_many_parts / suspicious_only
+    # calc_invalid / too_many_parts / suspicious_only / contradiction
     reason: str
     # 计算句填好结果的句子（不含 [S#]）与各结果；其他类型为空
     rendered: str = ""
     results: Mapping[str, str] = field(default_factory=dict)
+    # 因矛盾丢句时，与整句矛盾的证据编号（调用方据此提示“来源之间有冲突”）
+    conflicts: tuple[int, ...] = ()
 
     @property
     def text(self) -> str:
@@ -99,6 +110,13 @@ class NLI(Protocol):
         """
         ...
 
+    async def contradiction(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
+        """对每对（前提，假设）给出矛盾概率 0–1，并返回模型版本。
+
+        不可用时抛 GroundingUnavailableError。
+        """
+        ...
+
 
 class AccessChecker(Protocol):
     async def allowed(self, chunk_ids: Sequence[str]) -> dict[str, bool]:
@@ -114,8 +132,10 @@ def normalize(s: str) -> str:
     return "".join(unicodedata.normalize("NFKC", s).split())
 
 
-def _reject(claim: Claim, reason: str, support: float = 0.0) -> Verdict:
-    return Verdict(claim, False, (), {}, support, reason)
+def _reject(
+    claim: Claim, reason: str, support: float = 0.0, conflicts: tuple[int, ...] = ()
+) -> Verdict:
+    return Verdict(claim, False, (), {}, support, reason, conflicts=conflicts)
 
 
 class Grounder:
@@ -276,9 +296,22 @@ class Grounder:
                 for j, p in enumerate(ok):
                     merge.add(("n", i, p), _join(ok[:j] + ok[j + 1 :]), claims[i].text)
         merged = await self._score(merge)
+        # 第 4 步：任一引文与整句矛盾则丢句。只查合并推出已通过的句子
+        contra = _Batch()
+        for i, ok in passed.items():
+            if ("m", i) in merged and merged[("m", i)] >= COMBINED_THRESHOLD:
+                for p in ok:
+                    contra.add(("x", i, p), p.quote, claims[i].text)
+        against = await self._contradict(contra)
         for i, ok in passed.items():
             c = claims[i]
             if ("m", i) in merged and merged[("m", i)] >= COMBINED_THRESHOLD:
+                conflicts = sorted(
+                    {p.ref for p in ok if against[("x", i, p)] > CONTRADICTION_THRESHOLD}
+                )
+                if conflicts:
+                    out[i] = [_reject(c, "contradiction", merged[("m", i)], tuple(conflicts))]
+                    continue
                 # 去掉某条后仍能推出整句：这条多余，只删它的引用，不丢句（K8 详设 4.2 第 3 步）
                 needed = [p for p in ok if merged[("n", i, p)] < COMBINED_THRESHOLD] or ok
                 refs = _first_quote_per_ref([(p.ref, p.quote) for p in needed])
@@ -293,6 +326,37 @@ class Grounder:
                 kept.append((i, part, [(p.ref, p.quote)], scores[("p", i, p)], None))
         return kept
 
+    async def conflicts(
+        self,
+        passed: Sequence[Verdict],
+        evidence: Mapping[int, Evidence],
+        noted: Sequence[int] = (),
+    ) -> tuple[int, ...]:
+        """未解决的证据冲突（技术设计文档 7.8 的 k）：
+        回答没有引用的文档里，有证据与已通过的陈述矛盾。
+        回答引用了的文档不算——按提示词规则，引用两者时已说明新旧差异。
+        带可疑指令标记的证据不参与，免得注入的内容借“冲突提示”被展示出来。
+
+        noted 是校验时已发现的冲突（综合句因矛盾丢句）。
+        返回两者中调用者此刻仍可见的证据编号，升序。"""
+        cited = {evidence[r].doc_id for v in passed for r in v.refs}
+        others = [e for e in evidence.values() if e.doc_id not in cited and not e.suspicious]
+        batch = _Batch()
+        for v in passed:
+            for e in others:
+                if len(batch.pairs) < MAX_CONFLICT_PAIRS:
+                    batch.add(e.ref_id, e.text, v.rendered or v.claim.text)
+        against = await self._contradict(batch)
+        # 键是证据编号：同一条证据与多句陈述各判一次，_contradict 已取最大值
+        found = {
+            ref
+            for ref, sc in against.items()
+            if isinstance(ref, int) and sc > CONTRADICTION_THRESHOLD
+        }
+        found |= {r for r in noted if r in evidence}
+        await self._check_access({evidence[r].chunk_id for r in found})
+        return tuple(sorted(r for r in found if self._allowed[evidence[r].chunk_id]))
+
     async def _score(self, batch: _Batch) -> dict[object, float]:
         if not batch.pairs:
             return {}
@@ -300,6 +364,18 @@ class Grounder:
         if len(scores) != len(batch.pairs):
             raise GroundingUnavailableError("NLI 返回的条数与请求不符")
         return dict(zip(batch.keys, scores, strict=True))
+
+    async def _contradict(self, batch: _Batch) -> dict[object, float]:
+        """矛盾概率。同一对证据与陈述可能出现多次（键相同），取最大值。"""
+        if not batch.pairs:
+            return {}
+        scores, _ = await self._nli.contradiction(batch.pairs)
+        if len(scores) != len(batch.pairs):
+            raise GroundingUnavailableError("NLI 返回的条数与请求不符")
+        out: dict[object, float] = {}
+        for key, sc in zip(batch.keys, scores, strict=True):
+            out[key] = max(out.get(key, 0.0), sc)
+        return out
 
     async def _check_access(self, chunk_ids: set[str]) -> None:
         todo = sorted(chunk_ids - self._allowed.keys())

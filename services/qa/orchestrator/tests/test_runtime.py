@@ -5,7 +5,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -15,14 +15,19 @@ import pytest
 from bambuflow_vocabulary import Vocabularies, Vocabulary
 
 from bambuflow.answer.v1 import answer_pb2
+from bambuflow.config.v1 import config_pb2
 from bambuflow.identity.v1 import principal_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2, retrieval_pb2_grpc
 from bambuflow_grounding import KServeNLI
 from bambuflow_orchestrator import circuit, records
 from bambuflow_orchestrator.admission import Admission
-from bambuflow_orchestrator.llm import ChatClient
+from bambuflow_orchestrator.config import CandidateUnavailableError
+from bambuflow_orchestrator.experiments import Experiments
+from bambuflow_orchestrator.llm import ChatClient, Router
+from bambuflow_orchestrator.plans import Plans
 from bambuflow_orchestrator.server import AnswerService
 from bambuflow_platform import grpc_server
+from bambuflow_platform.grpc_server import EVAL_CONFIG_HEADER
 
 LOAN = "第五条 个人消费贷款单户额度原则上不超过 30 万元。"
 HIT = retrieval_pb2.Hit(
@@ -45,8 +50,14 @@ GENERATE_USAGE = {"prompt_tokens": 200, "completion_tokens": 20}
 
 
 class Retrieval(retrieval_pb2_grpc.RetrievalServiceServicer):
+    def __init__(self) -> None:
+        self.searches: list[retrieval_pb2.SearchRequest] = []
+
     async def Search(self, request: Any, context: Any) -> retrieval_pb2.SearchResponse:
-        return retrieval_pb2.SearchResponse(hits=[HIT], index_version="ix-1")
+        self.searches.append(request)
+        return retrieval_pb2.SearchResponse(
+            hits=[HIT], index_version="ix-1", plan_version=request.plan_version
+        )
 
     async def CheckAccess(self, request: Any, context: Any) -> retrieval_pb2.CheckAccessResponse:
         return retrieval_pb2.CheckAccessResponse(
@@ -93,7 +104,11 @@ class Gateway:
     def __call__(self, req: httpx.Request) -> httpx.Response:
         if req.url.path.endswith("/infer"):
             n = json.loads(req.content)["inputs"][0]["shape"][0]
-            body = {"model_name": "nli", "model_version": "t", "outputs": [{"data": [0.99] * n}]}
+            outputs = [
+                {"name": "support", "data": [0.99] * n},
+                {"name": "contradiction", "data": [0.01] * n},
+            ]
+            body = {"model_name": "nli", "model_version": "t", "outputs": outputs}
             return httpx.Response(200, json=body)
         self.llm_calls += 1
         user = json.loads(req.content)["messages"][-1]["content"]
@@ -139,8 +154,8 @@ class Aborted(Exception):
 
 
 class Inbound:
-    def __init__(self, purpose: str = "answer") -> None:
-        self._md = (("x-call-purpose", purpose), ("x-answer-id", "ans_1"))
+    def __init__(self, purpose: str = "answer", *extra: tuple[str, str]) -> None:
+        self._md = (("x-call-purpose", purpose), ("x-answer-id", "ans_1"), *extra)
 
     def invocation_metadata(self) -> tuple[tuple[str, str], ...]:
         return self._md
@@ -154,10 +169,16 @@ class Inbound:
 
 @asynccontextmanager
 async def service(
-    gateway: Gateway, admission: Admission | None = None, kept: MemRecords | None = None
+    gateway: Gateway,
+    admission: Admission | None = None,
+    kept: MemRecords | None = None,
+    plans: Plans | None = None,
+    candidates: Callable[..., Awaitable[config_pb2.Canary]] | None = None,
+    retrieval: Retrieval | None = None,
+    experiments: Experiments | None = None,
 ) -> AsyncIterator[tuple[AnswerService, ChatClient]]:
     srv = grpc.aio.server()
-    retrieval_pb2_grpc.add_RetrievalServiceServicer_to_server(Retrieval(), srv)
+    retrieval_pb2_grpc.add_RetrievalServiceServicer_to_server(retrieval or Retrieval(), srv)
     port = srv.add_insecure_port("127.0.0.1:0")
     await srv.start()
     token = grpc_server._caller.set(
@@ -173,12 +194,15 @@ async def service(
             yield (
                 AnswerService(
                     retrieval_pb2_grpc.RetrievalServiceStub(ch),
-                    llm,
+                    Router(llm),
                     KServeNLI("http://nli", http),
                     Vocabularies("v", empty, empty, empty),
                     MemStore(),
                     kept or MemRecords(),
                     admission or Admission(),
+                    plans=plans,
+                    candidates=candidates,
+                    experiments=experiments,
                 ),
                 llm,
             )
@@ -206,6 +230,79 @@ def test_usage_sums_planning_and_generation() -> None:
     assert (resp.usage.prompt_tokens, resp.usage.completion_tokens) == (300, 30)
     # 用量只交给 gateway 计配额，不进回答记录：回放不应再计一次
     assert not kept.rows["ans_1"].answer.HasField("usage")
+
+
+def test_record_carries_rollouts_of_the_asker() -> None:
+    """灰度观察按提问人所在的灰度分组：任何路径都记。
+
+    这里是 policy 灰度，候选包只在 retrieval 生效。"""
+    kept = MemRecords()
+    canary = config_pb2.Canary(release_id="rel_c", tenant="credit", percent=100, object="policy")
+
+    async def go() -> answer_pb2.AnswerResponse:
+        async with service(Gateway(), kept=kept, plans=Plans(canaries=[canary])) as (svc, _):
+            ctx: Any = Inbound()
+            return await svc.Answer(request("个人消费贷款的额度上限是多少？"), ctx)
+
+    resp = asyncio.run(go())
+    assert list(resp.why.canary_releases) == ["rel_c"]
+    rec = kept.rows["ans_1"]
+    assert list(rec.answer.why.canary_releases) == ["rel_c"] and rec.access_denied == 0
+
+
+def test_eval_candidate_replaces_config_for_the_request() -> None:
+    """配置发布的门禁：评测副本按请求头取候选，why 里记候选版本；取不到就拒绝这道题。"""
+    version = "cfv_" + "1" * 24
+    asked: list[tuple[str, Any]] = []
+
+    async def candidates(v: str, **call: Any) -> config_pb2.Canary:
+        asked.append((v, call["metadata"]))
+        if v != version:
+            raise CandidateUnavailableError("NotFound")
+        return config_pb2.Canary(
+            object="routing", version_id=v, routing=config_pb2.RoutingConfig(version_id=v)
+        )
+
+    async def go(v: str) -> answer_pb2.AnswerResponse:
+        async with service(Gateway(), candidates=candidates) as (svc, _):
+            ctx: Any = Inbound("batch", (EVAL_CONFIG_HEADER, v))
+            return await svc.Answer(request("个人消费贷款的额度上限是多少？"), ctx)
+
+    resp = asyncio.run(go(version))
+    assert resp.why.routing_version == version
+    # 转发这道题的身份去取（governance 只对评测身份开放），并把候选头带给 retrieval
+    assert ("authorization", "Bearer raw") in asked[0][1]
+    assert (EVAL_CONFIG_HEADER, version) in asked[0][1]
+    with pytest.raises(Aborted) as e:
+        asyncio.run(go("cfv_" + "2" * 24))
+    assert e.value.code == grpc.StatusCode.FAILED_PRECONDITION
+    with pytest.raises(Aborted) as e:
+        asyncio.run(go("rel_x"))
+    assert e.value.code == grpc.StatusCode.INVALID_ARGUMENT
+
+
+def test_treatment_asks_retrieval_for_the_variant_plan() -> None:
+    """实验组替换了 pipeline：检索请求带上变体的版本，why 记实验组与变体版本。"""
+    variant = config_pb2.PipelineConfig(tenant="credit", version_id="cfv_" + "3" * 24)
+    exp = config_pb2.RunningExperiment(
+        exp_id="exp_1", tenant="credit", traffic_percent=100, pipeline=variant
+    )
+    retrieval = Retrieval()
+
+    async def go() -> answer_pb2.AnswerResponse:
+        async with service(Gateway(), retrieval=retrieval, experiments=Experiments([exp])) as (
+            svc,
+            _,
+        ):
+            ctx: Any = Inbound()
+            return await svc.Answer(request("个人消费贷款的额度上限是多少？"), ctx)
+
+    resp = asyncio.run(go())
+    assert [s.plan_version for s in retrieval.searches] == [variant.version_id]
+    assert resp.why.experiment_id == "exp_1"
+    assert resp.why.experiment_arm == answer_pb2.EXPERIMENT_ARM_TREATMENT
+    assert resp.why.pipeline_version == variant.version_id
+    assert not [d for d in resp.why.degraded if d.stage == "pipeline_version"]
 
 
 def test_stream_final_carries_usage() -> None:
@@ -286,3 +383,26 @@ def test_slot_is_released_after_answer() -> None:
             return admission.active
 
     assert asyncio.run(go()) == 0
+
+
+def test_turn_is_remembered_with_summary_and_can_be_deleted() -> None:
+    async def go() -> tuple[str, dict[str, Any], int]:
+        async with service(Gateway()) as (svc, _):
+            ctx: Any = Inbound()
+            resp = await svc.Answer(request("个人消费贷款的额度上限是多少？"), ctx)
+            await asyncio.gather(*svc._background)
+            store: Any = svc._store
+            (raw,) = store.data.values()
+            saved = json.loads(raw)
+            await svc.DeleteConversation(
+                answer_pb2.DeleteConversationRequest(conversation_id=resp.conversation_id), ctx
+            )
+            return resp.conversation_id, saved, len(store.data)
+
+    conv, saved, left = asyncio.run(go())
+    assert conv.startswith("conv_") and saved["turn_count"] == 1
+    assert saved["recent_questions"] == ["个人消费贷款的额度上限是多少？"]
+    # 摘要在回答之后异步生成；上一轮引用带所属文档，下一轮按当前权限取标题
+    assert saved["summary"] and not saved["restricted"]
+    assert all(set(c) == {"chunk_id", "doc_id"} for c in saved["last_citations"])
+    assert left == 0

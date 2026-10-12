@@ -14,13 +14,14 @@ type PG struct {
 }
 
 const columns = `exp_id, tenant, hypothesis, primary_metric, baseline_rate, min_detectable_effect, sample_size_per_arm,
-	traffic_percent, support_threshold, min_coverage, status, created_by, created_at, stopped_by, stopped_at, stop_reason`
+	traffic_percent, support_threshold, min_coverage, status, created_by, created_at, stopped_by, stopped_at, stop_reason,
+	config_versions`
 
 func scan(r pgx.CollectableRow) (Experiment, error) {
 	var e Experiment
 	err := r.Scan(&e.ID, &e.Tenant, &e.Hypothesis, &e.PrimaryMetric, &e.BaselineRate, &e.MinDetectableEffect, &e.SampleSizePerArm,
 		&e.TrafficPercent, &e.SupportThreshold, &e.MinCoverage, &e.Status, &e.CreatedBy, &e.CreatedAt, &e.StoppedBy, &e.StoppedAt,
-		&e.StopReason)
+		&e.StopReason, &e.ConfigVersions)
 	return e, err
 }
 
@@ -45,10 +46,10 @@ func (s *PG) Create(ctx context.Context, e Experiment, beforeCommit func() error
 		var err error
 		out, err = one(ctx, tx, `
 			INSERT INTO governance.experiments (exp_id, tenant, hypothesis, primary_metric, baseline_rate, min_detectable_effect,
-				sample_size_per_arm, traffic_percent, support_threshold, min_coverage, status, created_by)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'running', $11) RETURNING `+columns,
+				sample_size_per_arm, traffic_percent, support_threshold, min_coverage, status, created_by, config_versions)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'running', $11, $12) RETURNING `+columns,
 			e.ID, e.Tenant, e.Hypothesis, e.PrimaryMetric, e.BaselineRate, e.MinDetectableEffect, e.SampleSizePerArm,
-			e.TrafficPercent, e.SupportThreshold, e.MinCoverage, e.CreatedBy)
+			e.TrafficPercent, e.SupportThreshold, e.MinCoverage, e.CreatedBy, versions(e.ConfigVersions))
 		var pe *pgconn.PgError
 		if errors.As(err, &pe) && pe.Code == "23505" {
 			return ErrRunning
@@ -59,6 +60,14 @@ func (s *PG) Create(ctx context.Context, e Experiment, beforeCommit func() error
 		return beforeCommit()
 	})
 	return out, err
+}
+
+// versions 把 nil 写成空数组：列是 NOT NULL
+func versions(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 func (s *PG) Get(ctx context.Context, id string) (Experiment, error) {

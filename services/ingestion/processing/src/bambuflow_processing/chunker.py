@@ -218,6 +218,7 @@ def chunk_parsed(source_id: str, doc_id: str, parsed: Parsed) -> list[Chunk]:
             flush()
             if b.kind == "table" and len(b.text) > TABLE_MAX_CHARS:
                 out.extend(_split_table(ids, parsed.text, p))
+                out.append(_table_summary(ids, parsed.text, p))
             else:
                 out.append(_from_range(ids, parsed.text, [p]))
             continue
@@ -282,6 +283,34 @@ def _split_table(ids: _Ids, text: str, p: Placed) -> list[Chunk]:
             )
         )
     return out
+
+
+# 表格摘要里列出的首列取值个数
+TABLE_SUMMARY_VALUES = 10
+
+
+def _cells(row: str) -> list[str]:
+    """“| a | b |”渲染的一行拆回单元格（blocks.table_text 的逆操作）。"""
+    return [c.strip() for c in row.strip().strip("|").split("|")]
+
+
+def _table_summary(ids: _Ids, text: str, p: Placed) -> Chunk:
+    """大表另生成一段文字摘要供语义召回（入库管道详设第 6 节）：按行组切开的块各自只有一部分行，
+    问“这张表讲什么”时召回不到；摘要写明所在章节、行数、各列与首列的取值，span 指向整张表。
+    由字段直接拼出、不经模型，同一张表总是同一段摘要。"""
+    b = p.block
+    header, rows = _cells(b.rows[0]), b.rows[1:]
+    firsts = [c for r in rows if (c := _cells(r)[0])]
+    shown = "、".join(firsts[:TABLE_SUMMARY_VALUES])
+    more = f"等 {len(firsts)} 项" if len(firsts) > TABLE_SUMMARY_VALUES else ""
+    where = " > ".join(b.path)
+    summary = (
+        f"表格摘要：{where}中的表格，共 {len(rows)} 行，列为{'、'.join(header)}。"
+        f"{header[0]}包括{shown}{more}。"
+    )
+    return ids.make(
+        b.path, summary, p.start, p.end, _line_range(text, p.start, p.end), b.page, b.bbox
+    )
 
 
 def _line_range(text: str, start: int, end: int) -> tuple[int, int]:

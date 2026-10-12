@@ -31,6 +31,11 @@ class ConnectorAdminServiceStub:
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.ResumeSourceRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.ResumeSourceResponse.FromString,
                 _registered_method=True)
+        self.SyncNow = channel.unary_unary(
+                '/bambuflow.admin.v1.ConnectorAdminService/SyncNow',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.SyncNowRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.SyncNowResponse.FromString,
+                _registered_method=True)
         self.ListPendingDeletions = channel.unary_unary(
                 '/bambuflow.admin.v1.ConnectorAdminService/ListPendingDeletions',
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.ListPendingDeletionsRequest.SerializeToString,
@@ -73,6 +78,14 @@ class ConnectorAdminServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SyncNow(self, request, context):
+        """立即同步：马上拉起一轮同步，不等下一次定时。平台运维。数据源暂停或已撤销时拒绝；
+        部署没有接入调度（BF_SYNC_TRIGGER 未配置）时返回 FAILED_PRECONDITION
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ListPendingDeletions(self, request, context):
         """删除保护拦下的待删批次（入库管道详设第 5 节）：数据属主查看、确认或丢弃。
         确认需两位不同的数据属主：第一位确认后待复核，第二位确认后下一轮同步执行（只删其中源端仍不存在的）
@@ -111,6 +124,11 @@ def add_ConnectorAdminServiceServicer_to_server(servicer, server):
                     servicer.ResumeSource,
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.ResumeSourceRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.ResumeSourceResponse.SerializeToString,
+            ),
+            'SyncNow': grpc.unary_unary_rpc_method_handler(
+                    servicer.SyncNow,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.SyncNowRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.SyncNowResponse.SerializeToString,
             ),
             'ListPendingDeletions': grpc.unary_unary_rpc_method_handler(
                     servicer.ListPendingDeletions,
@@ -211,6 +229,33 @@ class ConnectorAdminService:
             '/bambuflow.admin.v1.ConnectorAdminService/ResumeSource',
             bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.ResumeSourceRequest.SerializeToString,
             bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.ResumeSourceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SyncNow(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.ConnectorAdminService/SyncNow',
+            bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.SyncNowRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_connector__admin__pb2.SyncNowResponse.FromString,
             options,
             channel_credentials,
             insecure,

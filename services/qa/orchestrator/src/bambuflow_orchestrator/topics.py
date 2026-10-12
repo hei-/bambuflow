@@ -32,7 +32,7 @@ from bambuflow.common.v1 import types_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2
 from bambuflow_grounding import Evidence, Grounder, GroundingUnavailableError, Verdict
 from bambuflow_orchestrator import listing, prompt, redact
-from bambuflow_orchestrator.flow import LLM, citation
+from bambuflow_orchestrator.flow import LLM, citation, level_of
 from bambuflow_orchestrator.llm import LLMUnavailableError
 from bambuflow_orchestrator.parse import Parser, load_json_line
 
@@ -248,7 +248,11 @@ class TopicSummary:
 
     async def _generate(self, refs: Sequence[int]) -> list[str] | None:
         evidence = [(r, self._hits[r]) for r in refs]
-        g = self.llm.generate(prompt.TOPIC_SYSTEM, prompt.render(self.question, evidence))
+        g = self.llm.generate(
+            prompt.TOPIC_SYSTEM,
+            prompt.render(self.question, evidence),
+            level=level_of([h for _, h in evidence]),
+        )
         try:
             async with aclosing(aiter(g)) as lines:
                 out = [line async for line in lines]
@@ -289,7 +293,9 @@ class TopicSummary:
         ids = iter(points)
         listing_text = [(g.title, [(next(ids), v.claim.text) for v in g.points]) for g in groups]
         g = self.llm.generate(
-            prompt.MERGE_SYSTEM, prompt.render_groups(self.question, listing_text)
+            prompt.MERGE_SYSTEM,
+            prompt.render_groups(self.question, listing_text),
+            level=level_of(list(self._hits.values())),
         )
         merged: list[_Group] = []
         used: set[str] = set()

@@ -9,9 +9,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/services/gateway/internal/issuer"
 )
 
 // PrincipalServer 实现 PrincipalService.Exchange（gateway 详设 3.3）：qa/batch 每条执行前凭提交时的委托换发 Principal。
@@ -76,9 +77,12 @@ func (p *PrincipalServer) exchange(c *call, req *identityv1.ExchangeRequest) (*i
 	if err != nil || t.Name != d.Tenant || !t.AnswersAllowed(user.Groups) {
 		return nil, status.Error(codes.PermissionDenied, "不再是租户成员")
 	}
+	// 受限级数据禁止批量导出（技术设计文档 8.6）：批量条目的身份密级最高到机密，受限级文档在召回时就被过滤，
+	// 清单类回答也不会列出；不在 orchestrator 或 qa/batch 里另判，多跳的检索调用目的不是 batch 也照样生效
+	clearance := min(user.Clearance, int32(commonv1.Classification_CLASSIFICATION_CONFIDENTIAL))
 	token, jti, err := s.Issuer.Issue(issuer.Subject{
 		Username: user.Username, Tenant: t.Name, Dept: user.Dept, Title: user.Title, Region: user.Region,
-		Clearance: user.Clearance, Groups: user.Groups, Actor: d.Actor, AuthTime: d.AuthTime,
+		Clearance: clearance, Groups: user.Groups, Actor: d.Actor, AuthTime: d.AuthTime,
 	})
 	if err != nil {
 		s.Log.ErrorContext(c.ctx, "签发 Principal 失败", slog.Any("err", err))

@@ -29,12 +29,14 @@ EXPERIMENT_STATUS_RUNNING: ExperimentStatus
 EXPERIMENT_STATUS_STOPPED: ExperimentStatus
 
 class ExperimentOverrides(_message.Message):
-    __slots__ = ("support_threshold", "min_coverage")
+    __slots__ = ("support_threshold", "min_coverage", "config_versions")
     SUPPORT_THRESHOLD_FIELD_NUMBER: _ClassVar[int]
     MIN_COVERAGE_FIELD_NUMBER: _ClassVar[int]
+    CONFIG_VERSIONS_FIELD_NUMBER: _ClassVar[int]
     support_threshold: float
     min_coverage: float
-    def __init__(self, support_threshold: _Optional[float] = ..., min_coverage: _Optional[float] = ...) -> None: ...
+    config_versions: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, support_threshold: _Optional[float] = ..., min_coverage: _Optional[float] = ..., config_versions: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Experiment(_message.Message):
     __slots__ = ("exp_id", "tenant", "hypothesis", "primary_metric", "baseline_rate", "min_detectable_effect", "sample_size_per_arm", "traffic_percent", "overrides", "status", "created_by", "created_at", "stopped_by", "stopped_at", "stop_reason")

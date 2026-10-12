@@ -22,6 +22,11 @@ class SourceAdminServiceStub:
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RegisterSourceRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RegisterSourceResponse.FromString,
                 _registered_method=True)
+        self.ListSources = channel.unary_unary(
+                '/bambuflow.admin.v1.SourceAdminService/ListSources',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListSourcesRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListSourcesResponse.FromString,
+                _registered_method=True)
         self.ApproveSource = channel.unary_unary(
                 '/bambuflow.admin.v1.SourceAdminService/ApproveSource',
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApproveSourceRequest.SerializeToString,
@@ -47,6 +52,26 @@ class SourceAdminServiceStub:
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.DeleteGrantRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.DeleteGrantResponse.FromString,
                 _registered_method=True)
+        self.ApplyGrant = channel.unary_unary(
+                '/bambuflow.admin.v1.SourceAdminService/ApplyGrant',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApplyGrantRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApplyGrantResponse.FromString,
+                _registered_method=True)
+        self.ListGrantApplications = channel.unary_unary(
+                '/bambuflow.admin.v1.SourceAdminService/ListGrantApplications',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListGrantApplicationsRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListGrantApplicationsResponse.FromString,
+                _registered_method=True)
+        self.ApproveGrantApplication = channel.unary_unary(
+                '/bambuflow.admin.v1.SourceAdminService/ApproveGrantApplication',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApproveGrantApplicationRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApproveGrantApplicationResponse.FromString,
+                _registered_method=True)
+        self.RejectGrantApplication = channel.unary_unary(
+                '/bambuflow.admin.v1.SourceAdminService/RejectGrantApplication',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RejectGrantApplicationRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RejectGrantApplicationResponse.FromString,
+                _registered_method=True)
 
 
 class SourceAdminServiceServicer:
@@ -62,8 +87,16 @@ class SourceAdminServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListSources(self, request, context):
+        """列出数据源：平台管理员、平台运维、信息安全看全部，数据属主只看本部门，租户负责人只看已生效的（申请授权时选）。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ApproveSource(self, request, context):
-        """数据属主审批本部门的数据源：注册人不能自批，记录审批人、时间与依据；受限级数据源另需信息安全审批（尚未实现，见计划的决定）。
+        """审批：本部门的数据属主审批；受限级数据源另需信息安全审批（governance 详设 6.2），两项都批过才生效。
+        注册人不能自批，同一人不能既做属主审批又做信息安全审批；记录审批人、时间与依据。
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -96,6 +129,34 @@ class SourceAdminServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ApplyGrant(self, request, context):
+        """授权申请（governance 详设 6.2、9.1）：租户负责人为自己负责的租户申请某个数据源，数据源所属部门的数据属主审批，
+        审批通过即写入授权；申请人不能审批自己的申请。同一数据源与租户同时只有一个待审批的申请，7 天未审批自动过期。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListGrantApplications(self, request, context):
+        """租户负责人看自己负责的租户的申请，数据属主看本部门数据源收到的申请。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ApproveGrantApplication(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RejectGrantApplication(self, request, context):
+        """驳回（本部门的数据属主）或撤回（申请人本人）。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_SourceAdminServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -103,6 +164,11 @@ def add_SourceAdminServiceServicer_to_server(servicer, server):
                     servicer.RegisterSource,
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RegisterSourceRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RegisterSourceResponse.SerializeToString,
+            ),
+            'ListSources': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListSources,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListSourcesRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListSourcesResponse.SerializeToString,
             ),
             'ApproveSource': grpc.unary_unary_rpc_method_handler(
                     servicer.ApproveSource,
@@ -128,6 +194,26 @@ def add_SourceAdminServiceServicer_to_server(servicer, server):
                     servicer.DeleteGrant,
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.DeleteGrantRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.DeleteGrantResponse.SerializeToString,
+            ),
+            'ApplyGrant': grpc.unary_unary_rpc_method_handler(
+                    servicer.ApplyGrant,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApplyGrantRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApplyGrantResponse.SerializeToString,
+            ),
+            'ListGrantApplications': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListGrantApplications,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListGrantApplicationsRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListGrantApplicationsResponse.SerializeToString,
+            ),
+            'ApproveGrantApplication': grpc.unary_unary_rpc_method_handler(
+                    servicer.ApproveGrantApplication,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApproveGrantApplicationRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApproveGrantApplicationResponse.SerializeToString,
+            ),
+            'RejectGrantApplication': grpc.unary_unary_rpc_method_handler(
+                    servicer.RejectGrantApplication,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RejectGrantApplicationRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RejectGrantApplicationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -160,6 +246,33 @@ class SourceAdminService:
             '/bambuflow.admin.v1.SourceAdminService/RegisterSource',
             bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RegisterSourceRequest.SerializeToString,
             bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RegisterSourceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListSources(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.SourceAdminService/ListSources',
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListSourcesRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListSourcesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -295,6 +408,114 @@ class SourceAdminService:
             '/bambuflow.admin.v1.SourceAdminService/DeleteGrant',
             bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.DeleteGrantRequest.SerializeToString,
             bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.DeleteGrantResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ApplyGrant(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.SourceAdminService/ApplyGrant',
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApplyGrantRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApplyGrantResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListGrantApplications(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.SourceAdminService/ListGrantApplications',
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListGrantApplicationsRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ListGrantApplicationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ApproveGrantApplication(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.SourceAdminService/ApproveGrantApplication',
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApproveGrantApplicationRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.ApproveGrantApplicationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RejectGrantApplication(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.SourceAdminService/RejectGrantApplication',
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RejectGrantApplicationRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_source__admin__pb2.RejectGrantApplicationResponse.FromString,
             options,
             channel_credentials,
             insecure,

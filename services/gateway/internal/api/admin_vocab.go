@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 受控词表（governance 详设 6.1、7.2）：/v1/admin/vocabularies/{vocabulary}/terms，由 governance 实现，平台管理员维护。

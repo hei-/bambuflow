@@ -14,10 +14,10 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 var quiet = logging.New(&bytes.Buffer{}, "t", slog.LevelInfo)
@@ -107,6 +107,52 @@ func (m *memStore) MarkApplied(_ context.Context, id string) (time.Time, error) 
 	return now, nil
 }
 
+func (m *memStore) UnpublishedDenials(context.Context) ([]Denial, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Denial
+	for _, d := range m.denials {
+		if d.PublishedAt == nil {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) MarkPublished(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now()
+	for i := range m.denials {
+		if m.denials[i].ID == id {
+			m.denials[i].PublishedAt = &now
+		}
+	}
+	return nil
+}
+
+type fakeBackup struct {
+	mu        sync.Mutex
+	published []Denial
+	err       error
+}
+
+func (f *fakeBackup) Publish(_ context.Context, d Denial) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.published = append(f.published, d)
+	return nil
+}
+
+func (f *fakeBackup) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.published)
+}
+
 func (m *memStore) Source(_ context.Context, id string) (Source, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -169,7 +215,7 @@ func newDenialServer() (*DenialServer, *memStore, *memAudit, *fakeIndex) {
 		"src_risk":   {ID: "src_risk", OwnerDept: "风险管理部", Status: "active"},
 	}}
 	a, idx := &memAudit{}, &fakeIndex{}
-	return &DenialServer{Store: st, Audit: a, Index: idx, Log: quiet}, st, a, idx
+	return &DenialServer{Store: st, Audit: a, Index: idx, Backup: &fakeBackup{}, Log: quiet}, st, a, idx
 }
 
 func req(scope adminv1.DenialScope, target string) *adminv1.CreateEmergencyDenialRequest {
@@ -302,4 +348,42 @@ func TestListDenialsPages(t *testing.T) {
 	if _, err := s.ListEmergencyDenials(as(t, platformOp), &adminv1.ListEmergencyDenialsRequest{}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("平台运维不能查看: %v", err)
 	}
+}
+
+// 备用通道与拒绝名单互不依赖：indexing 不可用时规则照样发到事件流；事件流不可用时 Reconcile 重发。
+func TestBackupChannelIsIndependentAndRetried(t *testing.T) {
+	s, st, _, idx := newDenialServer()
+	backup := s.Backup.(*fakeBackup)
+	idx.err = status.Error(codes.Unavailable, "indexing 不可用")
+	if _, err := s.CreateEmergencyDenial(as(t, infosec), req(adminv1.DenialScope_DENIAL_SCOPE_TENANT, "credit")); err != nil {
+		t.Fatal(err)
+	}
+	if backup.count() != 1 || backup.published[0].Target != "credit" || backup.published[0].CreatedBy != "ivan" {
+		t.Fatalf("indexing 不可用时也应发到备用通道: %+v", backup.published)
+	}
+
+	backup.mu.Lock()
+	backup.err = errors.New("Redis 不可用")
+	backup.mu.Unlock()
+	if _, err := s.CreateEmergencyDenial(as(t, infosec), req(adminv1.DenialScope_DENIAL_SCOPE_SOURCE, "src_risk")); err != nil {
+		t.Fatal(err)
+	}
+	if un, _ := st.UnpublishedDenials(context.Background()); len(un) != 1 {
+		t.Fatalf("没发出去的应记为未发布: %v", un)
+	}
+	backup.mu.Lock()
+	backup.err = nil
+	backup.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); s.Reconcile(ctx, 10*time.Millisecond) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for backup.count() < 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("恢复后应重发到备用通道")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
 }

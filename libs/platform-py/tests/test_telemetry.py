@@ -12,12 +12,17 @@ from bambuflow_platform import telemetry
 
 
 class Unused(answer_pb2_grpc.AnswerServiceServicer):
-    """这里只用到 Answer 与 StreamAnswer；回放与反馈接口不涉及拦截器行为。"""
+    """这里只用到 Answer 与 StreamAnswer；回放、反馈与删除会话接口不涉及拦截器行为。"""
 
     async def GetAnswer(self, request: Any, context: Any) -> answer_pb2.GetAnswerResponse:
         raise NotImplementedError
 
     async def CreateFeedback(self, request: Any, context: Any) -> answer_pb2.CreateFeedbackResponse:
+        raise NotImplementedError
+
+    async def DeleteConversation(
+        self, request: Any, context: Any
+    ) -> answer_pb2.DeleteConversationResponse:
         raise NotImplementedError
 
 

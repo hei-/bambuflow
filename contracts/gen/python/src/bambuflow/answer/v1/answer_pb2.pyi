@@ -130,6 +130,16 @@ CONFIDENCE_LEVEL_LOW: ConfidenceLevel
 CONFIDENCE_LEVEL_MEDIUM: ConfidenceLevel
 CONFIDENCE_LEVEL_HIGH: ConfidenceLevel
 
+class DeleteConversationRequest(_message.Message):
+    __slots__ = ("conversation_id",)
+    CONVERSATION_ID_FIELD_NUMBER: _ClassVar[int]
+    conversation_id: str
+    def __init__(self, conversation_id: _Optional[str] = ...) -> None: ...
+
+class DeleteConversationResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class AnswerRequest(_message.Message):
     __slots__ = ("question", "filters", "max_citations", "conversation_id")
     QUESTION_FIELD_NUMBER: _ClassVar[int]
@@ -273,18 +283,20 @@ class Sentence(_message.Message):
     def __init__(self, text: _Optional[str] = ..., start: _Optional[int] = ..., end: _Optional[int] = ..., claim_type: _Optional[_Union[ClaimType, str]] = ..., ref_ids: _Optional[_Iterable[int]] = ..., support: _Optional[float] = ..., block_id: _Optional[str] = ..., quotes: _Optional[_Iterable[_Union[RefQuote, _Mapping]]] = ..., calc: _Optional[_Union[Calculation, _Mapping]] = ..., document: _Optional[_Union[ListedDocument, _Mapping]] = ...) -> None: ...
 
 class ListedDocument(_message.Message):
-    __slots__ = ("doc_id", "doc_version", "title", "source_uri", "metadata")
+    __slots__ = ("doc_id", "doc_version", "title", "source_uri", "metadata", "classification")
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     DOC_VERSION_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SOURCE_URI_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
+    CLASSIFICATION_FIELD_NUMBER: _ClassVar[int]
     doc_id: str
     doc_version: int
     title: str
     source_uri: str
     metadata: _types_pb2.DocMetadata
-    def __init__(self, doc_id: _Optional[str] = ..., doc_version: _Optional[int] = ..., title: _Optional[str] = ..., source_uri: _Optional[str] = ..., metadata: _Optional[_Union[_types_pb2.DocMetadata, _Mapping]] = ...) -> None: ...
+    classification: _types_pb2.Classification
+    def __init__(self, doc_id: _Optional[str] = ..., doc_version: _Optional[int] = ..., title: _Optional[str] = ..., source_uri: _Optional[str] = ..., metadata: _Optional[_Union[_types_pb2.DocMetadata, _Mapping]] = ..., classification: _Optional[_Union[_types_pb2.Classification, str]] = ...) -> None: ...
 
 class Calculation(_message.Message):
     __slots__ = ("inputs", "results")
@@ -385,7 +397,7 @@ class Citation(_message.Message):
     def __init__(self, ref_id: _Optional[int] = ..., chunk_id: _Optional[str] = ..., doc_id: _Optional[str] = ..., doc_version: _Optional[int] = ..., title: _Optional[str] = ..., quote: _Optional[str] = ..., span: _Optional[_Union[_types_pb2.Span, _Mapping]] = ..., source_uri: _Optional[str] = ..., owner: _Optional[str] = ..., classification: _Optional[_Union[_types_pb2.Classification, str]] = ..., source_type: _Optional[_Union[_types_pb2.SourceType, str]] = ..., injection_flag: _Optional[bool] = ...) -> None: ...
 
 class Why(_message.Message):
-    __slots__ = ("retrievers", "index_version", "policy_version", "embedding_model", "generation_model", "prompt_version", "nli_model", "support_threshold", "degraded", "rerank_model", "calculator_version", "inferred_filters", "intent", "agent_rounds", "graph_path", "based_on_summaries", "experiment_id", "experiment_arm")
+    __slots__ = ("retrievers", "index_version", "policy_version", "embedding_model", "generation_model", "prompt_version", "nli_model", "support_threshold", "degraded", "rerank_model", "calculator_version", "inferred_filters", "intent", "agent_rounds", "graph_path", "based_on_summaries", "experiment_id", "experiment_arm", "evidence_scores", "llm_rerank", "pipeline_version", "routing_version", "canary_releases")
     RETRIEVERS_FIELD_NUMBER: _ClassVar[int]
     INDEX_VERSION_FIELD_NUMBER: _ClassVar[int]
     POLICY_VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -404,6 +416,11 @@ class Why(_message.Message):
     BASED_ON_SUMMARIES_FIELD_NUMBER: _ClassVar[int]
     EXPERIMENT_ID_FIELD_NUMBER: _ClassVar[int]
     EXPERIMENT_ARM_FIELD_NUMBER: _ClassVar[int]
+    EVIDENCE_SCORES_FIELD_NUMBER: _ClassVar[int]
+    LLM_RERANK_FIELD_NUMBER: _ClassVar[int]
+    PIPELINE_VERSION_FIELD_NUMBER: _ClassVar[int]
+    ROUTING_VERSION_FIELD_NUMBER: _ClassVar[int]
+    CANARY_RELEASES_FIELD_NUMBER: _ClassVar[int]
     retrievers: _containers.RepeatedScalarFieldContainer[str]
     index_version: str
     policy_version: str
@@ -422,7 +439,52 @@ class Why(_message.Message):
     based_on_summaries: bool
     experiment_id: str
     experiment_arm: ExperimentArm
-    def __init__(self, retrievers: _Optional[_Iterable[str]] = ..., index_version: _Optional[str] = ..., policy_version: _Optional[str] = ..., embedding_model: _Optional[str] = ..., generation_model: _Optional[str] = ..., prompt_version: _Optional[str] = ..., nli_model: _Optional[str] = ..., support_threshold: _Optional[float] = ..., degraded: _Optional[_Iterable[_Union[_types_pb2.Degradation, _Mapping]]] = ..., rerank_model: _Optional[str] = ..., calculator_version: _Optional[str] = ..., inferred_filters: _Optional[_Union[_types_pb2.Filters, _Mapping]] = ..., intent: _Optional[_Union[Intent, str]] = ..., agent_rounds: _Optional[_Iterable[_Union[AgentRound, _Mapping]]] = ..., graph_path: _Optional[_Iterable[_Union[GraphPath, _Mapping]]] = ..., based_on_summaries: _Optional[bool] = ..., experiment_id: _Optional[str] = ..., experiment_arm: _Optional[_Union[ExperimentArm, str]] = ...) -> None: ...
+    evidence_scores: _containers.RepeatedCompositeFieldContainer[EvidenceScore]
+    llm_rerank: str
+    pipeline_version: str
+    routing_version: str
+    canary_releases: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, retrievers: _Optional[_Iterable[str]] = ..., index_version: _Optional[str] = ..., policy_version: _Optional[str] = ..., embedding_model: _Optional[str] = ..., generation_model: _Optional[str] = ..., prompt_version: _Optional[str] = ..., nli_model: _Optional[str] = ..., support_threshold: _Optional[float] = ..., degraded: _Optional[_Iterable[_Union[_types_pb2.Degradation, _Mapping]]] = ..., rerank_model: _Optional[str] = ..., calculator_version: _Optional[str] = ..., inferred_filters: _Optional[_Union[_types_pb2.Filters, _Mapping]] = ..., intent: _Optional[_Union[Intent, str]] = ..., agent_rounds: _Optional[_Iterable[_Union[AgentRound, _Mapping]]] = ..., graph_path: _Optional[_Iterable[_Union[GraphPath, _Mapping]]] = ..., based_on_summaries: _Optional[bool] = ..., experiment_id: _Optional[str] = ..., experiment_arm: _Optional[_Union[ExperimentArm, str]] = ..., evidence_scores: _Optional[_Iterable[_Union[EvidenceScore, _Mapping]]] = ..., llm_rerank: _Optional[str] = ..., pipeline_version: _Optional[str] = ..., routing_version: _Optional[str] = ..., canary_releases: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class EvidenceScore(_message.Message):
+    __slots__ = ("ref_id", "chunk_id", "matched_by", "score_details")
+    REF_ID_FIELD_NUMBER: _ClassVar[int]
+    CHUNK_ID_FIELD_NUMBER: _ClassVar[int]
+    MATCHED_BY_FIELD_NUMBER: _ClassVar[int]
+    SCORE_DETAILS_FIELD_NUMBER: _ClassVar[int]
+    ref_id: int
+    chunk_id: str
+    matched_by: _containers.RepeatedCompositeFieldContainer[EvidenceMatch]
+    score_details: EvidenceScoreDetails
+    def __init__(self, ref_id: _Optional[int] = ..., chunk_id: _Optional[str] = ..., matched_by: _Optional[_Iterable[_Union[EvidenceMatch, _Mapping]]] = ..., score_details: _Optional[_Union[EvidenceScoreDetails, _Mapping]] = ...) -> None: ...
+
+class EvidenceMatch(_message.Message):
+    __slots__ = ("route", "query_id", "rank")
+    ROUTE_FIELD_NUMBER: _ClassVar[int]
+    QUERY_ID_FIELD_NUMBER: _ClassVar[int]
+    RANK_FIELD_NUMBER: _ClassVar[int]
+    route: str
+    query_id: str
+    rank: int
+    def __init__(self, route: _Optional[str] = ..., query_id: _Optional[str] = ..., rank: _Optional[int] = ...) -> None: ...
+
+class EvidenceScoreDetails(_message.Message):
+    __slots__ = ("keyword", "dense", "graph", "identifier", "rrf", "rerank", "sparse")
+    KEYWORD_FIELD_NUMBER: _ClassVar[int]
+    DENSE_FIELD_NUMBER: _ClassVar[int]
+    GRAPH_FIELD_NUMBER: _ClassVar[int]
+    IDENTIFIER_FIELD_NUMBER: _ClassVar[int]
+    RRF_FIELD_NUMBER: _ClassVar[int]
+    RERANK_FIELD_NUMBER: _ClassVar[int]
+    SPARSE_FIELD_NUMBER: _ClassVar[int]
+    keyword: float
+    dense: float
+    graph: float
+    identifier: float
+    rrf: float
+    rerank: float
+    sparse: float
+    def __init__(self, keyword: _Optional[float] = ..., dense: _Optional[float] = ..., graph: _Optional[float] = ..., identifier: _Optional[float] = ..., rrf: _Optional[float] = ..., rerank: _Optional[float] = ..., sparse: _Optional[float] = ...) -> None: ...
 
 class GraphPath(_message.Message):
     __slots__ = ("ref_id", "chunk_id", "edges")

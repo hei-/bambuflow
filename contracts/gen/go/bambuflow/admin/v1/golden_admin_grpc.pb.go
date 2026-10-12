@@ -19,9 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GoldenSetAdminService_ListQuestions_FullMethodName   = "/bambuflow.admin.v1.GoldenSetAdminService/ListQuestions"
-	GoldenSetAdminService_SubmitCandidate_FullMethodName = "/bambuflow.admin.v1.GoldenSetAdminService/SubmitCandidate"
-	GoldenSetAdminService_ReviewCandidate_FullMethodName = "/bambuflow.admin.v1.GoldenSetAdminService/ReviewCandidate"
+	GoldenSetAdminService_ListQuestions_FullMethodName       = "/bambuflow.admin.v1.GoldenSetAdminService/ListQuestions"
+	GoldenSetAdminService_SubmitCandidate_FullMethodName     = "/bambuflow.admin.v1.GoldenSetAdminService/SubmitCandidate"
+	GoldenSetAdminService_ReviewCandidate_FullMethodName     = "/bambuflow.admin.v1.GoldenSetAdminService/ReviewCandidate"
+	GoldenSetAdminService_ListFeedbackCases_FullMethodName   = "/bambuflow.admin.v1.GoldenSetAdminService/ListFeedbackCases"
+	GoldenSetAdminService_ResolveFeedbackCase_FullMethodName = "/bambuflow.admin.v1.GoldenSetAdminService/ResolveFeedbackCase"
 )
 
 // GoldenSetAdminServiceClient is the client API for GoldenSetAdminService service.
@@ -38,6 +40,10 @@ type GoldenSetAdminServiceClient interface {
 	ListQuestions(ctx context.Context, in *ListQuestionsRequest, opts ...grpc.CallOption) (*ListQuestionsResponse, error)
 	SubmitCandidate(ctx context.Context, in *SubmitCandidateRequest, opts ...grpc.CallOption) (*SubmitCandidateResponse, error)
 	ReviewCandidate(ctx context.Context, in *ReviewCandidateRequest, opts ...grpc.CallOption) (*ReviewCandidateResponse, error)
+	// 负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：用户标为“有误”或“引用不对”的回答，每天由在线抽样任务登记，
+	// 只有掩码后的问题、反馈与当时引用的文档，不含用户身份。业务专家据此出候选题（origin=feedback）后标为已转题，或驳回
+	ListFeedbackCases(ctx context.Context, in *ListFeedbackCasesRequest, opts ...grpc.CallOption) (*ListFeedbackCasesResponse, error)
+	ResolveFeedbackCase(ctx context.Context, in *ResolveFeedbackCaseRequest, opts ...grpc.CallOption) (*ResolveFeedbackCaseResponse, error)
 }
 
 type goldenSetAdminServiceClient struct {
@@ -78,6 +84,26 @@ func (c *goldenSetAdminServiceClient) ReviewCandidate(ctx context.Context, in *R
 	return out, nil
 }
 
+func (c *goldenSetAdminServiceClient) ListFeedbackCases(ctx context.Context, in *ListFeedbackCasesRequest, opts ...grpc.CallOption) (*ListFeedbackCasesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListFeedbackCasesResponse)
+	err := c.cc.Invoke(ctx, GoldenSetAdminService_ListFeedbackCases_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldenSetAdminServiceClient) ResolveFeedbackCase(ctx context.Context, in *ResolveFeedbackCaseRequest, opts ...grpc.CallOption) (*ResolveFeedbackCaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveFeedbackCaseResponse)
+	err := c.cc.Invoke(ctx, GoldenSetAdminService_ResolveFeedbackCase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GoldenSetAdminServiceServer is the server API for GoldenSetAdminService service.
 // All implementations must embed UnimplementedGoldenSetAdminServiceServer
 // for forward compatibility.
@@ -92,6 +118,10 @@ type GoldenSetAdminServiceServer interface {
 	ListQuestions(context.Context, *ListQuestionsRequest) (*ListQuestionsResponse, error)
 	SubmitCandidate(context.Context, *SubmitCandidateRequest) (*SubmitCandidateResponse, error)
 	ReviewCandidate(context.Context, *ReviewCandidateRequest) (*ReviewCandidateResponse, error)
+	// 负反馈案例（技术设计文档 F8，evaluation 详设 3.4）：用户标为“有误”或“引用不对”的回答，每天由在线抽样任务登记，
+	// 只有掩码后的问题、反馈与当时引用的文档，不含用户身份。业务专家据此出候选题（origin=feedback）后标为已转题，或驳回
+	ListFeedbackCases(context.Context, *ListFeedbackCasesRequest) (*ListFeedbackCasesResponse, error)
+	ResolveFeedbackCase(context.Context, *ResolveFeedbackCaseRequest) (*ResolveFeedbackCaseResponse, error)
 	mustEmbedUnimplementedGoldenSetAdminServiceServer()
 }
 
@@ -110,6 +140,12 @@ func (UnimplementedGoldenSetAdminServiceServer) SubmitCandidate(context.Context,
 }
 func (UnimplementedGoldenSetAdminServiceServer) ReviewCandidate(context.Context, *ReviewCandidateRequest) (*ReviewCandidateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReviewCandidate not implemented")
+}
+func (UnimplementedGoldenSetAdminServiceServer) ListFeedbackCases(context.Context, *ListFeedbackCasesRequest) (*ListFeedbackCasesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListFeedbackCases not implemented")
+}
+func (UnimplementedGoldenSetAdminServiceServer) ResolveFeedbackCase(context.Context, *ResolveFeedbackCaseRequest) (*ResolveFeedbackCaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveFeedbackCase not implemented")
 }
 func (UnimplementedGoldenSetAdminServiceServer) mustEmbedUnimplementedGoldenSetAdminServiceServer() {}
 func (UnimplementedGoldenSetAdminServiceServer) testEmbeddedByValue()                               {}
@@ -186,6 +222,42 @@ func _GoldenSetAdminService_ReviewCandidate_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GoldenSetAdminService_ListFeedbackCases_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFeedbackCasesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldenSetAdminServiceServer).ListFeedbackCases(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GoldenSetAdminService_ListFeedbackCases_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldenSetAdminServiceServer).ListFeedbackCases(ctx, req.(*ListFeedbackCasesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldenSetAdminService_ResolveFeedbackCase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveFeedbackCaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldenSetAdminServiceServer).ResolveFeedbackCase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GoldenSetAdminService_ResolveFeedbackCase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldenSetAdminServiceServer).ResolveFeedbackCase(ctx, req.(*ResolveFeedbackCaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GoldenSetAdminService_ServiceDesc is the grpc.ServiceDesc for GoldenSetAdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -204,6 +276,14 @@ var GoldenSetAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReviewCandidate",
 			Handler:    _GoldenSetAdminService_ReviewCandidate_Handler,
+		},
+		{
+			MethodName: "ListFeedbackCases",
+			Handler:    _GoldenSetAdminService_ListFeedbackCases_Handler,
+		},
+		{
+			MethodName: "ResolveFeedbackCase",
+			Handler:    _GoldenSetAdminService_ResolveFeedbackCase_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

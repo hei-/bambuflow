@@ -54,3 +54,17 @@ func TestDeleteProtection(t *testing.T) {
 		t.Fatalf("确认后应删除 %+v", p)
 	}
 }
+
+func TestIncompleteListingInfersNoDeletes(t *testing.T) {
+	state := map[string]string{"a": "h1|x", "b": "h2|x"}
+	p := Diff(state, map[string]string{"a": "h9|x"}, false)
+	p.Incomplete()
+	if len(p.Deletes) != 0 || len(p.Held) != 0 || !p.DeletesPaused || p.Reason != "incomplete_listing" || len(p.Upserts) != 1 {
+		t.Fatalf("清单不完整时不删、其余照常: %+v", p)
+	}
+	q := Diff(state, map[string]string{"a": "h1|x", "b": "h2|x"}, false)
+	q.Incomplete()
+	if q.DeletesPaused {
+		t.Fatalf("没有要删的就不算暂停: %+v", q)
+	}
+}

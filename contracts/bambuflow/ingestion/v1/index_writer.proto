@@ -16,6 +16,45 @@ service IndexWriterService {
   // UpdateAcl 只更新文档的权限与密级（快速通道，入库管道详设第 9 节）：不重算向量、不进待发布版本，
   // 对线上立即生效。
   rpc UpdateAcl(UpdateAclRequest) returns (UpdateAclResponse);
+  // 按块的向量缓存（入库管道详设第 8 节）：按向量化输入的摘要与嵌入模型版本取已入库的向量，命中的块不再送嵌入模型。
+  // 只读，查不到的不在结果里；缓存不可用时调用方照常全部向量化。
+  rpc LookupVectors(LookupVectorsRequest) returns (LookupVectorsResponse);
+  // 替换分区级数据源一个分区的全部被授权方（PartitionGrantChanged）；不改索引与文档权限。
+  rpc SetPartitionGrants(SetPartitionGrantsRequest) returns (SetPartitionGrantsResponse);
+  // ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
+  // connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
+  rpc ListSourceDocuments(ListSourceDocumentsRequest) returns (stream ListSourceDocumentsResponse);
+  // RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+  // 同一存储重复记录时保留最早的时间。
+  rpc RecordPurge(RecordPurgeRequest) returns (RecordPurgeResponse);
+}
+
+message RecordPurgeRequest {
+  // 前缀 del_。
+  string receipt_id = 1;
+  // object_store
+  string store = 2;
+  google.protobuf.Timestamp completed_at = 3;
+}
+
+message RecordPurgeResponse {}
+
+message ListSourceDocumentsRequest {
+  string source_id = 1;
+}
+
+message IndexedDocument {
+  string doc_id = 1;
+  // 最近写入的内容摘要（与 DocumentChanged.content_hash 相同）
+  string content_hash = 2;
+  repeated string acl_tokens = 3;
+  bambuflow.common.v1.Classification classification = 4;
+  // 已打删除标记（含按保留期到期的）：对账不让它复活
+  bool tombstoned = 5;
+}
+
+message ListSourceDocumentsResponse {
+  repeated IndexedDocument documents = 1;
 }
 
 message UpdateAclRequest {
@@ -29,6 +68,34 @@ message UpdateAclRequest {
 }
 
 message UpdateAclResponse {
+  AclResult result = 1;
+}
+
+message LookupVectorsRequest {
+  string embedding_model_version = 1;
+  // 最多 1000 个
+  repeated string input_hashes = 2;
+}
+
+message CachedVector {
+  string input_hash = 1;
+  repeated float embedding = 2;
+  map<uint32, float> sparse = 3;
+}
+
+message LookupVectorsResponse {
+  repeated CachedVector vectors = 1;
+}
+
+message SetPartitionGrantsRequest {
+  string source_id = 1;
+  string partition = 2;
+  repeated string grantees = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+message SetPartitionGrantsResponse {
+  // 与权限更新同一套结果：updated、unchanged、stale（乱序到达的旧事件）
   AclResult result = 1;
 }
 
@@ -147,6 +214,11 @@ message Chunk {
   // text 里 PII 已做等长掩码（入库管道详设第 6 节：索引只存掩码文本）；原值用信封加密单独保存，
   // 只有策略允许看 PII 原文的调用者在检索返回时解密还原。没有 PII 的块为空。
   SealedPII pii = 9;
+  // 向量化输入（标题路径 + 文本）的 SHA-256：按块的向量缓存（入库管道详设第 8 节）按它与嵌入模型版本查找
+  string input_hash = 10;
+  // 学习型稀疏向量（词元 ID → 权重，retrieval 详设 6.2 的 sparse 召回路），与稠密向量出自同一次嵌入调用；
+  // 嵌入模型不给稀疏向量时为空
+  map<uint32, float> sparse = 11;
 }
 
 // 一个块里 PII 原值的密文（技术设计文档 8.6 应用层信封加密）：

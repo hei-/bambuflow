@@ -54,12 +54,20 @@ class KeyService(Protocol):
 class VaultTransit:
     """KeyService 的默认实现（同步）：Vault transit 的 datakey 接口。"""
 
-    def __init__(self, addr: str, token: str, key_id: str, http: httpx.Client) -> None:
+    def __init__(
+        self, addr: str, token: str, key_id: str, http: httpx.Client, token_file: str = ""
+    ) -> None:
         self._url = f"{addr.rstrip('/')}/v1/transit/datakey/plaintext/{key_id}"
         self._token, self.key_id, self._http = token, key_id, http
+        # 常驻进程里 Vault Agent 注入的令牌文件会改写（续期或重新登录），每次调用重新读
+        self._token_file = token_file
 
     def data_key(self) -> tuple[bytes, str]:
-        resp = self._http.post(self._url, headers={"X-Vault-Token": self._token}, json={})
+        token = self._token
+        if self._token_file:
+            with open(self._token_file, encoding="utf-8") as f:
+                token = f.read().strip()
+        resp = self._http.post(self._url, headers={"X-Vault-Token": token}, json={})
         resp.raise_for_status()
         data = resp.json()["data"]
         return base64.b64decode(data["plaintext"]), str(data["ciphertext"])

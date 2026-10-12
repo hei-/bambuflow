@@ -26,7 +26,7 @@ install() {
 	step "CoreDNS 解析 compose 服务名"
 	# k3s 的 CoreDNS 转发不到 compose 网络的内置 DNS，按当前 IP 用 hosts 插件写死；compose 服务重建换了 IP 时重跑 install
 	zones="" entries=""
-	for h in keycloak postgres redis vault rustfs jaeger embedder models llm nli k3s; do
+	for h in keycloak postgres redis vault rustfs jaeger embedder models llm nli openldap k3s; do
 		ip=$(getent hosts "$h" | awk '{print $1; exit}') || true
 		[ -n "$ip" ] || continue
 		zones="$zones $h"
@@ -60,13 +60,12 @@ YAML
 		'{kubernetes_host: "https://k3s:6443", kubernetes_ca_cert: $ca, token_reviewer_jwt: $jwt}')" >/dev/null
 	vault_api PUT sys/policies/acl/bambuflow-online "$(jq -n \
 		--arg p 'path "secret/data/bambuflow/*" { capabilities = ["read"] }
-path "secret/data/gateway/*" { capabilities = ["read"] }
 path "secret/data/governance/*" { capabilities = ["read"] }
 path "transit/decrypt/bambuflow-pii" { capabilities = ["update"] }
 path "transit/datakey/plaintext/bambuflow-answers" { capabilities = ["update"] }
 path "transit/decrypt/bambuflow-answers" { capabilities = ["update"] }' '{policy: $p}')" >/dev/null
 	vault_api POST auth/kubernetes/role/bambuflow-online "$(jq -n --arg rel "$REL" --arg ns "$NS" \
-		'{bound_service_account_names: [$rel + "-gateway", $rel + "-retrieval", $rel + "-governance", $rel + "-orchestrator", $rel + "-vault-sync"],
+		'{bound_service_account_names: [$rel + "-retrieval", $rel + "-governance", $rel + "-orchestrator", $rel + "-vault-sync"],
 		  bound_service_account_namespaces: [$ns], policies: ["bambuflow-online"], ttl: "1h"}')" >/dev/null
 	# webhook 单独一个角色：只能读写订阅的签名密钥
 	vault_api PUT sys/policies/acl/bambuflow-webhook "$(jq -n \
@@ -74,6 +73,12 @@ path "transit/decrypt/bambuflow-answers" { capabilities = ["update"] }' '{policy
 	vault_api POST auth/kubernetes/role/bambuflow-webhook "$(jq -n --arg rel "$REL" --arg ns "$NS" \
 		'{bound_service_account_names: [$rel + "-webhook"],
 		  bound_service_account_namespaces: [$ns], policies: ["bambuflow-webhook"], ttl: "1h"}')" >/dev/null
+	# gateway 单独一个角色：只能读写 Principal 签名密钥（定期轮换并写回）
+	vault_api PUT sys/policies/acl/bambuflow-gateway "$(jq -n \
+		--arg p 'path "secret/data/gateway/principal-signing" { capabilities = ["create", "update", "read"] }' '{policy: $p}')" >/dev/null
+	vault_api POST auth/kubernetes/role/bambuflow-gateway "$(jq -n --arg rel "$REL" --arg ns "$NS" \
+		'{bound_service_account_names: [$rel + "-gateway"],
+		  bound_service_account_namespaces: [$ns], policies: ["bambuflow-gateway"], ttl: "1h"}')" >/dev/null
 	dsn="postgres://bambuflow:$BF_PG_PASSWORD@postgres:5432/bambuflow?sslmode=disable"
 	vault_api POST secret/data/bambuflow/gateway "$(jq -n --arg dsn "$dsn" --arg ak "$BF_S3_ACCESS_KEY" --arg sk "$BF_S3_SECRET_KEY" \
 		'{data: {BF_PG_DSN: $dsn, BF_AUDIT_S3_ACCESS_KEY: $ak, BF_AUDIT_S3_SECRET_KEY: $sk}}')" >/dev/null
@@ -81,6 +86,8 @@ path "transit/decrypt/bambuflow-answers" { capabilities = ["update"] }' '{policy
 	# governance 的管理接口把变更审计写进审计桶
 	vault_api POST secret/data/bambuflow/governance "$(jq -n --arg dsn "$dsn" --arg ak "$BF_S3_ACCESS_KEY" --arg sk "$BF_S3_SECRET_KEY" \
 		'{data: {BF_PG_DSN: $dsn, BF_AUDIT_S3_ACCESS_KEY: $ak, BF_AUDIT_S3_SECRET_KEY: $sk}}')" >/dev/null
+	vault_api POST secret/data/bambuflow/identity-sync "$(jq -n --arg dsn "$dsn" --arg pw "$BF_LDAP_ADMIN_PASSWORD" \
+		'{data: {BF_PG_DSN: $dsn, LDAP_BIND_PASSWORD: $pw}}')" >/dev/null
 	vault_api POST secret/data/bambuflow/batch "$(jq -n --arg dsn "$dsn" '{data: {BF_PG_DSN: $dsn}}')" >/dev/null
 	vault_api POST secret/data/bambuflow/webhook "$(jq -n --arg dsn "$dsn" '{data: {BF_PG_DSN: $dsn}}')" >/dev/null
 	# 在线抽样评审的表由 compose 栈的 evaluation-migrate 建好

@@ -11,12 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.yaml.in/yaml/v3"
 
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
 )
 
 // Names 是三套词表的名字。
@@ -156,4 +157,24 @@ func (s Store) SaveAck(ctx context.Context, a *configv1.AckRequest) error {
 			loaded = EXCLUDED.loaded, reason = EXCLUDED.reason, acked_at = now()`,
 		a.GetService(), a.GetInstanceId(), a.GetSnapshotVersion(), a.GetLoaded(), a.GetReason())
 	return err
+}
+
+// RecentAcks 列出 since 之后上报过的实例，按服务、实例排序。
+func (s Store) RecentAcks(ctx context.Context, since time.Time) ([]Ack, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT service, instance_id, snapshot_version, loaded, reason, acked_at FROM governance.config_acks
+		WHERE acked_at >= $1 ORDER BY service, instance_id`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Ack
+	for rows.Next() {
+		var a Ack
+		if err := rows.Scan(&a.Service, &a.Instance, &a.Version, &a.Loaded, &a.Reason, &a.AckedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }

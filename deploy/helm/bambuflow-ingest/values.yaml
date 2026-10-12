@@ -1,0 +1,119 @@
+# 离线入库平面（入库管道详设第 2 节）：与在线平面（deploy/helm/bambuflow）分开部署，经版本化索引、元数据库与
+# 两者共用的 Redis 事件流交汇。默认值只含与环境无关的部分，环境相关的地址见 values-prod.yaml；密钥一律来自 Vault。
+image:
+  registry: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+
+vault:
+  addr: ""
+  # 入库平面的角色：读 <kvMount>/bambuflow/{indexing,processing,connectors}，以及 transit/encrypt/bambuflow-pii
+  # （processing 入库时加密 PII 原值）
+  role: ""
+  kvMount: secret
+  authMount: kubernetes
+
+networkPolicy:
+  # 在线平面所在的命名空间：gateway、governance 调 indexing 与两个管理服务，取管理 Principal 的验签公钥
+  onlineNamespace: ""
+  monitoringNamespace: monitoring
+  # 接收源系统 Webhook 的入口网关所在的命名空间（只对 webhook: true 的常驻轮询放行）
+  webhookFrom: []
+
+otel:
+  endpoint: ""
+
+# 在线平面（同一 release 名的 bambuflow chart）里的地址
+online:
+  # gateway 的内部端口：管理 Principal 的验签公钥
+  jwksUrl: ""
+  # governance 的 ConfigService：processing 取受控词表快照
+  configAddr: ""
+  # evaluation：indexing 的定时发布在发布前跑评测门禁
+  evaluationAddr: ""
+
+# 平台事件流与入库事件流所在的 Redis（与在线平面的 events.redisAddr 是同一个）；口令 BF_REDIS_PASSWORD 经 Vault 注入
+redisAddr: ""
+
+# 文档包与原文所在的对象存储（访问密钥 BF_S3_ACCESS_KEY/SECRET_KEY 经 Vault 注入）
+objectStore:
+  endpoint: ""
+  bucket: bambuflow-raw
+
+# 审计桶（与在线平面 gateway.audit 同一个开启对象锁的桶）：indexing 的发布、按保留期过期、物理删除，
+# connectors 撤销数据源后的清理都写变更审计，写不进去就不执行（技术设计文档 8.3）。
+# 凭证 BF_AUDIT_S3_ACCESS_KEY、BF_AUDIT_S3_SECRET_KEY 经 Vault 注入（bambuflow/indexing、bambuflow/connectors）
+audit:
+  s3Endpoint: ""
+  bucket: bambuflow-audit
+  retentionDays: 2555
+
+# indexing：唯一的索引写入口与发布、管理接口（常驻）；数据库连接串 BF_PG_DSN 经 Vault 注入（bambuflow/indexing）。
+# 升级前执行 indexing migrate
+indexing:
+  replicas: 2
+  # 定时发布（入库管道详设第 10 节：增量发布每 15 分钟，发布前跑评测门禁）；按数据源保留期给到期文档写删除标记；
+  # 删除标记过了观察期后物理删除并留删除凭证
+  publishSchedule: "*/15 * * * *"
+  expireSchedule: "0 2 * * *"
+  purgeSchedule: "30 2 * * *"
+  purgeGraceHours: 168
+  # 按数据源的保留期（BF_RETENTION_FILE 的内容：数据源 ID → 天数）；为空时不按时间过期
+  retention: {}
+  resources:
+    requests: {cpu: 500m, memory: 512Mi}
+    limits: {memory: 1Gi}
+
+# processing：解析、OCR、脱敏、分块、增强、向量化，再交给 indexing 写入。常驻处理入库事件流（同一消费组，多副本分担），
+# 失败按有上限的指数退避重试；入库状态与死信经常驻的管理服务（processing-admin）查看与重放。
+# 受控词表在启动时加载，词表变更后滚动重启生效
+processing:
+  replicas: 2
+  embedderUrl: ""
+  embeddingModel: bge-m3
+  # OCR 服务；为空时含扫描页或图片的文档处理失败，留在队列里等配置好再处理
+  ocrUrl: ""
+  # 图片描述服务（POST /v1/describe，与 OCR 一样是平台内部部署的模型服务）；不配置时图片块只有 OCR 文字
+  imageDescriberUrl: ""
+  # NER 服务（POST /v1/ner，平台内部部署）：规则之外识别人名、地址等做掩码；不配置时 PII 只按规则识别
+  nerUrl: ""
+  resources:
+    requests: {cpu: "1", memory: 2Gi}
+    limits: {memory: 4Gi}
+  admin:
+    replicas: 2
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {memory: 256Mi}
+
+# 全量重建期间按新模型运行的 processing（BF_REBUILD_WORKER=1，独立消费组，副本数同 processing）：换嵌入模型时打开，重建上线后关掉并把
+# processing.embeddingModel 改成新模型
+rebuildWorker:
+  enabled: false
+  embeddingModel: ""
+  # 重建是最重的负载（入库管道详设第 10、12 节）：跑在独立节点池，写入限速，不挤占在线用的元数据库与索引存储
+  maxDocsPerSecond: 5
+  nodeSelector: {}
+  tolerations: []
+
+# connectors：数据源同步（每个数据源一个 CronJob）与常驻的管理服务（同步状态、暂停与恢复、立即同步、待删批次、撤销数据源）
+connectors:
+  admin:
+    replicas: 2
+    resources:
+      requests: {cpu: 100m, memory: 64Mi}
+      limits: {memory: 256Mi}
+  resources:
+    requests: {cpu: 200m, memory: 256Mi}
+    limits: {memory: 1Gi}
+  # 常驻清单轮询的间隔上下限（入库管道详设第 5 节建议值 5 与 15 分钟），按源系统的响应在其间自动调整
+  poll:
+    min: 5m
+    max: 15m
+  # 每个数据源：id（src_）、command（sync-logs、sync-dbschema、sync-records、sync-wiki 等）、schedule；
+  # sync-records 是按表开启的结构化记录入库：env 给 BF_RECORDS_CONFIG、BF_RECORDS_BASE_URI，只读账号的连接串 BF_RECORDS_DSN 放 Vault；
+  # poll: true 时改为常驻清单轮询（不用 schedule），webhook: true 再接收源系统的变更通知（密钥 BF_WEBHOOK_SECRET）；
+  # 全量清单源可再给 reconcileCommand 与 reconcileSchedule（每日对账）；env 是这个数据源自己的设置
+  # （如 BF_LOG_CONFIG、BF_DBSCHEMA_BASE_URI），configFiles 渲染成 ConfigMap 挂在 /etc/bambuflow/source/ 下。
+  # 这个源的密钥（如 BF_DBSCHEMA_DSN）放在 Vault 的 bambuflow/connectors-<id>（可选，没有时不注入）
+  sources: []

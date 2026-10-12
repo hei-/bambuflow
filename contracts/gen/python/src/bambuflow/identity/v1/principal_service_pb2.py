@@ -25,14 +25,14 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n-bambuflow/identity/v1/principal_service.proto\x12\x15\x62\x61mbuflow.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"L\n\x0f\x45xchangeRequest\x12\x1e\n\ndelegation\x18\x01 \x01(\tR\ndelegation\x12\x19\n\x08\x62\x61tch_id\x18\x02 \x01(\tR\x07\x62\x61tchId\"k\n\x10\x45xchangeResponse\x12\x1c\n\tprincipal\x18\x01 \x01(\tR\tprincipal\x12\x39\n\nexpires_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\texpiresAt2o\n\x10PrincipalService\x12[\n\x08\x45xchange\x12&.bambuflow.identity.v1.ExchangeRequest\x1a\'.bambuflow.identity.v1.ExchangeResponseB\xf9\x01\n\x19\x63om.bambuflow.identity.v1B\x15PrincipalServiceProtoP\x01ZOgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\xa2\x02\x03\x42IX\xaa\x02\x15\x42\x61mbuflow.Identity.V1\xca\x02\x15\x42\x61mbuflow\\Identity\\V1\xe2\x02!Bambuflow\\Identity\\V1\\GPBMetadata\xea\x02\x17\x42\x61mbuflow::Identity::V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n-bambuflow/identity/v1/principal_service.proto\x12\x15\x62\x61mbuflow.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"L\n\x0f\x45xchangeRequest\x12\x1e\n\ndelegation\x18\x01 \x01(\tR\ndelegation\x12\x19\n\x08\x62\x61tch_id\x18\x02 \x01(\tR\x07\x62\x61tchId\"k\n\x10\x45xchangeResponse\x12\x1c\n\tprincipal\x18\x01 \x01(\tR\tprincipal\x12\x39\n\nexpires_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\texpiresAt2o\n\x10PrincipalService\x12[\n\x08\x45xchange\x12&.bambuflow.identity.v1.ExchangeRequest\x1a\'.bambuflow.identity.v1.ExchangeResponseB\xf5\x01\n\x19\x63om.bambuflow.identity.v1B\x15PrincipalServiceProtoP\x01ZKgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\xa2\x02\x03\x42IX\xaa\x02\x15\x42\x61mbuflow.Identity.V1\xca\x02\x15\x42\x61mbuflow\\Identity\\V1\xe2\x02!Bambuflow\\Identity\\V1\\GPBMetadata\xea\x02\x17\x42\x61mbuflow::Identity::V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'bambuflow.identity.v1.principal_service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\031com.bambuflow.identity.v1B\025PrincipalServiceProtoP\001ZOgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\242\002\003BIX\252\002\025Bambuflow.Identity.V1\312\002\025Bambuflow\\Identity\\V1\342\002!Bambuflow\\Identity\\V1\\GPBMetadata\352\002\027Bambuflow::Identity::V1'
+  _globals['DESCRIPTOR']._serialized_options = b'\n\031com.bambuflow.identity.v1B\025PrincipalServiceProtoP\001ZKgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\242\002\003BIX\252\002\025Bambuflow.Identity.V1\312\002\025Bambuflow\\Identity\\V1\342\002!Bambuflow\\Identity\\V1\\GPBMetadata\352\002\027Bambuflow::Identity::V1'
   _globals['_EXCHANGEREQUEST']._serialized_start=105
   _globals['_EXCHANGEREQUEST']._serialized_end=181
   _globals['_EXCHANGERESPONSE']._serialized_start=183

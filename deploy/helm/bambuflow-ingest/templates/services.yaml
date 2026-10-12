@@ -1,0 +1,192 @@
+{{- /*
+入库平面的常驻服务：indexing（唯一的索引写入口与索引管理接口）、processing（常驻处理入库事件流，失败按有上限的指数退避重试；
+全量重建期间另有按新模型运行的 processing-rebuild）、processing-admin（入库状态、死信、重放）、
+connectors-admin（同步状态、暂停与恢复、立即同步、待删批次，并消费 source.revoked 对撤销的数据源写删除标记、
+消费 DocumentPurged 删掉物理删除了的文档在对象存储里的原文）。
+三者的管理接口只接受在线平面 gateway 签发的管理 Principal（验签公钥 online.jwksUrl）。
+密钥（数据库连接串、Redis 口令、对象存储密钥）由 Vault Secrets Operator 从 <kvMount>/bambuflow/<组件> 同步为 Secret 注入（vault.yaml）。
+connectors-admin 的立即同步经 Kubernetes API 从数据源的 CronJob 建 Job（BF_SYNC_TRIGGER=kubernetes），权限见 rbac.yaml。
+*/ -}}
+{{- $v := .Values -}}
+{{- $s3 := dict "BF_S3_ENDPOINT" $v.objectStore.endpoint "BF_S3_BUCKET" $v.objectStore.bucket -}}
+{{- $audit := dict "BF_AUDIT_S3_ENDPOINT" $v.audit.s3Endpoint "BF_AUDIT_BUCKET" $v.audit.bucket "BF_AUDIT_RETENTION_DAYS" (toString $v.audit.retentionDays) -}}
+{{- $processingEnv := merge (dict
+  "BF_EMBEDDER_URL" $v.processing.embedderUrl
+  "BF_EMBEDDING_MODEL" $v.processing.embeddingModel
+  "BF_INDEXING_ADDR" (printf "%s-indexing:9090" .Release.Name)
+  "BF_OCR_URL" $v.processing.ocrUrl
+  "BF_IMAGE_DESCRIBER_URL" ($v.processing.imageDescriberUrl | default "")
+  "BF_NER_URL" ($v.processing.nerUrl | default "")
+  "BF_CONFIG_ADDR" $v.online.configAddr
+  "BF_PII_KEY" "bambuflow-pii"
+  "VAULT_ADDR" $v.vault.addr
+  "VAULT_TOKEN_FILE" "/vault/secrets/token") $s3 -}}
+{{- $components := dict
+  "indexing" (dict
+    "image" "indexing" "args" (list "serve") "replicas" $v.indexing.replicas "resources" $v.indexing.resources "secret" "indexing"
+    "env" (merge (dict
+      "BF_PRINCIPAL_JWKS_URL" $v.online.jwksUrl
+      "BF_REDIS_ADDR" $v.redisAddr) $audit)
+    "probe" (dict "exec" (dict "command" (list "indexing" "healthcheck"))))
+  "processing" (dict
+    "image" "processing" "args" (list "serve") "replicas" $v.processing.replicas "resources" $v.processing.resources
+    "secret" "processing" "vault" true "env" $processingEnv "noService" true
+    "probe" (dict "exec" (dict "command" (list "python" "-c" "import os, sys; sys.exit(0 if os.path.exists('/vault/secrets/token') else 1)"))))
+  "processing-admin" (dict
+    "image" "processing" "args" (list "serve-admin") "replicas" $v.processing.admin.replicas "resources" $v.processing.admin.resources
+    "secret" "processing"
+    "env" (dict "BF_PRINCIPAL_JWKS_URL" $v.online.jwksUrl)
+    "probe" (dict "tcpSocket" (dict "port" "grpc")))
+  "connectors-admin" (dict
+    "image" "connectors" "args" (list "serve-admin") "replicas" $v.connectors.admin.replicas "resources" $v.connectors.admin.resources
+    "secret" "connectors" "apiAccess" true
+    "env" (merge (dict
+      "BF_PRINCIPAL_JWKS_URL" $v.online.jwksUrl
+      "BF_REDIS_ADDR" $v.redisAddr
+      "BF_INDEXING_ADDR" (printf "%s-indexing:9090" .Release.Name)
+      "BF_SYNC_TRIGGER" "kubernetes") $s3 $audit)
+    "probe" (dict "exec" (dict "command" (list "connectors" "healthcheck"))))
+-}}
+{{- /* 全量重建期间按新模型运行的 processing（独立消费组与入库状态，入库管道详设第 10 节）：可放到独立节点池，写入限速 */ -}}
+{{- if $v.rebuildWorker.enabled }}
+{{- $_ := set $components "processing-rebuild" (dict
+    "image" "processing" "args" (list "serve") "replicas" $v.processing.replicas "resources" $v.processing.resources
+    "secret" "processing" "vault" true "noService" true
+    "env" (merge (dict "BF_REBUILD_WORKER" "1" "BF_EMBEDDING_MODEL" $v.rebuildWorker.embeddingModel
+      "BF_MAX_DOCS_PER_SECOND" (toString ($v.rebuildWorker.maxDocsPerSecond | default 5))) $processingEnv)
+    "nodeSelector" $v.rebuildWorker.nodeSelector "tolerations" $v.rebuildWorker.tolerations
+    "probe" (get $components "processing").probe) }}
+{{- end }}
+{{- range $name, $c := $components }}
+{{- $ctx := dict "root" $ "component" $name }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $c.replicas }}
+  selector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bambuflow.labels" $ctx | nindent 8 }}
+      {{- if $c.vault }}
+      annotations:
+        # processing 入库时经 Vault transit 加密 PII 原值：Vault Agent 注入令牌文件并续期
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-inject-token: "true"
+        vault.hashicorp.com/agent-run-as-same-user: "true"
+        vault.hashicorp.com/role: {{ $v.vault.role | quote }}
+        vault.hashicorp.com/auth-path: {{ printf "auth/%s" $v.vault.authMount | quote }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "bambuflow.name" $ctx }}
+      # connectors-admin 调 Kubernetes API（立即同步）、processing 经 Vault Agent 登录 Vault，才挂服务账号令牌
+      automountServiceAccountToken: {{ or ($c.apiAccess | default false) ($c.vault | default false) }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      {{- with $c.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $c.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "bambuflow.selector" $ctx | nindent 14 }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $v.image.registry }}/{{ $c.image }}:{{ $v.image.tag }}"
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          args: {{ toJson $c.args }}
+          {{- if not $c.noService }}
+          ports:
+            - name: grpc
+              containerPort: 9090
+          {{- end }}
+          env:
+            {{- range $k, $val := $c.env }}
+            - name: {{ $k }}
+              value: {{ $val | quote }}
+            {{- end }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $v.otel.endpoint | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ include "bambuflow.name" (dict "root" $ "component" $c.secret) }}
+          startupProbe:
+            {{- toYaml $c.probe | nindent 12 }}
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            {{- toYaml $c.probe | nindent 12 }}
+            periodSeconds: 5
+          livenessProbe:
+            {{- toYaml $c.probe | nindent 12 }}
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- if not $c.noService }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "bambuflow.selector" $ctx | nindent 4 }}
+  ports:
+    - name: grpc
+      port: 9090
+      targetPort: grpc
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+{{- end }}

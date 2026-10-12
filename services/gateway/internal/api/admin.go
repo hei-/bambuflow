@@ -12,18 +12,18 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/audit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/authn"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/idempotency"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/services/gateway/internal/audit"
+	"github.com/hei-/bambuflow/services/gateway/internal/authn"
+	"github.com/hei-/bambuflow/services/gateway/internal/idempotency"
+	"github.com/hei-/bambuflow/services/gateway/internal/issuer"
+	"github.com/hei-/bambuflow/services/gateway/internal/roles"
 )
 
 // 管理接口（技术设计文档 13.2，gateway 详设 4.2）。业务逻辑由拥有数据的模块实现，gateway 只做三件事：
@@ -42,7 +42,9 @@ type adminRoute struct {
 	// owner 是实现方（governance、indexing、evaluation、processing、connectors），写进管理审计
 	owner string
 	// roles 是允许调用的平台角色，有其一即可
-	roles    []string
+	roles []string
+	// stepUp：审批类操作，要求最近做过加强认证（StepUp）
+	stepUp   bool
 	deadline time.Duration
 	call     func(ctx context.Context, in *adminInput) (adminOutput, error)
 }
@@ -76,6 +78,12 @@ var (
 		"activation_refused":      {http.StatusConflict, "activation_refused", "目标版本不能上线：清单不全或嵌入模型已下线"},
 		"stale_base_version":      {http.StatusConflict, "stale_base_version", "生效版本已经变了，请基于最新版本重新提交"},
 		"gate_failed":             {http.StatusConflict, "gate_failed", "评测门禁不满足：须附已通过、覆盖该租户的门禁"},
+		"scheduler_unavailable":   {http.StatusUnprocessableEntity, "scheduler_unavailable", "部署没有接入调度，不能立即同步"},
+		"merge_request":           {http.StatusConflict, "merge_request", "这个变更在合并请求里评审，合并后由 CI 发布"},
+		"security_approval_required": {http.StatusForbidden, "security_approval_required",
+			"策略包的两位审批人里至少要有一位信息安全或数据属主"},
+		"merge_request_unavailable": {http.StatusUnprocessableEntity, "merge_request_unavailable",
+			"部署没有配置合并请求（或开合并请求失败），Git 类配置只能经 CI 发布"},
 	}
 )
 
@@ -127,6 +135,9 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request, c *call) (any, er
 	c.admin = &audit.Admin{Owner: rt.owner, Method: r.Method, Path: r.URL.Path}
 
 	operator, err := s.authorizeAdmin(r, c, rt)
+	if errors.Is(err, problemStepUp) {
+		w.Header().Set("WWW-Authenticate", s.StepUp.challenge())
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +232,8 @@ func (s *Server) authorizeAdmin(r *http.Request, c *call, rt *adminRoute) (strin
 		return "", problemUnauth
 	}
 	c.sub, c.actor, c.authTime = caller.Username, caller.ClientID, caller.AuthTime
-	if !s.Tenants().PlatformClient(caller.ClientID) {
+	// 管理接口只给平台级客户端（console）；业务系统代用户调用的令牌不能用来做管理操作
+	if caller.Act != "" || !s.Tenants().PlatformClient(caller.ClientID) {
 		return "", problemForbidden
 	}
 	if !s.Limits.Allow(c.ctx, s.ClientRule, caller.ClientID) {
@@ -242,14 +254,20 @@ func (s *Server) authorizeAdmin(r *http.Request, c *call, rt *adminRoute) (strin
 	if !ok || !user.Active {
 		return "", problemForbidden
 	}
-	roles := s.AdminRoles.Of(user.Groups)
-	c.admin.Roles = roles
-	if !slices.ContainsFunc(roles, func(x string) bool { return slices.Contains(rt.roles, x) }) {
+	granted := s.AdminRoles.Of(user.Groups)
+	for _, t := range s.Tenants().OwnerOf(user.Groups) {
+		granted = append(granted, roles.Scoped(roles.TenantOwner, t))
+	}
+	c.admin.Roles = granted
+	if !roles.Allows(granted, rt.roles) {
 		return "", problemForbidden
+	}
+	if rt.stepUp && !s.StepUp.satisfied(caller, s.Now()) {
+		return "", problemStepUp
 	}
 	token, jti, err := s.Issuer.IssueOperator(issuer.Subject{
 		Username: user.Username, Dept: user.Dept, Title: user.Title, Region: user.Region, Clearance: user.Clearance,
-		Actor: caller.ClientID, AuthTime: caller.AuthTime, Roles: roles,
+		Actor: caller.ClientID, AuthTime: caller.AuthTime, Roles: granted,
 	})
 	if err != nil {
 		return "", fmt.Errorf("签发管理 Principal: %w", err)

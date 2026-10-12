@@ -123,16 +123,19 @@ func (ExperimentStatus) EnumDescriptor() ([]byte, []int) {
 	return file_bambuflow_admin_v1_experiment_admin_proto_rawDescGZIP(), []int{1}
 }
 
-// 实验组替换的对象（orchestrator 详设 12.3）。本期只开放阈值：提示词与模型目前各只有一个可用版本。
-// 不填的字段沿用基线。
+// 实验组替换的对象（orchestrator 详设 12.3）：阈值，以及已单独过评测门禁的配置版本。至少替换一项；不填的沿用基线。
 type ExperimentOverrides struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 句支持度门槛，0.3–0.9（orchestrator 详设 12.2 的合理范围）
 	SupportThreshold *float64 `protobuf:"fixed64,1,opt,name=support_threshold,json=supportThreshold,proto3,oneof" json:"support_threshold,omitempty"`
 	// 引用覆盖率门槛，0.5–1.0
-	MinCoverage   *float64 `protobuf:"fixed64,2,opt,name=min_coverage,json=minCoverage,proto3,oneof" json:"min_coverage,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	MinCoverage *float64 `protobuf:"fixed64,2,opt,name=min_coverage,json=minCoverage,proto3,oneof" json:"min_coverage,omitempty"`
+	// 实验组替换的配置版本（cfv_ 前缀，最多 4 个）：该租户的 pipeline（检索计划、agent 预算、阈值）、routing（生成模型与
+	// 置信度权重）、回答模板（answer、agent-answer 各至多一个），每类对象至多一个。每个版本都须有评测门禁已通过、
+	// 未被驳回的发布（governance 详设 3.1“变体都已单独过门禁”）；pipeline 的门禁覆盖该租户。策略包不能做实验。
+	ConfigVersions []string `protobuf:"bytes,3,rep,name=config_versions,json=configVersions,proto3" json:"config_versions,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ExperimentOverrides) Reset() {
@@ -177,6 +180,13 @@ func (x *ExperimentOverrides) GetMinCoverage() float64 {
 		return *x.MinCoverage
 	}
 	return 0
+}
+
+func (x *ExperimentOverrides) GetConfigVersions() []string {
+	if x != nil {
+		return x.ConfigVersions
+	}
+	return nil
 }
 
 type Experiment struct {
@@ -861,10 +871,11 @@ var File_bambuflow_admin_v1_experiment_admin_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_experiment_admin_proto_rawDesc = "" +
 	"\n" +
-	")bambuflow/admin/v1/experiment_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x96\x01\n" +
+	")bambuflow/admin/v1/experiment_admin.proto\x12\x12bambuflow.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbf\x01\n" +
 	"\x13ExperimentOverrides\x120\n" +
 	"\x11support_threshold\x18\x01 \x01(\x01H\x00R\x10supportThreshold\x88\x01\x01\x12&\n" +
-	"\fmin_coverage\x18\x02 \x01(\x01H\x01R\vminCoverage\x88\x01\x01B\x14\n" +
+	"\fmin_coverage\x18\x02 \x01(\x01H\x01R\vminCoverage\x88\x01\x01\x12'\n" +
+	"\x0fconfig_versions\x18\x03 \x03(\tR\x0econfigVersionsB\x14\n" +
 	"\x12_support_thresholdB\x0f\n" +
 	"\r_min_coverage\"\xb0\x05\n" +
 	"\n" +
@@ -945,8 +956,8 @@ const file_bambuflow_admin_v1_experiment_admin_proto_rawDesc = "" +
 	"\rGetExperiment\x12(.bambuflow.admin.v1.GetExperimentRequest\x1a).bambuflow.admin.v1.GetExperimentResponse\x12m\n" +
 	"\x10CreateExperiment\x12+.bambuflow.admin.v1.CreateExperimentRequest\x1a,.bambuflow.admin.v1.CreateExperimentResponse\x12g\n" +
 	"\x0eRampExperiment\x12).bambuflow.admin.v1.RampExperimentRequest\x1a*.bambuflow.admin.v1.RampExperimentResponse\x12g\n" +
-	"\x0eStopExperiment\x12).bambuflow.admin.v1.StopExperimentRequest\x1a*.bambuflow.admin.v1.StopExperimentResponseB\xe3\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x14ExperimentAdminProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x0eStopExperiment\x12).bambuflow.admin.v1.StopExperimentRequest\x1a*.bambuflow.admin.v1.StopExperimentResponseB\xdf\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x14ExperimentAdminProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_experiment_admin_proto_rawDescOnce sync.Once

@@ -1,6 +1,7 @@
-// Package identitysync 把公司目录中的用户属性与群组写入平台身份库（gateway 详设 3.5）。
+// Package identitysync 把公司目录中的用户属性与群组写入平台身份库（gateway 详设 3.5）。上游三选一：
+// LDAP / Active Directory（本文件与 ldap.go）、SCIM 推送（scim.go）、导出文件（file.go）。
 //
-// 每次运行按修改时间增量拉取用户与群组；启动时和每隔 full_every 做一次全量对账，
+// LDAP 每次运行按修改时间增量拉取用户与群组；启动时和每隔 full_every 做一次全量对账，
 // 把目录里已不存在的用户标为停用、清掉已删除的群组（增量拉取看不到删除）。
 // 一次运行的全部写入在一个事务里完成，成功后才更新 last_success_at；gateway 据此判断身份是否新鲜。
 package identitysync
@@ -70,6 +71,7 @@ type Syncer struct {
 	now   func() time.Time
 }
 
+// NewSyncer 创建拉取式的同步：ldap 时 dir 为 LDAP 目录，file 时 dir 为 nil（读导出文件）；scim 是推送式的，见 SCIMServer。
 func NewSyncer(cfg *Config, dir Directory, store Store, log *slog.Logger) *Syncer {
 	return &Syncer{cfg: cfg, dir: dir, store: store, log: log, now: time.Now}
 }
@@ -89,6 +91,9 @@ func (s *Syncer) runOnce(ctx context.Context) error {
 	st, err := s.store.State(ctx, s.cfg.Source)
 	if err != nil {
 		return fmt.Errorf("读取同步状态: %w", err)
+	}
+	if s.cfg.Kind() == KindFile {
+		return s.runFile(ctx, st)
 	}
 	full := st.LastFullAt.IsZero() || s.now().Sub(st.LastFullAt) >= s.cfg.FullEvery
 	usersSince, groupsSince := st.UsersCursor, st.GroupsCursor

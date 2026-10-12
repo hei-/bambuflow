@@ -25,7 +25,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	eventsv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/events/v1"
+	eventsv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/events/v1"
 )
 
 const (

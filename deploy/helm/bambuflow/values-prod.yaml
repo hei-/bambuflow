@@ -8,6 +8,7 @@ vault:
   addr: https://vault.corp.example
   role: bambuflow-online
   webhookRole: bambuflow-webhook
+  gatewayRole: bambuflow-gateway
 
 # 示例租户：按部署配置清单与业务线的上线计划填写
 tenants:
@@ -18,9 +19,10 @@ tenants:
     bound_clients: []
     quota: {max_concurrency: 20, daily_tokens: 2000000}
 
-policyData:
-  tenants:
-    credit: {}
+policyLayers:
+  tenant.credit: |
+    deny_sources := set()
+    test_no_extra_restriction if count(deny_sources) == 0
 
 networkPolicy:
   ingressNamespace: ingress-nginx
@@ -43,6 +45,9 @@ gateway:
     infosec: [infosec-team]
     data_owner: [data-owners]
     auditor: [internal-audit]
+  # 多因素登录在平台授权服务里映射为认证强度 2
+  stepUp:
+    acrValues: "2"
   audit:
     s3Endpoint: https://s3.corp.example
 
@@ -63,3 +68,18 @@ orchestrator:
   llmModel: corp-private-chat
   nliUrl: http://triton.models:8000
   redisAddr: redis.corp.example:6379
+
+# 身份同步：公司 IAM 经 SCIM 推送（docs/identity-sync.md）；调用凭证 SCIM_TOKEN 与 BF_PG_DSN 在 Vault 的 bambuflow/identity-sync
+identitySync:
+  config:
+    source: corp-scim
+    scim: {listen: ":8090", token_env: SCIM_TOKEN}
+    mapping:
+      username: userName
+      display_name: displayName
+      title: title
+      dept: urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department
+      region: addresses.region
+      grade: urn:corp:params:scim:User:grade
+      clearance_by_grade: {C1: public, C2: internal, C3: confidential, C4: restricted}
+    interval: 1m

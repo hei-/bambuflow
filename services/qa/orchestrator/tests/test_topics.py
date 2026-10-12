@@ -18,6 +18,9 @@ class OverlapNLI:
     async def support(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
         return [sum(ch in p for ch in h) / len(h) for p, h in pairs], "nli@t"
 
+    async def contradiction(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
+        return [0.0] * len(pairs), "nli@t"
+
 
 class Access:
     def __init__(self, denied: frozenset[str] = frozenset()) -> None:
@@ -130,7 +133,7 @@ class LLM:
         self.fail_batches, self.fail_merge, self.bad = fail_batches, fail_merge, bad
         self.systems: list[str] = []
 
-    def generate(self, system: str, user: str) -> Gen:
+    def generate(self, system: str, user: str, level: int = 2, model: str = "") -> Gen:
         self.systems.append(system)
         if "<groups>" in user:
             pts = [

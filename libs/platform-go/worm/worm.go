@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -49,6 +51,26 @@ func Open(ctx context.Context, endpoint, accessKey, secretKey, bucket string, re
 		return nil, errors.Join(fmt.Errorf("审计桶 %s 没有开启对象锁", bucket), err)
 	}
 	return &Store{c: c, bucket: bucket, retention: retention}, nil
+}
+
+// OpenFromEnv 按环境变量连接审计桶：BF_AUDIT_S3_ENDPOINT、BF_AUDIT_S3_ACCESS_KEY、BF_AUDIT_S3_SECRET_KEY、BF_AUDIT_BUCKET 必填，
+// BF_AUDIT_RETENTION_DAYS 默认 2555（7 年）。gateway 以外写审计的服务（governance、indexing、connectors）共用。
+func OpenFromEnv(ctx context.Context) (*Store, error) {
+	vals := make([]string, 4)
+	for i, name := range []string{"BF_AUDIT_S3_ENDPOINT", "BF_AUDIT_S3_ACCESS_KEY", "BF_AUDIT_S3_SECRET_KEY", "BF_AUDIT_BUCKET"} {
+		if vals[i] = os.Getenv(name); vals[i] == "" {
+			return nil, fmt.Errorf("未设置 %s", name)
+		}
+	}
+	days := 2555
+	if v := os.Getenv("BF_AUDIT_RETENTION_DAYS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return nil, fmt.Errorf("BF_AUDIT_RETENTION_DAYS 不合法: %q", v)
+		}
+		days = n
+	}
+	return Open(ctx, vals[0], vals[1], vals[2], vals[3], time.Duration(days)*24*time.Hour)
 }
 
 // Put 写入一个对象；同一个键不覆盖（对象锁下覆盖会生成新版本，调用方保证键唯一）。

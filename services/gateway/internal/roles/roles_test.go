@@ -38,3 +38,13 @@ func TestLoadRejectsUnknownRole(t *testing.T) {
 		t.Fatalf("空映射应允许: %v", err)
 	}
 }
+
+func TestAllowsScopedRoles(t *testing.T) {
+	have := []string{Scoped(TenantOwner, "credit")}
+	if !Allows(have, []string{PlatformAdmin, TenantOwner}) {
+		t.Fatal("带作用域的角色按名字匹配")
+	}
+	if Allows(have, []string{PlatformAdmin}) || Allows([]string{"tenant_owner_x"}, []string{TenantOwner}) {
+		t.Fatal("不应匹配")
+	}
+}

@@ -6,11 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
 )
+
+// PartitionPrefix 是分区 token 的前缀（part:<数据源>/<分区>，总体设计 ADR-14）。
+const PartitionPrefix = "part:"
 
 // MaxTokens 是主体 token 数量上限。超过时拒绝而不截断：截断会让用户少看到该看的内容，且难以排查（详设 5.1）。
 const MaxTokens = 1024
@@ -26,6 +30,9 @@ type Filter struct {
 	Meta MetaFilter
 	// ShowPII 来自策略义务：只有义务明确为 none 时才返回 PII 原文，其余一律掩码（fail-closed）
 	ShowPII bool
+	// DeniedDoc 是经备用通道收到的按文档的紧急拒绝（LocalDenials）；为 nil 表示没有。召回的 SQL 不带它，
+	// 由返回前复核（Check）拦下：备用通道只在索引库的拒绝名单写不进去时起作用，宁可少返回几条
+	DeniedDoc func(docID string) bool
 }
 
 var errMandatory = errors.New("必含条件不成立")
@@ -40,6 +47,9 @@ func (f Filter) Validate(sub string, clearance commonv1.Classification) error {
 		return fmt.Errorf("%w: token 数量 %d 不在 1–%d 之间", errMandatory, len(f.Tokens), MaxTokens)
 	case !slices.Contains(f.Tokens, "user:"+sub):
 		return fmt.Errorf("%w: token 集合不含 user:%s", errMandatory, sub)
+	case slices.ContainsFunc(f.Tokens, func(t string) bool { return strings.HasPrefix(t, PartitionPrefix) }):
+		// 分区 token 只能由分区授权表展开，策略直接给出就能绕过授权表
+		return fmt.Errorf("%w: 策略给出了分区 token", errMandatory)
 	}
 	return nil
 }
@@ -127,6 +137,7 @@ func ValidateMeta(c *commonv1.Filters) error {
 
 // ACL 是一份文档在权限表（idx.doc_acl）里的最新状态。
 type ACL struct {
+	DocID          string
 	SourceID       string
 	Tokens         []string
 	Classification int32
@@ -140,7 +151,7 @@ func (f Filter) Check(a ACL) retrievalv1.AccessReason {
 	switch {
 	case !a.Active:
 		return retrievalv1.AccessReason_ACCESS_REASON_TOMBSTONED
-	case a.Denied:
+	case a.Denied, f.DeniedDoc != nil && f.DeniedDoc(a.DocID):
 		return retrievalv1.AccessReason_ACCESS_REASON_ACL_DENIED
 	case !slices.Contains(f.Sources, a.SourceID):
 		return retrievalv1.AccessReason_ACCESS_REASON_ACL_DENIED

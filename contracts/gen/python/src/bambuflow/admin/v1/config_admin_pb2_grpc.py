@@ -9,8 +9,10 @@ class ConfigAdminServiceStub:
     """ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
     gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 
-    现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-    每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+    配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+    每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+    Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+    全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
     变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
     已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
     """
@@ -35,6 +37,11 @@ class ConfigAdminServiceStub:
                 '/bambuflow.admin.v1.ConfigAdminService/CreateChangeRequest',
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.CreateChangeRequestRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.CreateChangeRequestResponse.FromString,
+                _registered_method=True)
+        self.ListChangeRequests = channel.unary_unary(
+                '/bambuflow.admin.v1.ConfigAdminService/ListChangeRequests',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListChangeRequestsRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListChangeRequestsResponse.FromString,
                 _registered_method=True)
         self.ApproveChangeRequest = channel.unary_unary(
                 '/bambuflow.admin.v1.ConfigAdminService/ApproveChangeRequest',
@@ -61,10 +68,25 @@ class ConfigAdminServiceStub:
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.GetReleaseRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.GetReleaseResponse.FromString,
                 _registered_method=True)
+        self.ListReleases = channel.unary_unary(
+                '/bambuflow.admin.v1.ConfigAdminService/ListReleases',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListReleasesRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListReleasesResponse.FromString,
+                _registered_method=True)
         self.RollbackRelease = channel.unary_unary(
                 '/bambuflow.admin.v1.ConfigAdminService/RollbackRelease',
                 request_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.RollbackReleaseRequest.SerializeToString,
                 response_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.RollbackReleaseResponse.FromString,
+                _registered_method=True)
+        self.PromoteRelease = channel.unary_unary(
+                '/bambuflow.admin.v1.ConfigAdminService/PromoteRelease',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.PromoteReleaseRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.PromoteReleaseResponse.FromString,
+                _registered_method=True)
+        self.AbortRollout = channel.unary_unary(
+                '/bambuflow.admin.v1.ConfigAdminService/AbortRollout',
+                request_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.AbortRolloutRequest.SerializeToString,
+                response_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.AbortRolloutResponse.FromString,
                 _registered_method=True)
 
 
@@ -72,8 +94,10 @@ class ConfigAdminServiceServicer:
     """ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
     gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 
-    现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-    每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+    配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+    每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+    Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+    全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
     变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
     已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
     """
@@ -92,6 +116,13 @@ class ConfigAdminServiceServicer:
 
     def CreateChangeRequest(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListChangeRequests(self, request, context):
+        """按状态列出变更单（新的在前，最多 100 条），审批人据此找待审批的变更单
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -126,8 +157,29 @@ class ConfigAdminServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListReleases(self, request, context):
+        """按状态列出发布（新的在前，最多 100 条）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def RollbackRelease(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PromoteRelease(self, request, context):
+        """灰度中的发布全量生效（切生效指针）；一人执行
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AbortRollout(self, request, context):
+        """终止灰度：候选版本不再生效，发布记为 rolled_back；一人执行（收紧不需要第二个人）
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -149,6 +201,11 @@ def add_ConfigAdminServiceServicer_to_server(servicer, server):
                     servicer.CreateChangeRequest,
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.CreateChangeRequestRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.CreateChangeRequestResponse.SerializeToString,
+            ),
+            'ListChangeRequests': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListChangeRequests,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListChangeRequestsRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListChangeRequestsResponse.SerializeToString,
             ),
             'ApproveChangeRequest': grpc.unary_unary_rpc_method_handler(
                     servicer.ApproveChangeRequest,
@@ -175,10 +232,25 @@ def add_ConfigAdminServiceServicer_to_server(servicer, server):
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.GetReleaseRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.GetReleaseResponse.SerializeToString,
             ),
+            'ListReleases': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListReleases,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListReleasesRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListReleasesResponse.SerializeToString,
+            ),
             'RollbackRelease': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackRelease,
                     request_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.RollbackReleaseRequest.FromString,
                     response_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.RollbackReleaseResponse.SerializeToString,
+            ),
+            'PromoteRelease': grpc.unary_unary_rpc_method_handler(
+                    servicer.PromoteRelease,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.PromoteReleaseRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.PromoteReleaseResponse.SerializeToString,
+            ),
+            'AbortRollout': grpc.unary_unary_rpc_method_handler(
+                    servicer.AbortRollout,
+                    request_deserializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.AbortRolloutRequest.FromString,
+                    response_serializer=bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.AbortRolloutResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -192,8 +264,10 @@ class ConfigAdminService:
     """ConfigAdminService 是配置对象的版本、变更单与发布（governance 详设 3、4、7.2、8.3），由 governance 实现，
     gateway 的 /v1/admin/tenants、/v1/admin/change-requests、/v1/admin/releases 调用。
 
-    现在的配置对象只有租户配置（object = tenant，scope = 租户名）。每次修改产生一个不可变版本；
-    每个对象只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给 gateway。
+    配置对象有租户配置（tenant）与 Git 类的 pipeline、routing、policy、prompt。每次修改产生一个不可变版本；
+    每个对象在每个作用域只有一个生效指针，只有发布能改它。生效后经 ConfigService 推给使用方。
+    Git 类对象的发布审批后先进灰度（rolling_out）：租户对象对该租户 10% 的用户、全局对象对一个试点租户生效，
+    全量（PromoteRelease）后切生效指针，终止（AbortRollout）则候选版本不再生效（governance 详设 3.2、4.1）。
     变更单（console 发起）与发布（CI 发起）都要作者以外的平台管理员审批；租户从试点切到全量还要附一个
     已通过、覆盖该租户的评测门禁（evaluation 详设 3.1）。回退一人执行，切回上一生效版本。
     """
@@ -269,6 +343,33 @@ class ConfigAdminService:
             '/bambuflow.admin.v1.ConfigAdminService/CreateChangeRequest',
             bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.CreateChangeRequestRequest.SerializeToString,
             bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.CreateChangeRequestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListChangeRequests(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.ConfigAdminService/ListChangeRequests',
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListChangeRequestsRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListChangeRequestsResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -415,6 +516,33 @@ class ConfigAdminService:
             _registered_method=True)
 
     @staticmethod
+    def ListReleases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.ConfigAdminService/ListReleases',
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListReleasesRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.ListReleasesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def RollbackRelease(request,
             target,
             options=(),
@@ -431,6 +559,60 @@ class ConfigAdminService:
             '/bambuflow.admin.v1.ConfigAdminService/RollbackRelease',
             bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.RollbackReleaseRequest.SerializeToString,
             bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.RollbackReleaseResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PromoteRelease(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.ConfigAdminService/PromoteRelease',
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.PromoteReleaseRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.PromoteReleaseResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AbortRollout(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bambuflow.admin.v1.ConfigAdminService/AbortRollout',
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.AbortRolloutRequest.SerializeToString,
+            bambuflow_dot_admin_dot_v1_dot_config__admin__pb2.AbortRolloutResponse.FromString,
             options,
             channel_credentials,
             insecure,

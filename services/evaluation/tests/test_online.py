@@ -1,10 +1,18 @@
 import asyncio
 import datetime as dt
+import json
 from collections.abc import Sequence
 
+import grpc
+import pytest
+
+from bambuflow.admin.v1 import quality_trend_pb2, quality_trend_pb2_grpc
 from bambuflow.answer.v1 import answer_pb2, records_pb2
-from bambuflow_evaluation import online
+from bambuflow.identity.v1 import principal_pb2
+from bambuflow_evaluation import audit, llm_judge, online
 from bambuflow_evaluation.online import Daily
+from bambuflow_platform.grpc_server import AuthInterceptor
+from bambuflow_platform.principal import JWKS, Verifier
 
 DAY = dt.date(2026, 10, 6)
 
@@ -91,6 +99,19 @@ class FakeRecords:
         return records_pb2.ListAnswerRecordsResponse(records=self.records)
 
 
+class MemAudit:
+    def __init__(self, fail: bool = False) -> None:
+        self.keys: list[str] = []
+        self.bodies: list[bytes] = []
+        self.fail = fail
+
+    def put(self, key: str, body: bytes) -> None:
+        if self.fail:
+            raise OSError("审计桶不可用")
+        self.keys.append(key)
+        self.bodies.append(body)
+
+
 class MemStore:
     def __init__(self) -> None:
         self.rows: dict[tuple[str, dt.date], Daily] = {}
@@ -105,9 +126,112 @@ class MemStore:
 def test_run_day_writes_each_tenant_and_reads_the_whole_day() -> None:
     good = answer([("额度不超过 30 万元。[S1]", ["单户额度不超过 30 万元。"])])
     store, stub = MemStore(), FakeRecords([record(1, good)])
-    out = asyncio.run(online.run_day(stub, OverlapNLI(), store, ["credit", "risk"], DAY))
+    logs = MemAudit()
+    out = asyncio.run(
+        online.run_day(
+            stub,
+            OverlapNLI(),
+            store,
+            ["credit", "risk"],
+            DAY,
+            audit.Writer(logs, now=lambda: dt.datetime(2026, 10, 7, 1, tzinfo=dt.UTC)),
+        )
+    )
     assert [d.tenant for d in out] == ["credit", "risk"] and out[0].groundedness == 1.0
     req = stub.requests[0]
     assert req.include_answer and req.since.ToDatetime(dt.UTC).date() == DAY
     assert (req.until.ToDatetime(dt.UTC) - req.since.ToDatetime(dt.UTC)) == dt.timedelta(days=1)
     assert set(store.rows) == {("credit", DAY), ("risk", DAY)}
+    # 读每个租户的回答原文之前各写一条访问审计
+    rows = [json.loads(b) for b in logs.bodies]
+    assert [(r["actor"], r["action"], r["object_id"]) for r in rows] == [
+        ("service:evaluation", "answer_records.read", "credit"),
+        ("service:evaluation", "answer_records.read", "risk"),
+    ]
+    assert all(k.startswith("evaluation/changes/2026/10/07/") for k in logs.keys)
+
+
+def test_run_day_skips_tenant_when_audit_unavailable() -> None:
+    good = answer([("额度不超过 30 万元。[S1]", ["单户额度不超过 30 万元。"])])
+    store, stub = MemStore(), FakeRecords([record(1, good)])
+    trail = audit.Writer(MemAudit(fail=True))
+    out = asyncio.run(online.run_day(stub, OverlapNLI(), store, ["credit"], DAY, trail))
+    # 审计写不进去就不读回答原文
+    assert out == [] and stub.requests == [] and store.rows == {}
+
+
+class RoleVerifier(Verifier):
+    """令牌原文就是调用者的角色。"""
+
+    def __init__(self) -> None:
+        super().__init__(JWKS("http://unused"), operator=True)
+
+    def verify(self, raw: str) -> principal_pb2.Principal:
+        return principal_pb2.Principal(sub="u", roles=[raw])
+
+
+def test_trends_owner_sees_only_own_tenant() -> None:
+    async def main() -> None:
+        server = grpc.aio.server(interceptors=[AuthInterceptor(RoleVerifier())])
+        quality_trend_pb2_grpc.add_QualityTrendServiceServicer_to_server(
+            online.TrendService(MemStore()), server
+        )
+        port = server.add_insecure_port("127.0.0.1:0")
+        await server.start()
+        try:
+            async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as ch:
+                stub = quality_trend_pb2_grpc.QualityTrendServiceStub(ch)
+
+                async def call(
+                    role: str, tenant: str
+                ) -> quality_trend_pb2.GetQualityTrendsResponse:
+                    req = quality_trend_pb2.GetQualityTrendsRequest(tenant=tenant)
+                    md = (("authorization", "Bearer " + role),)
+                    resp: quality_trend_pb2.GetQualityTrendsResponse = await stub.GetQualityTrends(
+                        req, metadata=md, timeout=5
+                    )
+                    return resp
+
+                assert (await call("tenant_owner:credit", "credit")).tenant == "credit"
+                for role, tenant in (("tenant_owner:credit", "ops"), ("auditor", "credit")):
+                    with pytest.raises(grpc.aio.AioRpcError) as e:
+                        await call(role, tenant)
+                    assert e.value.code() == grpc.StatusCode.PERMISSION_DENIED
+        finally:
+            await server.stop(None)
+
+    asyncio.run(main())
+
+
+class SometimesJudge:
+    """第二条回答评审失败；其余按回答里有没有“不”判忠实与否。"""
+
+    version = "judge-x+judge@1"
+
+    def __init__(self) -> None:
+        self.n = 0
+
+    async def judge(
+        self, question: str, answer: str, quotes: Sequence[str], key_points: Sequence[str]
+    ) -> llm_judge.Judgment:
+        self.n += 1
+        if self.n == 2:
+            raise llm_judge.JudgeError("评审模型不可用")
+        return llm_judge.Judgment("不" not in answer)
+
+
+def test_online_faithfulness_counts_only_judged_answers() -> None:
+    answers = [
+        answer([("额度 30 万元。[S1]", ["额度 30 万元"])]),
+        answer([("期限 5 年。[S1]", ["期限 5 年"])]),
+        answer([("不需要担保。[S1]", ["需要担保"])]),
+    ]
+    for a in answers:
+        a.answer = "".join(s.text for s in a.sentences)
+    d = online.Daily("credit", DAY, 3, 3, 1.0, 1.0, "nli")
+    got = asyncio.run(online.faithfulness(d, answers, SometimesJudge()))
+    assert (
+        got.faithfulness_judged == 2
+        and got.faithfulness == 0.5
+        and got.llm_judge == "judge-x+judge@1"
+    )

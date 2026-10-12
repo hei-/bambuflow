@@ -10,10 +10,11 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
+	"github.com/hei-/bambuflow/services/gateway/internal/audit"
 )
 
 // 对外 JSON 结构，与 contracts/openapi/v1/openapi.yaml 一致：字段 snake_case，枚举值为 proto 枚举名去掉前缀后的小写形式。
@@ -128,6 +129,8 @@ type searchRequest struct {
 	Question string       `json:"question"`
 	Filters  *filtersJSON `json:"filters,omitempty"`
 	TopK     *int32       `json:"top_k,omitempty"`
+	// 是否在每条结果里返回各路分数（retrieval 详设 3.2、7.5）
+	IncludeScoreDetails bool `json:"include_score_details,omitempty"`
 }
 
 type hitJSON struct {
@@ -146,6 +149,41 @@ type hitJSON struct {
 	GraphPath []graphEdgeJSON `json:"graph_path,omitempty"`
 	// 入库时检测到可疑指令（技术设计文档 8.5）：只在为真时输出
 	InjectionFlag bool `json:"injection_flag,omitempty"`
+	// 命中它的召回路与名次总是输出；各路分数只在请求 include_score_details 时输出（retrieval 详设 7.5）
+	MatchedBy    []routeMatchJSON  `json:"matched_by"`
+	ScoreDetails *scoreDetailsJSON `json:"score_details,omitempty"`
+}
+
+type routeMatchJSON struct {
+	Route   string `json:"route"`
+	QueryID string `json:"query_id"`
+	Rank    int32  `json:"rank"`
+}
+
+// scoreDetailsJSON 的各路分数归一化到 0–1，该路没有命中时不输出。
+type scoreDetailsJSON struct {
+	Keyword    *float64 `json:"keyword,omitempty"`
+	Dense      *float64 `json:"dense,omitempty"`
+	Graph      *float64 `json:"graph,omitempty"`
+	Identifier *float64 `json:"identifier,omitempty"`
+	RRF        float64  `json:"rrf"`
+	Rerank     *float64 `json:"rerank,omitempty"`
+	Sparse     *float64 `json:"sparse,omitempty"`
+}
+
+// routeMatch 是回答契约与检索契约里命中记录的共同读法：两个契约各自定义了同样字段的消息。
+type routeMatch interface {
+	GetRoute() string
+	GetQueryId() string
+	GetRank() int32
+}
+
+func matchesOf[M routeMatch](ms []M) []routeMatchJSON {
+	out := []routeMatchJSON{}
+	for _, m := range ms {
+		out = append(out, routeMatchJSON{m.GetRoute(), m.GetQueryId(), m.GetRank()})
+	}
+	return out
 }
 
 type graphEdgeJSON struct {
@@ -202,27 +240,39 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request, c *call) (any, e
 	if topK < 1 || topK > 50 || (req.Filters != nil && filters == nil) {
 		return nil, problemInvalid
 	}
-	return s.runSearch(c, principal, "search", req.Question, filters, topK)
+	return s.runSearch(c, principal, "search", req.Question, filters, topK, req.IncludeScoreDetails)
 }
 
 // runSearch 调 retrieval.Search 并转成对外结构；/v1/search 与 MCP 的 search_documents 共用，只是调用目的不同。
-func (s *Server) runSearch(c *call, principal, purpose, question string, filters *commonv1.Filters, topK int32) (searchResult, error) {
+func (s *Server) runSearch(c *call, principal, purpose, question string, filters *commonv1.Filters, topK int32,
+	details bool) (searchResult, error) {
 	ctx, cancel := downstream(c.ctx, principal, purpose, "", searchDeadline)
 	defer cancel()
 	resp, err := s.Retrieval.Search(ctx, &retrievalv1.SearchRequest{
 		Queries: []*retrievalv1.SubQuery{{Id: "q1", Text: question}}, Filters: filters, TopK: topK,
+		IncludeScoreDetails: details,
 	})
 	if err != nil {
 		return searchResult{}, fromGRPC(err)
 	}
 	out := searchResult{TraceID: c.traceID, IndexVersion: resp.GetIndexVersion(), Degraded: degradedOf(resp.GetDegraded()), Hits: []hitJSON{}}
+	// 仅检索时“展示”就是返回的结果（技术设计文档 8.3）
+	c.blocks = &answerv1.AuditBlocks{}
+	c.versions = &audit.Versions{IndexVersion: resp.GetIndexVersion(), PolicyVersion: resp.GetPolicyVersion(),
+		EmbeddingModel: resp.GetEmbeddingModel(), RerankModel: resp.GetRerankModel(), Degraded: degradedNames(resp.GetDegraded())}
 	for _, h := range resp.GetHits() {
+		c.blocks.ShownChunkIds = append(c.blocks.ShownChunkIds, h.GetChunkId())
+		c.restrictedChunk(h.GetClassification(), h.GetChunkId())
 		out.Hits = append(out.Hits, hitJSON{
 			ChunkID: h.GetChunkId(), DocID: h.GetDocId(), DocVersion: h.GetDocVersion(), Title: h.GetTitle(),
 			Text: h.GetText(), Span: spanOf(h.GetSpan()), Score: h.GetScore(), SourceURI: h.GetSourceUri(),
 			SourceType: enumName(h.GetSourceType()), Owner: h.GetOwner(), Classification: enumName(h.GetClassification()),
 			GraphPath: graphEdgesOf(h.GetGraphPath()), InjectionFlag: h.GetInjectionFlag(),
+			MatchedBy: matchesOf(h.GetMatchedBy()),
 		})
+		if d := h.GetScoreDetails(); d != nil {
+			out.Hits[len(out.Hits)-1].ScoreDetails = &scoreDetailsJSON{d.Keyword, d.Dense, d.Graph, d.Identifier, d.GetRrf(), d.Rerank, d.Sparse}
+		}
 	}
 	return out, nil
 }
@@ -338,9 +388,22 @@ type whyJSON struct {
 	// 主题汇总：结论基于文档摘要归纳（K2 详设第 6 节）
 	BasedOnSummaries bool `json:"based_on_summaries,omitempty"`
 	// A/B 实验与分组（orchestrator 详设 12.3）；租户没有运行中的实验时不输出
-	ExperimentID  string            `json:"experiment_id,omitempty"`
-	ExperimentArm string            `json:"experiment_arm,omitempty"`
-	Degraded      []degradationJSON `json:"degraded"`
+	ExperimentID  string `json:"experiment_id,omitempty"`
+	ExperimentArm string `json:"experiment_arm,omitempty"`
+	// 被引用证据的召回解释（retrieval 详设 7.5）与多跳 LLM 重排的版本（orchestrator 详设 6.5）
+	EvidenceScores []evidenceScoreJSON `json:"evidence_scores,omitempty"`
+	LLMRerank      string              `json:"llm_rerank,omitempty"`
+	// 租户 pipeline 与全局 routing 的配置版本；没有生效版本（用默认值）时不输出
+	PipelineVersion string            `json:"pipeline_version,omitempty"`
+	RoutingVersion  string            `json:"routing_version,omitempty"`
+	Degraded        []degradationJSON `json:"degraded"`
+}
+
+type evidenceScoreJSON struct {
+	RefID        int32             `json:"ref_id"`
+	ChunkID      string            `json:"chunk_id"`
+	MatchedBy    []routeMatchJSON  `json:"matched_by"`
+	ScoreDetails *scoreDetailsJSON `json:"score_details,omitempty"`
 }
 
 type graphPathJSON struct {
@@ -450,7 +513,44 @@ func (s *Server) answer(ctx context.Context, c *call, req *answerv1.AnswerReques
 	}
 	s.observe(c, resp.GetWhy().GetIntent())
 	c.blocks, c.usage = resp.GetAudit(), resp.GetUsage()
+	c.recordAnswer(resp.GetStatus(), resp.GetWhy(), sentenceTexts(resp.GetSentences()))
+	c.restrictedAnswer(resp)
 	return resp, nil
+}
+
+// recordAnswer 记下进审计的回答状态、版本与已推送句子的摘要（技术设计文档 8.3）。
+func (c *call) recordAnswer(st answerv1.Status, w *answerv1.Why, sentences []string) {
+	c.answerStatus, c.versions, c.answerSHA = enumName(st), versionsOf(w), audit.AnswerDigest(sentences)
+}
+
+func versionsOf(w *answerv1.Why) *audit.Versions {
+	if w == nil {
+		return nil
+	}
+	v := &audit.Versions{IndexVersion: w.GetIndexVersion(), PolicyVersion: w.GetPolicyVersion(), EmbeddingModel: w.GetEmbeddingModel(),
+		RerankModel: w.GetRerankModel(), GenerationModel: w.GetGenerationModel(), PromptVersion: w.GetPromptVersion(),
+		NLIModel: w.GetNliModel(), CalculatorVersion: w.GetCalculatorVersion(), ExperimentID: w.GetExperimentId(),
+		PipelineVersion: w.GetPipelineVersion(), RoutingVersion: w.GetRoutingVersion(), Degraded: degradedNames(w.GetDegraded())}
+	if w.GetExperimentId() != "" {
+		v.ExperimentArm = enumName(w.GetExperimentArm())
+	}
+	return v
+}
+
+func degradedNames(ds []*commonv1.Degradation) []string {
+	var out []string
+	for _, d := range ds {
+		out = append(out, d.GetStage()+":"+d.GetReason())
+	}
+	return out
+}
+
+func sentenceTexts(ss []*answerv1.Sentence) []string {
+	out := make([]string, 0, len(ss))
+	for _, x := range ss {
+		out = append(out, x.GetText())
+	}
+	return out
 }
 
 // answerKind 未设置时按普通事实问答（旧版 orchestrator 不填这个字段）
@@ -556,6 +656,15 @@ func whyOf(why *answerv1.Why) whyJSON {
 	for _, p := range why.GetGraphPath() {
 		out.GraphPath = append(out.GraphPath, graphPathJSON{p.GetRefId(), p.GetChunkId(), nonNil(graphEdgesOf(p.GetEdges()))})
 	}
+	for _, e := range why.GetEvidenceScores() {
+		j := evidenceScoreJSON{RefID: e.GetRefId(), ChunkID: e.GetChunkId(), MatchedBy: matchesOf(e.GetMatchedBy())}
+		if d := e.GetScoreDetails(); d != nil {
+			j.ScoreDetails = &scoreDetailsJSON{d.Keyword, d.Dense, d.Graph, d.Identifier, d.GetRrf(), d.Rerank, d.Sparse}
+		}
+		out.EvidenceScores = append(out.EvidenceScores, j)
+	}
+	out.LLMRerank = why.GetLlmRerank()
+	out.PipelineVersion, out.RoutingVersion = why.GetPipelineVersion(), why.GetRoutingVersion()
 	return out
 }
 

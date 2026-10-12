@@ -1,0 +1,160 @@
+{{- /*
+身份同步（gateway 详设 3.5，docs/identity-sync.md）：governance 镜像的 identity-sync 子命令，把上游的用户与群组写进平台身份库；
+identitySync.config 就是它的配置文件（不含口令），上游三选一：
+- ldap、file 由它定时拉取，单副本、先停后起（两份同时拉会重复写并打乱游标）；file 时上游定时写入 identitySync.exportClaim
+  这个 PVC，只读挂在 identitySync.exportMountPath（config.file.path 要在这个目录下）；
+- scim 是上游推送：端口取 config.scim.listen，Service 供入口代理转发，网络策略只放行入口所在命名空间；两个副本。
+数据库连接串与上游凭证（LDAP 绑定口令、SCIM 调用凭证，变量名由 config 里的 *_env 指定）在 Vault 的 bambuflow/identity-sync。
+就绪探针检查最近 3 个 interval 内同步成功过；不设存活探针：上游不可用时重启无济于事，由同步状态告警。
+*/ -}}
+{{- $v := .Values -}}
+{{- $s := $v.identitySync -}}
+{{- $ctx := dict "root" $ "component" "identity-sync" -}}
+{{- $scim := hasKey $s.config "scim" -}}
+{{- $config := toYaml $s.config -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+data:
+  identity-sync.yaml: |
+    {{- $config | nindent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ ternary 2 1 $scim }}
+  {{- if not $scim }}
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bambuflow.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/config: {{ $config | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "bambuflow.name" $ctx }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: identity-sync
+          image: "{{ $v.image.registry }}/governance:{{ $v.image.tag }}"
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          args: ["identity-sync"]
+          {{- if $scim }}
+          ports:
+            - name: scim
+              containerPort: {{ trimPrefix ":" $s.config.scim.listen | atoi }}
+          {{- end }}
+          env:
+            - name: BF_IDENTITY_SYNC_CONFIG
+              value: /etc/bambuflow/identity-sync.yaml
+          envFrom:
+            - secretRef:
+                name: {{ include "bambuflow.name" $ctx }}
+          readinessProbe:
+            exec:
+              command: ["governance", "healthcheck"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /etc/bambuflow/identity-sync.yaml
+              subPath: identity-sync.yaml
+              readOnly: true
+            {{- if $s.exportClaim }}
+            - name: export
+              mountPath: {{ $s.exportMountPath }}
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml $s.resources | nindent 12 }}
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "bambuflow.name" $ctx }}
+        {{- if $s.exportClaim }}
+        - name: export
+          persistentVolumeClaim:
+            claimName: {{ $s.exportClaim }}
+            readOnly: true
+        {{- end }}
+{{- if $scim }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "bambuflow.selector" $ctx | nindent 4 }}
+  ports:
+    - name: scim
+      port: {{ trimPrefix ":" $s.config.scim.listen | atoi }}
+      targetPort: scim
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bambuflow.name" $ctx }}
+  labels:
+    {{- include "bambuflow.labels" $ctx | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bambuflow.selector" $ctx | nindent 6 }}
+  policyTypes: [Ingress]
+  {{- if $scim }}
+  ingress:
+    - ports:
+        - port: {{ trimPrefix ":" $s.config.scim.listen | atoi }}
+      from:
+        {{- include "bambuflow.namespace" $v.networkPolicy.ingressNamespace | nindent 8 }}
+  {{- else }}
+  ingress: []
+  {{- end }}

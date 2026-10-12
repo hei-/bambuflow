@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -31,22 +32,22 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	answerv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1"
-	batchv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/batch/v1"
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/admission"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/audit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/authn"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/idempotency"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/identity"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/issuer"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/ratelimit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
+	answerv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1"
+	batchv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/batch/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
+	"github.com/hei-/bambuflow/services/gateway/internal/admission"
+	"github.com/hei-/bambuflow/services/gateway/internal/audit"
+	"github.com/hei-/bambuflow/services/gateway/internal/authn"
+	"github.com/hei-/bambuflow/services/gateway/internal/idempotency"
+	"github.com/hei-/bambuflow/services/gateway/internal/identity"
+	"github.com/hei-/bambuflow/services/gateway/internal/issuer"
+	"github.com/hei-/bambuflow/services/gateway/internal/ratelimit"
+	"github.com/hei-/bambuflow/services/gateway/internal/roles"
 )
 
 const platformIssuer = "http://keycloak:8080/realms/bambuflow"
@@ -76,10 +77,15 @@ func newFakeAuthz(t *testing.T) *fakeAuthz {
 }
 
 func (a *fakeAuthz) token(t *testing.T, username, client string) string {
+	return a.tokenWith(t, username, client, "2", time.Now().Add(-time.Minute))
+}
+
+// tokenWith 指定认证强度（acr）与登录时间（auth_time）
+func (a *fakeAuthz) tokenWith(t *testing.T, username, client, acr string, authTime time.Time) string {
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": platformIssuer, "aud": authn.Audience, "azp": client, "preferred_username": username,
-		"iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(), "auth_time": now.Add(-time.Minute).Unix(),
+		"iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(), "auth_time": authTime.Unix(), "acr": acr,
 	})
 	tok.Header["kid"] = "platform-k1"
 	s, err := tok.SignedString(a.key)
@@ -107,18 +113,40 @@ func (f *fakeIdentities) Lookup(_ context.Context, u string) (identity.User, boo
 
 func (f *fakeIdentities) LastSync(context.Context) (time.Time, error) { return f.lastSync, f.err }
 
+// Unknown：群组按某个用户属于它算存在
+func (f *fakeIdentities) Unknown(_ context.Context, users, groups []string) ([]string, []string, error) {
+	var bu, bg []string
+	for _, u := range users {
+		if _, ok := f.users[u]; !ok {
+			bu = append(bu, u)
+		}
+	}
+	for _, g := range groups {
+		found := false
+		for _, u := range f.users {
+			found = found || slices.Contains(u.Groups, g)
+		}
+		if !found {
+			bg = append(bg, g)
+		}
+	}
+	return bu, bg, f.err
+}
+
 // ---- 审计 ----
 
 type fakeAudit struct {
 	mu      sync.Mutex
 	records []audit.Record
 	fail    bool
+	// 只让这一类记录（Record.Event）写入失败
+	failEvent string
 }
 
 func (f *fakeAudit) Write(r audit.Record) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.fail {
+	if f.fail || (f.failEvent != "" && r.Event == f.failEvent) {
 		return errors.New("磁盘已满")
 	}
 	f.records = append(f.records, r)
@@ -158,10 +186,17 @@ func (e *echoRetrieval) Search(ctx context.Context, req *retrievalv1.SearchReque
 	p := grpcmw.PrincipalFrom(ctx)
 	seen := fmt.Sprintf("%s@%s|%s|groups=%d|ref=%s|actor=%s", p.GetSub(), p.GetTenant(), p.GetClearance(),
 		len(p.GetGroups()), p.GetGroupsRef(), p.GetActor())
+	var details *retrievalv1.ScoreDetails
+	if req.GetIncludeScoreDetails() {
+		dense := 0.7
+		details = &retrievalv1.ScoreDetails{Dense: &dense, Rrf: 0.016}
+	}
 	return &retrievalv1.SearchResponse{
 		IndexVersion: seen,
 		Hits: []*retrievalv1.Hit{{
-			ChunkId: "wiki:doc-1#a1", DocId: "doc-1", DocVersion: 3, Title: "授信管理办法", Text: req.GetQueries()[0].GetText(),
+			MatchedBy:    []*retrievalv1.RouteMatch{{Route: "dense", QueryId: "q1", Rank: 1}},
+			ScoreDetails: details,
+			ChunkId:      "wiki:doc-1#a1", DocId: "doc-1", DocVersion: 3, Title: "授信管理办法", Text: req.GetQueries()[0].GetText(),
 			Span: &commonv1.Span{CharStart: 0, CharEnd: 10}, Score: 0.9,
 			SourceType: commonv1.SourceType_SOURCE_TYPE_WIKI, Classification: commonv1.Classification_CLASSIFICATION_INTERNAL,
 			GraphPath: []*retrievalv1.GraphEdge{{
@@ -188,6 +223,8 @@ type fakeOrchestrator struct {
 	// 回放与反馈收到的请求（replay_test.go）
 	replayReq   *answerv1.GetAnswerRequest
 	feedbackReq *answerv1.CreateFeedbackRequest
+	// 删除会话的请求：“调用者/会话 ID”
+	deleted []string
 }
 
 func (f *fakeOrchestrator) set(events []*answerv1.StreamAnswerResponse, err error, block bool) {
@@ -270,7 +307,7 @@ func newEnv(t *testing.T) *env {
 		}
 	}
 	write("credit", "tenant: credit\nrollout: general\nmember_groups: [credit-l2, project-000]\nbound_clients: [biz-credit]\n"+
-		"auditor_groups: [credit-audit]\n"+
+		"auditor_groups: [credit-audit]\nowner_groups: [credit-owners]\n"+
 		"mcp_agents: [{client_id: credit-bot, purpose: 信贷问答助手, owner: 信贷部, rps: 7}]\n")
 	// 配额只够两次预占（每次 8800），并发上限 2：专门用来测租户这一层，不影响其他用例
 	write("tight", "tenant: tight\nrollout: general\nmember_groups: [tight-g]\n"+
@@ -333,6 +370,8 @@ func newEnv(t *testing.T) *env {
 			"dana":  {Username: "dana", Dept: "信贷部", Clearance: 3, Active: true, Groups: []string{"credit-l2", "data-owners"}},
 			"paul":  {Username: "paul", Dept: "平台部", Clearance: 2, Active: true, Groups: []string{"platform-admins"}},
 			"ivan":  {Username: "ivan", Dept: "信息安全部", Clearance: 2, Active: true, Groups: []string{"infosec"}},
+			// 信贷租户的负责人（租户配置的 owner_groups），不是租户成员
+			"owen": {Username: "owen", Dept: "信贷部", Clearance: 2, Active: true, Groups: []string{"credit-owners"}},
 		},
 	}}
 	s := &Server{
@@ -346,6 +385,7 @@ func newEnv(t *testing.T) *env {
 		Quota:    &admission.Quota{Redis: rdb, Instances: 1, Location: time.UTC, Log: quiet, Now: time.Now},
 		Overload: admission.NewAdaptive(1000, time.Now), UserStreams: 3,
 		PublicURL: "https://rag.example", AuthorizationServer: platformIssuer,
+		StepUp: StepUp{ACR: []string{"2"}, MaxAge: 10 * time.Minute},
 		AdminRoles: roles.Map{
 			roles.PlatformOperator: {"platform-ops"}, roles.Auditor: {"platform-audit"}, roles.DataOwner: {"data-owners"},
 			roles.InfoSec: {"infosec"}, roles.PlatformAdmin: {"platform-admins"},
@@ -459,6 +499,11 @@ func TestSearchCarriesVerifiablePrincipal(t *testing.T) {
 	if got := r.body["index_version"]; got != "alice@credit|CLASSIFICATION_INTERNAL|groups=1|ref=|actor=console" {
 		t.Errorf("下游应拿到验签通过、属性来自身份库的 Principal，得到 %v", got)
 	}
+	// 仅检索时“展示”就是返回的结果，版本同样进审计
+	if last := e.audit.snapshot()[len(e.audit.snapshot())-1]; len(last.ShownChunkIDs) != 1 || last.ShownChunkIDs[0] != "wiki:doc-1#a1" ||
+		last.Versions == nil || !strings.HasPrefix(last.Versions.IndexVersion, "alice@credit") {
+		t.Errorf("检索的审计: %+v", last)
+	}
 	hit := r.body["hits"].([]any)[0].(map[string]any)
 	if hit["source_type"] != "wiki" || hit["classification"] != "internal" {
 		t.Errorf("枚举应转成小写对外值: %v", hit)
@@ -468,6 +513,16 @@ func TestSearchCarriesVerifiablePrincipal(t *testing.T) {
 	if edge["from_entity"] != "清算核心服务" || edge["from_type"] != "system" || edge["relation_type"] != "belongs_to" ||
 		edge["to_entity"] != "支付清算部" || edge["to_type"] != "org" {
 		t.Errorf("图路径映射不对: %v", edge)
+	}
+
+	// 命中记录总是返回；各路分数只按请求返回
+	if m := hit["matched_by"].([]any)[0].(map[string]any); m["route"] != "dense" || m["rank"] != 1.0 || hit["score_details"] != nil {
+		t.Errorf("分数解释: %v", hit)
+	}
+	r = e.do(t, "/v1/search", e.authz.token(t, "alice", "console"), "", `{"question":"额度","include_score_details":true}`)
+	d, _ := r.body["hits"].([]any)[0].(map[string]any)["score_details"].(map[string]any)
+	if r.status != 200 || d["dense"] != 0.7 || d["rrf"] != 0.016 || d["keyword"] != nil {
+		t.Errorf("include_score_details 应返回各路分数: %d %v", r.status, d)
 	}
 
 	// 业务系统客户端绑定租户，无需请求头
@@ -647,7 +702,8 @@ func goodEvents() []*answerv1.StreamAnswerResponse {
 			BlockType: answerv1.BlockType_BLOCK_TYPE_PARAGRAPH,
 		}}},
 		{Event: &answerv1.StreamAnswerResponse_Final{Final: &answerv1.AnswerFinal{
-			Status: answerv1.Status_STATUS_ANSWERED, Why: &answerv1.Why{GenerationModel: "chat@t"},
+			Status: answerv1.Status_STATUS_ANSWERED, Why: &answerv1.Why{GenerationModel: "chat@t", IndexVersion: "ix-1", PolicyVersion: "pol-1",
+				PromptVersion: "qa@3", Degraded: []*commonv1.Degradation{{Stage: "rerank", Reason: "timeout"}}},
 		}}},
 	}
 }
@@ -666,6 +722,12 @@ func TestAnswersStreamRelaysEventsInOrder(t *testing.T) {
 	recs := e.audit.snapshot()
 	if len(recs) != 2 || recs[0].Stream != "open" || recs[1].Stream != "end" || recs[1].Reason != "" {
 		t.Fatalf("SSE 请求开始输出前、结束时各写一条审计: %+v", recs)
+	}
+	// 结束那条带上版本、状态与已推送句子的摘要：回答记录销毁后审计仍能追溯（技术设计文档 8.3）
+	if v := recs[1].Versions; v == nil || v.IndexVersion != "ix-1" || v.PolicyVersion != "pol-1" || v.PromptVersion != "qa@3" ||
+		v.GenerationModel != "chat@t" || strings.Join(v.Degraded, ",") != "rerank:timeout" || recs[1].AnswerStatus != "answered" ||
+		recs[1].AnswerSHA != audit.AnswerDigest([]string{"额度不超过 30 万元。[S1]"}) {
+		t.Errorf("审计的版本与回答摘要: %+v %+v", recs[1], v)
 	}
 	if id := evs[0].data["answer_id"]; id != recs[0].AnswerID || !strings.HasPrefix(id.(string), "ans_") || evs[0].data["trace_id"] != recs[0].TraceID {
 		t.Errorf("meta 的 answer_id 由 gateway 生成，与审计一致: %v", evs[0].data)

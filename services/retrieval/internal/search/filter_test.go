@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
-	retrievalv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	retrievalv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/retrieval/v1"
 )
 
 var internal = commonv1.Classification_CLASSIFICATION_INTERNAL
@@ -116,9 +116,9 @@ func TestRelationIntentRaisesGraphWeight(t *testing.T) {
 	// 稠密路第 1、2 名是 d1、d2，图召回第 1 名是 g，另一路（关键词）第 2 名也是 d1
 	lists := func(intent retrievalv1.SearchIntent) [][]ranking {
 		return [][]ranking{{
-			{list: []Candidate{d1, d2}, weight: routeWeight("dense", intent)},
-			{list: []Candidate{d2, d1}, weight: routeWeight("keyword", intent)},
-			{list: []Candidate{g}, weight: routeWeight("graph", intent)},
+			{list: []Candidate{d1, d2}, weight: routeWeight("dense", intent, nil)},
+			{list: []Candidate{d2, d1}, weight: routeWeight("keyword", intent, nil)},
+			{list: []Candidate{g}, weight: routeWeight("graph", intent, nil)},
 		}}
 	}
 	// 普通问题：两路都命中的块排在只有图召回命中的块前面
@@ -129,7 +129,7 @@ func TestRelationIntentRaisesGraphWeight(t *testing.T) {
 	if got := ids(fuse(lists(retrievalv1.SearchIntent_SEARCH_INTENT_RELATION))); got[0] != "g" {
 		t.Fatalf("关系类问题应把图召回的结果排在前面: %v", got)
 	}
-	if routeWeight("dense", retrievalv1.SearchIntent_SEARCH_INTENT_RELATION) != 1 {
+	if routeWeight("dense", retrievalv1.SearchIntent_SEARCH_INTENT_RELATION, nil) != 1 {
 		t.Fatal("关系类问题只提高图召回的权重")
 	}
 }
@@ -157,7 +157,7 @@ func TestDiversify(t *testing.T) {
 		{Candidate: cand("a4", "A", "第六条 期限最长五年"), score: 0.6}, // 同文档第 4 块：去掉
 		{Candidate: cand("c1", "C", "员工请假须提前申请"), score: 0.5},
 	}
-	got := ids(diversify(in))
+	got := ids(diversify(in, poolSize))
 	if slices.Contains(got, "b1") || slices.Contains(got, "a4") || len(got) != 4 {
 		t.Fatalf("去重与同文档限量 %v", got)
 	}

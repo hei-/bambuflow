@@ -14,11 +14,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/audit"
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/services/gateway/internal/audit"
+	"github.com/hei-/bambuflow/services/gateway/internal/roles"
 )
 
 // request 发一个任意方法的请求，headers 里可以带 Idempotency-Key 等；token 为空时不带 Authorization。
@@ -104,6 +104,7 @@ func TestAdminDispatchAndRBAC(t *testing.T) {
 		{"没有平台角色", http.MethodGet, "/v1/admin/things", tok("alice", "console"), nil, 403, "forbidden"},
 		{"角色不在这个接口允许的范围", http.MethodPost, "/v1/admin/things/v1/activate", tok("audra", "console"), key, 403, "forbidden"},
 		{"经业务系统客户端调用", http.MethodGet, "/v1/admin/things", tok("olga", "biz-credit"), nil, 403, "forbidden"},
+		{"代用户调用的令牌", http.MethodGet, "/v1/admin/things", e.authz.tokenAct(t, "olga", "console", "console"), nil, 403, "forbidden"},
 		{"写操作没有幂等键", http.MethodPost, "/v1/admin/things/v1/activate", tok("olga", "console"), nil, 400, "invalid_request"},
 	}
 	for _, c := range cases {

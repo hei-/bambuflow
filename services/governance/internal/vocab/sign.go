@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
 )
 
 // Signer 给快照签名（governance 详设 9.2）：私钥来自 Vault，只在 governance 进程内存里。

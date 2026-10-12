@@ -115,7 +115,8 @@ services:
       # 签发方地址固定为容器网络内的名字，容器内外的令牌 iss 一致；本机经隧道访问时把 keycloak 指向 127.0.0.1
       KC_HOSTNAME: http://keycloak:8080
       PLATFORM_ISSUER: http://keycloak:8080/realms/bambuflow
-      CONSOLE_REDIRECT_URI: http://localhost/callback
+      # console 的回调地址（登录与退出后都回到这里）；e2e 模拟浏览器登录时用同一个
+      CONSOLE_REDIRECT_URI: http://localhost:${BF_CONSOLE_PORT:-27300}/callback
       CORP_IDP_ISSUER: http://keycloak:8080/realms/corp-idp
       CORP_IDP_CLIENT_ID: bambuflow-broker
       CORP_IDP_CLIENT_SECRET: ${BF_CORP_IDP_CLIENT_SECRET:-dev-only-broker}
@@ -201,9 +202,16 @@ services:
       BF_REDIS_ADDR: redis:6379
       # 租户配置的初始版本（只为还没有版本的租户导入，之后经变更单与发布修改）；开发镜像里是 tools/test-upstream/tenants
       BF_TENANTS_SEED_DIR: /etc/bambuflow/tenants
+      # 策略包的初始版本：全局基线随镜像提供，租户层取开发与测试用的（tools/test-upstream/policies）
+      BF_POLICY_SEED_DIRS: /etc/bambuflow/policies-base,/etc/bambuflow/policies
+      # console 修改 Git 类配置对象时写合并请求的去处：开发与演示写进容器内的目录（docker compose exec governance ls 查看）
+      BF_GIT_FORGE: ${BF_GIT_FORGE:-outbox}
+      BF_GIT_OUTBOX_DIR: /tmp/merge-requests
       BF_PLATFORM_CLIENTS: console
-      # 租户切到全量时核对评测门禁
+      # 租户切到全量时核对评测门禁；配置发布的门禁由 governance 发起
       BF_EVALUATION_ADDR: evaluation-api:9090
+      # 按版本取候选配置只对评测身份开放：评测副本转发的评测身份按 evaluation 的验签公钥校验
+      BF_EVAL_JWKS_URL: http://evaluation-api:8081/internal/jwks.json
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
     depends_on:
@@ -272,6 +280,9 @@ services:
       BF_ADMIN_ROLES_FILE: /etc/bambuflow/admin-roles.yaml
       BF_PLATFORM_CLIENTS: console
       BF_PLATFORM_ISSUER: http://keycloak:8080/realms/bambuflow
+      # 业务系统代用户调用的服务身份（gateway 详设 3.1）：生产由入口代理校验 mTLS 客户端证书后写这个头；
+      # 开发环境没有入口代理，e2e 直接带上它（tools/e2e/e2e_tests/test_on_behalf.py）
+      BF_CLIENT_CERT_HEADER: Ssl-Client-Subject-Dn
       # 开发环境的 MCP 资源标识用容器网络内的地址，与 e2e 访问 gateway 的地址一致
       BF_PUBLIC_URL: http://gateway:8080
       VAULT_ADDR: http://vault:8200
@@ -281,6 +292,9 @@ services:
       BF_BATCH_ADDR: batch:9090
       # 管理接口的实现方（gateway 详设 4.2）
       BF_GOVERNANCE_ADDR: governance:9090
+      BF_SNAPSHOT_CACHE_DIR: /tmp/snapshots
+      # 审批类管理操作的加强认证（部署配置清单 P7）：开发用的 Keycloak 没有多因素，刚登录（不是 SSO 续用）的 acr 为 1
+      BF_STEP_UP_ACR: "1"
       BF_EVALUATION_ADDR: evaluation-api:9090
       # indexing 在 ingest profile 里；没起时索引版本的管理接口返回 503
       BF_INDEXING_ADDR: indexing:9090
@@ -321,6 +335,28 @@ services:
     healthcheck:
       <<: *healthcheck
       test: [CMD, gateway, healthcheck]
+
+  # 管理控制台（services/console）：浏览器经它登录并调用 gateway，/v1 同源代理；本机访问 http://localhost:27300
+  # 登录跳转到 http://keycloak:8080（令牌签发方），浏览器所在机器要在 hosts 里把 keycloak 指向 127.0.0.1，见 docs/demo.md
+  console:
+    profiles: [core]
+    build:
+      context: ../..
+      dockerfile: services/console/Dockerfile
+      args:
+        NPM_REGISTRY: ${BF_NPM_REGISTRY:-https://registry.npmjs.org}
+      target: runtime
+    image: bambuflow-console:dev
+    environment:
+      BF_GATEWAY_URL: http://gateway:8080
+    ports:
+      - 127.0.0.1:${BF_CONSOLE_PORT:-27300}:8080
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
 
   # 异步批量问答（技术设计文档 13.5）：表结构在 batch schema
   batch-migrate:
@@ -379,8 +415,8 @@ services:
         condition: service_healthy
 
   # evaluation 常驻服务（evaluation 详设第 2 节）：A/B 分析、在线质量趋势与门禁报告接口；读 governance 的实验、orchestrator 的回答记录。
-  # 护栏检查（guard）与在线抽样评审（online-sample）在生产是每天的 CronJob，开发环境按需
-  # docker compose run evaluation-api guard | online-sample
+  # 护栏检查（guard）与在线抽样评审（online-sample）在生产是每天的 CronJob，灰度观察（observe）每 5 分钟一次，开发环境按需
+  # docker compose run evaluation-api guard | observe | online-sample
   evaluation-api:
     profiles: [core]
     image: bambuflow-evaluation:dev
@@ -389,12 +425,24 @@ services:
     environment:
       BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
       BF_CONFIG_ADDR: governance:9090
+      # 紧急拒绝规则备用通道的事件流（governance 详设 8.2）
+      BF_REDIS_ADDR: redis:6379
       BF_ORCHESTRATOR_ADDR: orchestrator:9090
       BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
       # 在线抽样评审：判定用的 NLI（应与线上校验器不同；模拟服务只有 nli 一个）与抽样的租户
       BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
       BF_EVAL_NLI_MODEL: ${BF_EVAL_NLI_MODEL:-nli}
       BF_ONLINE_TENANTS: credit,ops
+      # LLM 评审（Faithfulness、答案正确率，evaluation 详设 6.2）：OpenAI 兼容端点，模型应与生成模型不同；不配置时不算
+      BF_JUDGE_URL: ${BF_JUDGE_URL:-}
+      BF_JUDGE_MODEL: ${BF_JUDGE_MODEL:-}
+      BF_JUDGE_API_KEY: ${BF_JUDGE_API_KEY:-}
+      # 在线抽样评审读回答原文前写访问审计，与 gateway 入口审计同一个审计桶
+      BF_AUDIT_S3_ENDPOINT: http://rustfs:9000
+      BF_AUDIT_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_AUDIT_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_AUDIT_BUCKET: bambuflow-audit
+      BF_AUDIT_RETENTION_DAYS: "1"
       # 异步门禁（EvalService.RunGate）跑在评测副本上，评测身份用开发签名密钥签发（signer.py）
       BF_EVAL_RETRIEVAL_ADDR: retrieval-eval:9090
       BF_EVAL_ORCHESTRATOR_ADDR: orchestrator-eval:9090
@@ -435,7 +483,8 @@ services:
       <<: *healthcheck
       test: [CMD, governance, webhook-healthcheck]
 
-  # 唯一的索引读入口和权限过滤执行点；dev 镜像另含测试租户的策略数据（tools/test-upstream/policy）；
+  # 唯一的索引读入口和权限过滤执行点；检索权限策略包与租户授权都从 governance 的配置快照取
+  # （策略包的初始版本见 config/policies 与 tools/test-upstream/policies）；
   # 租户可访问的数据源从 governance 取（种子见 tools/test-upstream/sources.yaml）
   retrieval:
     profiles: [core]
@@ -451,10 +500,14 @@ services:
       BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
       BF_EMBEDDER_URL: ${BF_EMBEDDER_URL:-http://embedder:8000}
       BF_CONFIG_ADDR: governance:9090
+      # 加载成功的配置快照写盘：容器重启时 governance 不可用也能用上一份（governance 详设 8.1）
+      BF_SNAPSHOT_CACHE_DIR: /tmp/snapshots
       # 模拟嵌入服务同时提供模拟精排模型；真实模型时指向 models
       BF_RERANKER_URL: ${BF_RERANKER_URL:-http://embedder:8000}
       # 启用的召回路；对照评测时可设为 dense 只开稠密路
-      BF_RETRIEVERS: ${BF_RETRIEVERS:-dense,keyword,graph}
+      BF_RETRIEVERS: ${BF_RETRIEVERS:-dense,keyword,graph,identifier}
+      # 检索结果与查询向量缓存（retrieval 详设第 8 节）；开发环境默认不开，设成 redis:6379 即可试用
+      BF_CACHE_REDIS_ADDR: ${BF_CACHE_REDIS_ADDR:-}
       # 权限评测集与 e2e 用少数几个租户连续调用，开发环境把租户限流放宽；生产取 retrieval 详设 9.2 的部署值
       BF_TENANT_RPS: "1000"
       BF_TENANT_BURST: "2000"
@@ -475,15 +528,18 @@ services:
       test: [CMD, retrieval, healthcheck]
 
   # 评测副本（evaluation 详设 4.2）：与线上同一镜像，开启评测模式（接受门禁指定的索引版本），不接任何来自 gateway 的流量
+  # 评测副本只信任 evaluation 签发的评测身份，验签公钥取自 evaluation-api 的内部 JWKS
   retrieval-eval:
     extends: {service: retrieval}
     environment:
       BF_EVAL_MODE: "1"
+      BF_PRINCIPAL_JWKS_URL: http://evaluation-api:8081/internal/jwks.json
 
   orchestrator-eval:
     extends: {service: orchestrator}
     environment:
       BF_EVAL_MODE: "1"
+      BF_PRINCIPAL_JWKS_URL: http://evaluation-api:8081/internal/jwks.json
       BF_RETRIEVAL_ADDR: retrieval-eval:9090
     depends_on:
       retrieval-eval:
@@ -513,12 +569,20 @@ services:
       BF_RETRIEVAL_ADDR: retrieval:9090
       BF_LLM_URL: ${BF_LLM_URL:-http://llm:8000}
       BF_LLM_MODEL: ${BF_LLM_MODEL:-mock-chat-1}
+      # 默认模型是公司私有部署（private）还是外部模型（external，只处理公开级，总体设计 8.6）；
+      # 受限级另配专用实例 BF_LLM_RESTRICTED_URL/MODEL，没配时受限级只返回证据
+      BF_LLM_KIND: ${BF_LLM_KIND:-private}
+      BF_LLM_RESTRICTED_URL: ${BF_LLM_RESTRICTED_URL:-}
+      BF_LLM_RESTRICTED_MODEL: ${BF_LLM_RESTRICTED_MODEL:-}
+      # routing 可以选用的其他模型（逗号分隔，与 BF_LLM_MODEL 同一网关），A/B 与模型切换用
+      BF_LLM_ALT_MODELS: ${BF_LLM_ALT_MODELS:-}
       # 厂商专有的请求参数（JSON），如推理模型要关闭思考：{"thinking":{"type":"disabled"}}
       BF_LLM_EXTRA_BODY: ${BF_LLM_EXTRA_BODY:-}
       # 外部 LLM 的密钥以 secret 文件注入，不出现在环境变量与 docker inspect 里；用模拟网关时为空
       BF_LLM_API_KEY_FILE: /run/secrets/llm_api_key
       BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
       BF_CONFIG_ADDR: governance:9090
+      BF_SNAPSHOT_CACHE_DIR: /tmp/snapshots
       # 会话与 agent 中间状态（orchestrator 详设第 10 节）
       BF_REDIS_ADDR: redis:6379
       # 回答记录与反馈（回放、反馈接口）
@@ -642,6 +706,12 @@ services:
       BF_REDIS_ADDR: redis:6379
       # 索引版本的管理接口只接受 gateway 签发的管理 Principal
       BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+      # 发布、过期、物理删除写变更审计，与 gateway 入口审计同一个审计桶
+      BF_AUDIT_S3_ENDPOINT: http://rustfs:9000
+      BF_AUDIT_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_AUDIT_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_AUDIT_BUCKET: bambuflow-audit
+      BF_AUDIT_RETENTION_DAYS: "1"
     depends_on:
       indexing-migrate:
         condition: service_completed_successfully
@@ -830,6 +900,22 @@ services:
     environment:
       BF_REDIS_ADDR: redis:6379
       BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
+      # 撤销数据源时经 indexing 列出该源的文档并写删除标记（平台事件 source.revoked）
+      BF_INDEXING_ADDR: indexing:9090
+      # 撤销数据源执行完写变更审计，与 gateway 入口审计同一个审计桶
+      BF_AUDIT_S3_ENDPOINT: http://rustfs:9000
+      BF_AUDIT_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_AUDIT_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_AUDIT_BUCKET: bambuflow-audit
+      BF_AUDIT_RETENTION_DAYS: "1"
+      # 物理删除后删掉对象存储里的原文与文档包（DocumentPurged）
+      BF_S3_ENDPOINT: http://rustfs:9000
+      BF_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_S3_BUCKET: bambuflow-raw
+    depends_on:
+      rustfs:
+        condition: service_healthy
     healthcheck:
       <<: *healthcheck
       test: [CMD, connectors, healthcheck]
@@ -858,21 +944,30 @@ services:
       BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
       # 先对待发布版本跑评测门禁，通过才切别名
       BF_EVAL_ADDR: evaluation-api:9090
+      # 发布、过期、物理删除写变更审计，与 gateway 入口审计同一个审计桶
+      BF_AUDIT_S3_ENDPOINT: http://rustfs:9000
+      BF_AUDIT_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_AUDIT_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_AUDIT_BUCKET: bambuflow-audit
+      BF_AUDIT_RETENTION_DAYS: "1"
     depends_on:
       indexing:
         condition: service_healthy
       evaluation-api:
         condition: service_healthy
 
-  # 权限评测集的故障注入（make eval-perm）：同一镜像分别去掉策略包、指向不存在的元数据库、拿不到 governance 的租户授权，
+  # 权限评测集的故障注入（make eval-perm）：同一镜像分别没有策略包、指向不存在的元数据库、拿不到 governance 的租户授权，
   # 验证三种故障下都拒绝而不是放行。它们的 readiness 本来就应为 false，所以不等健康检查。
+  # 策略包与租户授权在同一份签名快照里下发：没有策略包的实例在这里是拿不到快照、本地也没有缓存的；
+  # “快照里没有策略包”（没有生效的全局基线）这一支由 retrieval internal/grants 的单元测试覆盖
   retrieval-nopolicy:
     profiles: [test]
     image: bambuflow-retrieval:dev
     pull_policy: never
     environment:
       <<: *retrieval-env
-      BF_POLICY_DIR: /nonexistent
+      BF_CONFIG_ADDR: governance-unavailable:9090
+      BF_SNAPSHOT_CACHE_DIR: ""
   retrieval-nodb:
     profiles: [test]
     image: bambuflow-retrieval:dev
@@ -896,12 +991,17 @@ services:
       dockerfile: services/evaluation/Dockerfile
     image: bambuflow-evaluation:dev
     environment:
-      BF_RETRIEVAL_ADDR: retrieval:9090
-      BF_ORCHESTRATOR_ADDR: orchestrator:9090
+      # 评测身份只在评测副本上有效（evaluation 详设 4.2）：make eval 与 make eval-retrieval 都打到评测副本
+      BF_RETRIEVAL_ADDR: retrieval-eval:9090
+      BF_ORCHESTRATOR_ADDR: orchestrator-eval:9090
       BF_NLI_URL: ${BF_NLI_URL:-http://nli:8000}
       # 评测判定用的 NLI 模型（应与线上校验器不同）；模拟服务只有 nli 一个
       BF_EVAL_NLI_MODEL: ${BF_EVAL_NLI_MODEL:-nli}
-      # 评测身份用 gateway 的开发签名密钥签发（只在开发与 CI 的 Vault 里存在，services/evaluation 的 signer.py）
+      # LLM 评审（Faithfulness、答案正确率，evaluation 详设 6.2）；不配置时不算，报告里注明
+      BF_JUDGE_URL: ${BF_JUDGE_URL:-}
+      BF_JUDGE_MODEL: ${BF_JUDGE_MODEL:-}
+      BF_JUDGE_API_KEY: ${BF_JUDGE_API_KEY:-}
+      # 评测身份用 evaluation 的签名密钥签发（devseed 写进开发 Vault 的 evaluation/principal-signing，signer.py）
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
       # 门禁结论与报告写进 evaluation.gate_runs（/v1/admin/eval-gates 查询；表由 core profile 的 evaluation-migrate 建）
@@ -919,6 +1019,8 @@ services:
     command: [make, e2e-tests]
     environment:
       KEYCLOAK_URL: http://keycloak:8080
+      CONSOLE_REDIRECT_URI: http://localhost:${BF_CONSOLE_PORT:-27300}/callback
+      CONSOLE_URL: http://console:8080
       # MCP 用例经管理 API 登记测试用 agent 客户端（只在开发与 CI 的 Keycloak 里）
       KEYCLOAK_ADMIN_PASSWORD: ${BF_KC_ADMIN_PASSWORD:-dev-only-kc}
       GATEWAY_URL: http://gateway:8080
@@ -991,6 +1093,7 @@ services:
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
       BF_PG_PASSWORD: ${BF_PG_PASSWORD:-dev-only-pg}
+      BF_LDAP_ADMIN_PASSWORD: ${BF_LDAP_ADMIN_PASSWORD:-dev-only-ldap}
       BF_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
       BF_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
       BF_EMBEDDER_URL: ${BF_EMBEDDER_URL:-http://embedder:8000}

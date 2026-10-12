@@ -102,3 +102,22 @@ def test_conversation_continues_for_owner_only() -> None:
 def test_malformed_conversation_id_is_rejected_at_gateway() -> None:
     r = post("alice", {"question": "首付比例是多少？", "conversation_id": "abc"})
     assert r.status_code == 400
+
+
+def test_owner_can_delete_conversation() -> None:
+    def delete(user: str, conv: str) -> httpx.Response:
+        return httpx.delete(
+            f"{GATEWAY}/v1/conversations/{conv}",
+            headers={"Authorization": "Bearer " + token(user), "Bambuflow-Tenant": "credit"},
+            timeout=15,
+        )
+
+    conv = answer("alice", "个人住房贷款的首付比例是多少？")["conversation_id"]
+    # 别人删除：同样 204，但会话还在
+    assert delete("carl", conv).status_code == 204
+    assert answer("alice", "二套住房呢？", conversation_id=conv)["conversation_id"] == conv
+    # 本人删除后，带原 ID 的提问按新会话处理
+    assert delete("alice", conv).status_code == 204
+    again = answer("alice", "二套住房呢？", conversation_id=conv)
+    assert again["conversation_id"] != conv
+    assert delete("alice", "abc").status_code == 404

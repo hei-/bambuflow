@@ -83,6 +83,12 @@ message DocMetadata {
   repeated string missing = 6;
   // 归一所用的词表快照版本。
   string vocabulary_version = 7;
+  // 替代关系（入库管道详设第 7 节效力信息）：这份文档被哪份文档替代（doc_id）；没有时为空。由 indexing 按新文档的声明关联，
+  // 被替代时 validity_status 为已废止（替代它的文档待生效时除外）。
+  string superseded_by = 8;
+  // 这份文档声明替代的文档：doc:<doc_id>（源系统字段）或 title:<规范化标题>（正文“《…》同时废止”）；只在入库请求里，
+  // indexing 在同一数据源里按它关联被替代的文档。
+  repeated string supersedes = 9;
 }
 
 // Degradation 记录一个被跳过或降级的环节，如 stage = "dense"、reason = "timeout"。

@@ -8,6 +8,7 @@ services:
       dockerfile: deploy/toolbox/Dockerfile
       args:
         GOPROXY: ${BF_GOPROXY:-https://proxy.golang.org,direct}
+        NPM_REGISTRY: ${BF_NPM_REGISTRY:-https://registry.npmjs.org}
     # 并行的工作树各用自己的标签（BF_TOOLBOX_TAG），避免互相覆盖镜像与虚拟环境；下载缓存共用
     image: bambuflow-toolbox:${BF_TOOLBOX_TAG:-dev}
     volumes:
@@ -16,6 +17,9 @@ services:
       - uv-cache:/root/.cache/uv
       - venv:/opt/venv
       - tools:/root/.cache/bambuflow-tools
+      - npm-cache:/root/.npm
+      # console 的依赖装在命名卷里（遮住随源码打进镜像的目录），每次 npm ci 只需从缓存还原
+      - console-modules:/src/services/console/node_modules
 
 volumes:
   go-mod:
@@ -24,3 +28,6 @@ volumes:
   venv:
     name: bambuflow-toolbox_venv-${BF_TOOLBOX_TAG:-dev}
   tools:
+  npm-cache:
+  console-modules:
+    name: bambuflow-toolbox_console-modules-${BF_TOOLBOX_TAG:-dev}

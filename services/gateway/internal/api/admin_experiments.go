@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // A/B 实验（governance 详设 7.2，技术设计文档 10.5）：/v1/admin/experiments，由 governance 实现，平台管理员操作。
@@ -22,6 +22,7 @@ var (
 type overridesJSON struct {
 	SupportThreshold *float64 `json:"support_threshold,omitempty"`
 	MinCoverage      *float64 `json:"min_coverage,omitempty"`
+	ConfigVersions   []string `json:"config_versions,omitempty"`
 }
 
 type experimentJSON struct {
@@ -46,8 +47,9 @@ func experimentOf(e *adminv1.Experiment) experimentJSON {
 	return experimentJSON{ExpID: e.GetExpId(), Tenant: e.GetTenant(), Hypothesis: e.GetHypothesis(),
 		PrimaryMetric: enumName(e.GetPrimaryMetric()), BaselineRate: e.GetBaselineRate(), MinDetectableEffect: e.GetMinDetectableEffect(),
 		SampleSizePerArm: e.GetSampleSizePerArm(), TrafficPercent: e.GetTrafficPercent(),
-		Overrides: overridesJSON{SupportThreshold: e.GetOverrides().SupportThreshold, MinCoverage: e.GetOverrides().MinCoverage},
-		Status:    enumName(e.GetStatus()), CreatedBy: e.GetCreatedBy(), CreatedAt: rfc3339(e.GetCreatedAt()),
+		Overrides: overridesJSON{SupportThreshold: e.GetOverrides().SupportThreshold, MinCoverage: e.GetOverrides().MinCoverage,
+			ConfigVersions: e.GetOverrides().GetConfigVersions()},
+		Status: enumName(e.GetStatus()), CreatedBy: e.GetCreatedBy(), CreatedAt: rfc3339(e.GetCreatedAt()),
 		StoppedBy: e.GetStoppedBy(), StoppedAt: rfc3339(e.GetStoppedAt()), StopReason: e.GetStopReason()}
 }
 
@@ -92,7 +94,8 @@ func (s *Server) createExperiment(ctx context.Context, in *adminInput) (adminOut
 	}
 	e, err := s.Experiments.CreateExperiment(ctx, &adminv1.CreateExperimentRequest{Tenant: req.Tenant, Hypothesis: req.Hypothesis,
 		PrimaryMetric: metric, BaselineRate: req.BaselineRate, MinDetectableEffect: req.MinDetectableEffect,
-		Overrides: &adminv1.ExperimentOverrides{SupportThreshold: req.Overrides.SupportThreshold, MinCoverage: req.Overrides.MinCoverage}})
+		Overrides: &adminv1.ExperimentOverrides{SupportThreshold: req.Overrides.SupportThreshold, MinCoverage: req.Overrides.MinCoverage,
+			ConfigVersions: req.Overrides.ConfigVersions}})
 	if err != nil {
 		return adminOutput{}, err
 	}

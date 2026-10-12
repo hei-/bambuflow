@@ -1,47 +1,55 @@
 # 测试环境的数据源与租户授权（只用于开发与 CI），由 governance sources-load 写入 governance 的库；
 # 生产由平台管理员经 /v1/admin/sources 注册、数据属主审批与授权。
-# 这是测试租户授权的唯一来源（P3-M5 起 retrieval 从 governance 取，策略数据 tools/test-upstream/policy/data.json 不再列数据源）；
+# 这是测试租户授权的唯一来源（P3-M5 起 retrieval 从 governance 取，策略包的租户层 tools/test-upstream/policies 不再列数据源）；
 # 授权与原来策略数据里的 tenants.<租户>.sources 一致，ops 对 src_evalcredit 的禁止仍在策略数据的 denied_sources。
 sources:
   - source_id: src_wikidemo
+    description: 制度 Wiki
     type: wiki
     owner_dept: 综合管理部
     default_classification: 2
     grants: [credit, risk, ops]
   - source_id: src_fileshare
+    description: 共享盘
     type: file
     owner_dept: 综合管理部
     default_classification: 2
     grants: [credit, risk, ops]
   - source_id: src_evalcredit
+    description: 信贷评测 Wiki
     type: wiki
     owner_dept: 信贷部
     default_classification: 2
     grants: [credit, ops]
   - source_id: src_evalrisk
+    description: 风险评测 Wiki
     type: wiki
     owner_dept: 风险管理部
     default_classification: 2
     grants: [risk]
   # 可疑指令标记的测试数据（P3-I2，tools/test-upstream/wiki-inject），只授权给 ops，页面只对 group:sre-oncall 可见
   - source_id: src_injectdemo
+    description: 可疑指令测试 Wiki
     type: wiki
     owner_dept: 运营管理部
     default_classification: 2
     grants: [ops]
   # 日志数据源（P3-I3，主题配置见 tools/test-upstream/logs.yaml），只授权给 ops，按服务归属只对运维组可见
   - source_id: src_applogs
+    description: 应用日志
     type: log
     owner_dept: 运营管理部
     default_classification: 2
     grants: [ops]
   # 关系型数据库表结构（P3-I4，白名单与角色映射见 tools/test-upstream/dbschema.yaml），只授权给 ops，按视图授权只对运维组可见
   - source_id: src_dbschema
+    description: 数据平台表结构
     type: db
     owner_dept: 运营管理部
     default_classification: 2
     grants: [ops]
   - source_id: src_t2retrieval
+    description: 公开检索评测集
     type: wiki
     owner_dept: 平台部
     default_classification: 1

@@ -7,6 +7,7 @@ import pytest
 from bambuflow_processing.admin import IngestAdmin
 from bambuflow_processing.state import Failure, IngestState
 from bambuflow_processing.worker import STREAM
+from google.protobuf.timestamp_pb2 import Timestamp
 from test_worker import FakeRedis
 
 from bambuflow.admin.v1 import ingest_admin_pb2, ingest_admin_pb2_grpc
@@ -145,3 +146,51 @@ def test_replay_by_condition_skips_quarantined_unless_named() -> None:
         assert (none.replayed, none.ingest_batch_id) == (0, "")
 
     run(state, body)
+
+
+def test_replay_by_time_window_and_component_version() -> None:
+    rdb = FakeRedis()
+    times = iter(
+        ["2026-10-01T00:00:00+00:00", "2026-10-05T00:00:00+00:00", "2026-10-06T00:00:00+00:00"]
+    )
+    old = IngestState(rdb, "p-old", now=lambda: next(times))
+    old.failed(evt("a"), Failure("parse", "bad_document", "表格损坏", False))  # 10-01
+    old.succeeded(evt("ok1"), "write", "written")  # 10-05，旧解析器处理
+    new = IngestState(rdb, "p-new", now=lambda: "2026-10-07T00:00:00+00:00")
+    new.failed(evt("b"), Failure("parse", "bad_document", "表格损坏", False))
+    new.succeeded(evt("ok2"), "write", "written")
+
+    def ts(s: str) -> Timestamp:
+        t = Timestamp()
+        t.FromJsonString(s)
+        return t
+
+    async def body(stub: "Stub") -> None:
+        # 按时间段：只有 10-01 失败的 a（from 是 Python 关键字，构造后再赋值）
+        req = ingest_admin_pb2.ReplayRequest(reason="解析器已修复", to=ts("2026-10-02T00:00:00Z"))
+        getattr(req, "from").CopyFrom(ts("2026-09-30T00:00:00Z"))
+        r = await stub.Replay(req, **OPS)
+        assert (r.replayed, r.reprocessed) == (1, 0)
+        # 重新处理已成功的文档必须说清楚组件版本或时间段
+        with pytest.raises(grpc.aio.AioRpcError) as e:
+            await stub.Replay(
+                ingest_admin_pb2.ReplayRequest(
+                    source_id="src_wiki", include_succeeded=True, reason="x"
+                ),
+                **OPS,
+            )
+        assert e.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+        # 按组件版本：旧版本处理的死信与已成功文档都重新处理，新版本的不动
+        r = await stub.Replay(
+            ingest_admin_pb2.ReplayRequest(
+                pipeline_version="p-old", include_succeeded=True, reason="解析器已修复"
+            ),
+            **OPS,
+        )
+        assert (r.replayed, r.reprocessed) == (1, 1)
+        s = await stub.GetIngestStatus(ingest_admin_pb2.GetIngestStatusRequest(doc_id="ok1"), **OPS)
+        assert (s.state, s.ingest_batch_id) == ("queued", r.ingest_batch_id)
+        s = await stub.GetIngestStatus(ingest_admin_pb2.GetIngestStatusRequest(doc_id="ok2"), **OPS)
+        assert s.state == "written"
+
+    run(new, body)

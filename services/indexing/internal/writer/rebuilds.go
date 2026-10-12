@@ -20,9 +20,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/grpcmw"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
 )
 
 const (
@@ -36,8 +36,8 @@ var ErrRebuildIncomplete = errors.New("全量重建还没写完")
 
 // RebuildAdmin 实现 RebuildAdminService（入库管道详设第 10 节、14.4）。
 //
-// 现在只有一个待发布版本，所以重建期间旧模型的增量写入会得到 MODEL_MISMATCH、留在 processing 里重试，
-// 等重建发布后再写（权限变更与删除在文档级，不受影响）；设计里“同时写入线上版本和新版本”要等多个待发布版本。
+// 重建期间两个待发布版本并存：线上模型的增量版本照常写入、照常发布，新模型的重建版本由按新模型部署的 processing
+// （独立的消费组，BF_REBUILD_WORKER）写入，内容变更两边都写；权限变更与删除在文档级，两个版本同时生效。
 type RebuildAdmin struct {
 	adminv1.UnimplementedRebuildAdminServiceServer
 	Pool *pgxpool.Pool
@@ -124,18 +124,14 @@ func (a *RebuildAdmin) StartRebuild(ctx context.Context, r *adminv1.StartRebuild
 	return &adminv1.StartRebuildResponse{Operation: op.proto(), Created: created}, nil
 }
 
-// refuseIfBusy：已有进行中的重建，或已有待发布版本（增量写入还没发布）时不能开始，先发布或等它结束。
+// refuseIfBusy：已有进行中的重建时不能开始，等它结束或取消。增量的待发布版本不影响：重建期间照常写入与发布。
 func refuseIfBusy(ctx context.Context, tx pgx.Tx) error {
-	var running, pending bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM idx.rebuilds WHERE status = 'running'),
-		EXISTS (SELECT 1 FROM idx.index_versions WHERE status = 'pending')`).Scan(&running, &pending); err != nil {
+	var running bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM idx.rebuilds WHERE status = 'running')`).Scan(&running); err != nil {
 		return err
 	}
-	switch {
-	case running:
+	if running {
 		return grpcmw.Reason(codes.FailedPrecondition, "conflict", "已有进行中的全量重建")
-	case pending:
-		return grpcmw.Reason(codes.FailedPrecondition, "conflict", "有待发布版本，先发布再重建")
 	}
 	return nil
 }
@@ -296,7 +292,7 @@ func (a *RebuildAdmin) CancelRebuild(ctx context.Context, r *adminv1.CancelRebui
 		}
 		now := a.Now()
 		rb.Status, rb.FinishedAt, rb.CancelledBy = "cancelled", &now, sub
-		// 丢弃新版本即可：它的块按 doc_version 存放，线上版本引用的旧块不受影响；之后的增量写入发现块的模型不同会自动重写
+		// 丢弃新版本即可：它的块按 doc_version 存放，线上版本与增量版本引用的块不受影响
 		if _, err := tx.Exec(ctx, `UPDATE idx.index_versions SET status = 'discarded' WHERE version = $1 AND status = 'pending'`,
 			rb.Version); err != nil {
 			return err
@@ -317,7 +313,7 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// load 读重建记录与进度：进度是新版本已写入的在用文档数 / 在用文档总数。
+// load 读重建记录与进度：进度是新版本已写入当前内容的在用文档数 / 在用文档总数。
 func (a *RebuildAdmin) load(ctx context.Context, q querier, id string, lock bool) (rebuild, error) {
 	if !strings.HasPrefix(id, "rb_") || len(id) > 64 {
 		return rebuild{}, status.Error(codes.NotFound, "重建不存在")
@@ -347,9 +343,25 @@ func (a *RebuildAdmin) load(ctx context.Context, q querier, id string, lock bool
 	return rb, err
 }
 
+// 新版本里的内容版本早于文档当前内容的（重建开始后内容又变了、新模型的 processing 还没跟上）不算写入：
+// 快照之后的变更在重建结束前补齐（入库管道详设第 10 节第 3 步）
 const rebuildProgressSQL = `
-	SELECT (SELECT count(*) FROM idx.version_docs vd JOIN idx.doc_acl a USING (doc_id) WHERE vd.version = $1 AND a.state = 'active'),
+	SELECT (SELECT count(*) FROM idx.version_docs vd JOIN idx.doc_acl a USING (doc_id) JOIN idx.documents d USING (doc_id)
+			WHERE vd.version = $1 AND a.state = 'active' AND vd.doc_version >= d.content_since),
 		(SELECT count(*) FROM idx.doc_acl WHERE state = 'active')`
+
+// RebuildComplete 只读地核对重建版本是否已写完全部在用文档的当前内容，没写完时为 ErrRebuildIncomplete。
+// 定时发布在发起完整评测集门禁之前用它：没写完的版本跑门禁没有意义。
+func RebuildComplete(ctx context.Context, pool *pgxpool.Pool, version string) error {
+	var written, total int64
+	if err := pool.QueryRow(ctx, rebuildProgressSQL, version).Scan(&written, &total); err != nil {
+		return err
+	}
+	if written < total {
+		return fmt.Errorf("%w：%d 份在用文档中已写入 %d 份", ErrRebuildIncomplete, total, written)
+	}
+	return nil
+}
 
 // checkRebuildComplete 在 Publish 的事务里调用：待发布版本是进行中的重建时，必须写完全部在用文档才能发布，
 // 发布后把重建标为 completed。不是重建的版本不受影响。

@@ -144,8 +144,8 @@ const file_bambuflow_identity_v1_principal_service_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2o\n" +
 	"\x10PrincipalService\x12[\n" +
-	"\bExchange\x12&.bambuflow.identity.v1.ExchangeRequest\x1a'.bambuflow.identity.v1.ExchangeResponseB\xf9\x01\n" +
-	"\x19com.bambuflow.identity.v1B\x15PrincipalServiceProtoP\x01ZOgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\xa2\x02\x03BIX\xaa\x02\x15Bambuflow.Identity.V1\xca\x02\x15Bambuflow\\Identity\\V1\xe2\x02!Bambuflow\\Identity\\V1\\GPBMetadata\xea\x02\x17Bambuflow::Identity::V1b\x06proto3"
+	"\bExchange\x12&.bambuflow.identity.v1.ExchangeRequest\x1a'.bambuflow.identity.v1.ExchangeResponseB\xf5\x01\n" +
+	"\x19com.bambuflow.identity.v1B\x15PrincipalServiceProtoP\x01ZKgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1;identityv1\xa2\x02\x03BIX\xaa\x02\x15Bambuflow.Identity.V1\xca\x02\x15Bambuflow\\Identity\\V1\xe2\x02!Bambuflow\\Identity\\V1\\GPBMetadata\xea\x02\x17Bambuflow::Identity::V1b\x06proto3"
 
 var (
 	file_bambuflow_identity_v1_principal_service_proto_rawDescOnce sync.Once

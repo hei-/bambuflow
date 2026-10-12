@@ -9,6 +9,7 @@ import pytest
 
 from bambuflow.answer.v1 import answer_pb2, answer_pb2_grpc
 from bambuflow_platform.grpc_server import (
+    EVAL_CONFIG_HEADER,
     EVAL_INDEX_HEADER,
     AuthInterceptor,
     current_principal,
@@ -20,12 +21,17 @@ from .conftest import FakeGateway
 
 
 class Unused(answer_pb2_grpc.AnswerServiceServicer):
-    """这里只用到 Answer 与 StreamAnswer；回放与反馈接口不涉及拦截器行为。"""
+    """这里只用到 Answer 与 StreamAnswer；回放、反馈与删除会话接口不涉及拦截器行为。"""
 
     async def GetAnswer(self, request: Any, context: Any) -> answer_pb2.GetAnswerResponse:
         raise NotImplementedError
 
     async def CreateFeedback(self, request: Any, context: Any) -> answer_pb2.CreateFeedbackResponse:
+        raise NotImplementedError
+
+    async def DeleteConversation(
+        self, request: Any, context: Any
+    ) -> answer_pb2.DeleteConversationResponse:
         raise NotImplementedError
 
 
@@ -242,40 +248,48 @@ def test_internal_services_need_deadline_but_no_principal(gateway: FakeGateway) 
 
 
 class PinLeaf(Leaf):
-    """把收到的评测索引版本写进响应。"""
+    """把收到的评测索引版本与候选配置写进响应。"""
 
     async def Answer(self, request: Any, context: Any) -> answer_pb2.AnswerResponse:
-        pins = [v for k, v in context.invocation_metadata() or () if k == EVAL_INDEX_HEADER]
+        pins = [
+            v
+            for k, v in context.invocation_metadata() or ()
+            if k in (EVAL_INDEX_HEADER, EVAL_CONFIG_HEADER)
+        ]
         return answer_pb2.AnswerResponse(answer=",".join(str(p) for p in pins))
 
 
-def test_eval_index_header_only_in_eval_mode_and_forwarded(gateway: FakeGateway) -> None:
+def test_eval_headers_only_in_eval_mode_and_forwarded(gateway: FakeGateway) -> None:
     verifier = Verifier(JWKS("http://gateway/jwks", fetch=gateway.fetch))
 
-    async def call(target: str) -> answer_pb2.AnswerResponse:
-        md = (("authorization", "Bearer " + gateway.sign("k1")), (EVAL_INDEX_HEADER, "ix-2"))
+    async def call(target: str, *pins: tuple[str, str]) -> answer_pb2.AnswerResponse:
+        md = (("authorization", "Bearer " + gateway.sign("k1")), *pins)
         async with grpc.aio.insecure_channel(target) as ch:
             resp: answer_pb2.AnswerResponse = await answer_pb2_grpc.AnswerServiceStub(ch).Answer(
                 answer_pb2.AnswerRequest(question="q"), metadata=md, timeout=5.0
             )
             return resp
 
-    async def scenario() -> tuple[Any, answer_pb2.AnswerResponse]:
+    index, config = (EVAL_INDEX_HEADER, "ix-2"), (EVAL_CONFIG_HEADER, "cfv_" + "1" * 24)
+
+    async def scenario() -> tuple[list[Any], answer_pb2.AnswerResponse]:
         leaf, leaf_target = await _serve(PinLeaf(), verifier, eval_mode=True)
         online, online_target = await _serve(Mid(leaf_target), verifier)
         evalmid, eval_target = await _serve(Mid(leaf_target), verifier, eval_mode=True)
         try:
-            try:
-                await call(online_target)
-                refused: Any = grpc.StatusCode.OK
-            except grpc.aio.AioRpcError as e:
-                refused = e.code()
-            return refused, await call(eval_target)
+            refused: list[Any] = []
+            for pin in (index, config):
+                try:
+                    await call(online_target, pin)
+                    refused.append(grpc.StatusCode.OK)
+                except grpc.aio.AioRpcError as e:
+                    refused.append(e.code())
+            return refused, await call(eval_target, index, config)
         finally:
             for srv in (leaf, online, evalmid):
                 await srv.stop(None)
 
     refused, forwarded = asyncio.run(scenario())
-    # 线上实例收到指定索引版本的请求直接拒绝；评测实例接受并原样转给下游
-    assert refused == grpc.StatusCode.PERMISSION_DENIED
-    assert forwarded.answer == "ix-2"
+    # 线上实例收到指定索引版本或候选配置的请求直接拒绝；评测实例接受并原样转给下游
+    assert refused == [grpc.StatusCode.PERMISSION_DENIED] * 2
+    assert forwarded.answer == "ix-2,cfv_" + "1" * 24

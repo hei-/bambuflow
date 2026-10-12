@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package bambuflow.ingestion.v1;
+
+import "bambuflow/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// PushService 是推送入库（入库管道详设 14.5）：没有现成连接器的业务系统把文档推给平台，由 connectors 实现，
+// gateway 的 /v1/sources/{source_id}/documents 调用。推送的文档同样写成文档包、发出 DocumentChanged（detection = push），
+// 之后的流程与连接器拉取的相同。
+//
+// 鉴权在 gateway：调用方须是这个数据源登记的推送客户端，ACL 里的用户与群组须在平台身份库里存在，密级不低于数据源的默认密级。
+// gateway 以管理 Principal 调用，角色为 source_pusher:<source_id>，connectors 再核对一次请求里的数据源与角色一致。
+service PushService {
+  // 新增或更新一份文档。内容与权限都没变时不发事件（duplicate = true）；只有权限变了走快速通道。
+  rpc PutDocument(PutDocumentRequest) returns (PutDocumentResponse);
+  // 删除一份文档。显式删除不受删除保护阈值限制；推送过的文档里没有它时返回 NOT_FOUND。
+  rpc DeleteDocument(DeleteDocumentRequest) returns (DeleteDocumentResponse);
+  // 批量新增、更新或删除，最多 100 份；逐份处理、逐份给结果，一份失败不影响其他。
+  rpc BatchDocuments(BatchDocumentsRequest) returns (BatchDocumentsResponse);
+}
+
+message PushedDocument {
+  string doc_id = 1;
+  string title = 2;
+  // text/markdown 的正文放 text；其他类型（PDF、Word、Excel、CSV、邮件、PNG、JPEG）的原文放 raw
+  string mime_type = 3;
+  string text = 4;
+  bytes raw = 5;
+  // 归一化的权限 token（user:、group:），不能为空
+  repeated string acl_tokens = 6;
+  bambuflow.common.v1.Classification classification = 7;
+  // 源系统里的修改时间，写入 DocumentChanged.occurred_at
+  google.protobuf.Timestamp source_updated_at = 8;
+  // 源系统里查看这份文档的地址，可选
+  string source_uri = 9;
+}
+
+message PutDocumentRequest {
+  string source_id = 1;
+  PushedDocument document = 2;
+}
+
+message PutDocumentResponse {
+  // evt_ 前缀；duplicate 时为空
+  string event_id = 1;
+  // 内容与权限都与上次推送的相同，没有发事件
+  bool duplicate = 2;
+}
+
+message DeleteDocumentRequest {
+  string source_id = 1;
+  string doc_id = 2;
+}
+
+message DeleteDocumentResponse {
+  string event_id = 1;
+}
+
+message BatchItem {
+  oneof op {
+    PushedDocument upsert = 1;
+    // 要删除的 doc_id
+    string delete = 2;
+  }
+}
+
+message BatchDocumentsRequest {
+  string source_id = 1;
+  repeated BatchItem items = 2;
+}
+
+message BatchItemResult {
+  string doc_id = 1;
+  string event_id = 2;
+  bool duplicate = 3;
+  // 失败时的错误类型（invalid_request、not_found 等）与说明；成功时为空
+  string error_type = 4;
+  string error_title = 5;
+}
+
+message BatchDocumentsResponse {
+  // 与请求的 items 一一对应
+  repeated BatchItemResult results = 1;
+}

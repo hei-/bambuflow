@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from bambuflow_evaluation import calibration
 from bambuflow_evaluation.golden import GoldenSet
 from bambuflow_evaluation.metrics import CORE, TARGETS, Outcome, Verdict, tenant_metrics
 
@@ -15,6 +16,8 @@ LABELS = {
     "status_accuracy": "状态正确率",
     "refusal_accuracy": "应拒答题正确拒答率",
     "false_refusal_rate": "误拒率",
+    "faithfulness": "Faithfulness（LLM 评审）",
+    "answer_correctness": "答案正确率（LLM 评审）",
     "latency_p50_ms": "Answer 延迟 p50（ms）",
     "latency_p95_ms": "Answer 延迟 p95（ms）",
 }
@@ -33,17 +36,20 @@ def as_json(
     runs: Sequence[Sequence[Outcome]],
     metrics: dict[str, float | None],
     verdict: Verdict,
+    llm_judge: str = "",
 ) -> dict[str, Any]:
     return {
         "golden": {"name": golden.name, "version": golden.version, "provenance": golden.provenance},
         "config": config,
-        "judge": {"nli_model": judge_model},
+        "judge": {"nli_model": judge_model, "llm_judge": llm_judge},
         "repeats": len(runs),
         "conclusion": verdict.conclusion,
         "reasons": list(verdict.reasons),
         "unstable": list(verdict.unstable),
         "metrics": metrics,
         "tenant_metrics": tenant_metrics(runs),
+        # 置信度校准只用第一次运行：三次运行的置信度应当相同（回放模式）
+        "calibration": [vars(r) for r in calibration.calibrate(runs[0])],
     }
 
 
@@ -56,6 +62,7 @@ def markdown(
     baseline: dict[str, float | None] | None,
     verdict: Verdict,
     tenant_baseline: dict[str, dict[str, float | None]] | None = None,
+    llm_judge: str = "",
 ) -> str:
     first = runs[0]
     out = [
@@ -73,7 +80,8 @@ def markdown(
     for k, vs in sorted(config.items()):
         out.append(f"- {k}：{', '.join(sorted(vs))}")
     out += [
-        f"- 判定器：NLI {judge_model or '—'}，支持度阈值 0.5",
+        f"- 判定器：NLI {judge_model or '—'}，支持度阈值 0.5；"
+        f"LLM 评审 {llm_judge or '未配置（Faithfulness、答案正确率不计算）'}",
         f"- 同一配置连跑 {len(runs)} 次，指标取平均；每次各自对照基线下结论，结论一致才算可复现",
         "",
         "## 指标",
@@ -99,6 +107,21 @@ def markdown(
         cells = [f"{_fmt(tm.get(k))}（基线 {_fmt(tb.get(k)) if tb else '—'}）" for k in CORE]
         n = sum(o.tenant == t for o in first)
         out.append(f"| {t} | {n} | " + " | ".join(cells) + " |")
+    out += [
+        "",
+        "## 置信度校准",
+        "",
+        f"已回答题上拟合置信度权重（ECE 目标 ≤ {calibration.ECE_TARGET}，"
+        f"租户少于 {calibration.MIN_TENANT} 题用全局权重）。",
+        "",
+        "| 范围 | 样本 | 正确且有据 | 当前 ECE | 拟合后 ECE | 权重版本 | 结论 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in calibration.calibrate(first):
+        out.append(
+            f"| {r.scope} | {r.samples} | {_fmt(r.positive_rate)} | {_fmt(r.ece_current)} | "
+            f"{_fmt(r.ece_fitted)} | {r.version or '—'} | {r.note} |"
+        )
     out += ["", "## 分桶", "", "| 分桶 | 题数 | 状态正确 |", "| --- | --- | --- |"]
     for bucket in sorted({o.bucket for o in first}):
         sub = [o for o in first if o.bucket == bucket]

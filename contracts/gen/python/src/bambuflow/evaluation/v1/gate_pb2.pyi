@@ -24,15 +24,17 @@ VERDICT_FAILED: Verdict
 VERDICT_INDETERMINATE: Verdict
 
 class EvalConfig(_message.Message):
-    __slots__ = ("index_version", "snapshot_version")
+    __slots__ = ("index_version", "snapshot_version", "config_version")
     INDEX_VERSION_FIELD_NUMBER: _ClassVar[int]
     SNAPSHOT_VERSION_FIELD_NUMBER: _ClassVar[int]
+    CONFIG_VERSION_FIELD_NUMBER: _ClassVar[int]
     index_version: str
     snapshot_version: str
-    def __init__(self, index_version: _Optional[str] = ..., snapshot_version: _Optional[str] = ...) -> None: ...
+    config_version: str
+    def __init__(self, index_version: _Optional[str] = ..., snapshot_version: _Optional[str] = ..., config_version: _Optional[str] = ...) -> None: ...
 
 class RunGateRequest(_message.Message):
-    __slots__ = ("trigger", "candidate", "tenants", "doc_ids", "ruleset", "deadline", "idempotency_key")
+    __slots__ = ("trigger", "candidate", "tenants", "doc_ids", "ruleset", "deadline", "idempotency_key", "first_release")
     TRIGGER_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_FIELD_NUMBER: _ClassVar[int]
     TENANTS_FIELD_NUMBER: _ClassVar[int]
@@ -40,6 +42,7 @@ class RunGateRequest(_message.Message):
     RULESET_FIELD_NUMBER: _ClassVar[int]
     DEADLINE_FIELD_NUMBER: _ClassVar[int]
     IDEMPOTENCY_KEY_FIELD_NUMBER: _ClassVar[int]
+    FIRST_RELEASE_FIELD_NUMBER: _ClassVar[int]
     trigger: str
     candidate: EvalConfig
     tenants: _containers.RepeatedScalarFieldContainer[str]
@@ -47,7 +50,8 @@ class RunGateRequest(_message.Message):
     ruleset: str
     deadline: _duration_pb2.Duration
     idempotency_key: str
-    def __init__(self, trigger: _Optional[str] = ..., candidate: _Optional[_Union[EvalConfig, _Mapping]] = ..., tenants: _Optional[_Iterable[str]] = ..., doc_ids: _Optional[_Iterable[str]] = ..., ruleset: _Optional[str] = ..., deadline: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., idempotency_key: _Optional[str] = ...) -> None: ...
+    first_release: bool
+    def __init__(self, trigger: _Optional[str] = ..., candidate: _Optional[_Union[EvalConfig, _Mapping]] = ..., tenants: _Optional[_Iterable[str]] = ..., doc_ids: _Optional[_Iterable[str]] = ..., ruleset: _Optional[str] = ..., deadline: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., idempotency_key: _Optional[str] = ..., first_release: _Optional[bool] = ...) -> None: ...
 
 class RunGateResponse(_message.Message):
     __slots__ = ("gate_id",)

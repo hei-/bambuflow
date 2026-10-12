@@ -46,6 +46,27 @@ func (s *PGStore) Lookup(ctx context.Context, username string) (User, bool, erro
 	return u, true, err
 }
 
+// Unknown 返回平台身份库里不存在的用户与群组（推送入库校验 ACL 用，入库管道详设 14.5）。停用的用户仍算存在：
+// 停用只影响他自己的访问，ACL 里留着不会放大权限。
+func (s *PGStore) Unknown(ctx context.Context, users, groups []string) ([]string, []string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT u FROM unnest($1::text[]) u
+		WHERE NOT EXISTS (SELECT 1 FROM identity.identities WHERE username = u) ORDER BY u`, users)
+	if err != nil {
+		return nil, nil, err
+	}
+	badUsers, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err = s.pool.Query(ctx, `SELECT g FROM unnest($1::text[]) g
+		WHERE NOT EXISTS (SELECT 1 FROM identity.identity_groups WHERE grp = g) ORDER BY g`, groups)
+	if err != nil {
+		return nil, nil, err
+	}
+	badGroups, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	return badUsers, badGroups, err
+}
+
 // LastSync 返回所有同步源中最早的一次成功时间；任一同步源从未成功过时返回零值（视为不新鲜）。
 func (s *PGStore) LastSync(ctx context.Context) (time.Time, error) {
 	var t *time.Time

@@ -22,6 +22,7 @@ const (
 	ConnectorAdminService_GetSyncStatus_FullMethodName        = "/bambuflow.admin.v1.ConnectorAdminService/GetSyncStatus"
 	ConnectorAdminService_PauseSource_FullMethodName          = "/bambuflow.admin.v1.ConnectorAdminService/PauseSource"
 	ConnectorAdminService_ResumeSource_FullMethodName         = "/bambuflow.admin.v1.ConnectorAdminService/ResumeSource"
+	ConnectorAdminService_SyncNow_FullMethodName              = "/bambuflow.admin.v1.ConnectorAdminService/SyncNow"
 	ConnectorAdminService_ListPendingDeletions_FullMethodName = "/bambuflow.admin.v1.ConnectorAdminService/ListPendingDeletions"
 	ConnectorAdminService_ConfirmDeletion_FullMethodName      = "/bambuflow.admin.v1.ConnectorAdminService/ConfirmDeletion"
 	ConnectorAdminService_DiscardDeletion_FullMethodName      = "/bambuflow.admin.v1.ConnectorAdminService/DiscardDeletion"
@@ -39,6 +40,9 @@ type ConnectorAdminServiceClient interface {
 	// 暂停：之后的每轮同步整轮跳过，包括撤权与删除，直到恢复。平台运维
 	PauseSource(ctx context.Context, in *PauseSourceRequest, opts ...grpc.CallOption) (*PauseSourceResponse, error)
 	ResumeSource(ctx context.Context, in *ResumeSourceRequest, opts ...grpc.CallOption) (*ResumeSourceResponse, error)
+	// 立即同步：马上拉起一轮同步，不等下一次定时。平台运维。数据源暂停或已撤销时拒绝；
+	// 部署没有接入调度（BF_SYNC_TRIGGER 未配置）时返回 FAILED_PRECONDITION
+	SyncNow(ctx context.Context, in *SyncNowRequest, opts ...grpc.CallOption) (*SyncNowResponse, error)
 	// 删除保护拦下的待删批次（入库管道详设第 5 节）：数据属主查看、确认或丢弃。
 	// 确认需两位不同的数据属主：第一位确认后待复核，第二位确认后下一轮同步执行（只删其中源端仍不存在的）
 	ListPendingDeletions(ctx context.Context, in *ListPendingDeletionsRequest, opts ...grpc.CallOption) (*ListPendingDeletionsResponse, error)
@@ -79,6 +83,16 @@ func (c *connectorAdminServiceClient) ResumeSource(ctx context.Context, in *Resu
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ResumeSourceResponse)
 	err := c.cc.Invoke(ctx, ConnectorAdminService_ResumeSource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *connectorAdminServiceClient) SyncNow(ctx context.Context, in *SyncNowRequest, opts ...grpc.CallOption) (*SyncNowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SyncNowResponse)
+	err := c.cc.Invoke(ctx, ConnectorAdminService_SyncNow_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +141,9 @@ type ConnectorAdminServiceServer interface {
 	// 暂停：之后的每轮同步整轮跳过，包括撤权与删除，直到恢复。平台运维
 	PauseSource(context.Context, *PauseSourceRequest) (*PauseSourceResponse, error)
 	ResumeSource(context.Context, *ResumeSourceRequest) (*ResumeSourceResponse, error)
+	// 立即同步：马上拉起一轮同步，不等下一次定时。平台运维。数据源暂停或已撤销时拒绝；
+	// 部署没有接入调度（BF_SYNC_TRIGGER 未配置）时返回 FAILED_PRECONDITION
+	SyncNow(context.Context, *SyncNowRequest) (*SyncNowResponse, error)
 	// 删除保护拦下的待删批次（入库管道详设第 5 节）：数据属主查看、确认或丢弃。
 	// 确认需两位不同的数据属主：第一位确认后待复核，第二位确认后下一轮同步执行（只删其中源端仍不存在的）
 	ListPendingDeletions(context.Context, *ListPendingDeletionsRequest) (*ListPendingDeletionsResponse, error)
@@ -151,6 +168,9 @@ func (UnimplementedConnectorAdminServiceServer) PauseSource(context.Context, *Pa
 }
 func (UnimplementedConnectorAdminServiceServer) ResumeSource(context.Context, *ResumeSourceRequest) (*ResumeSourceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResumeSource not implemented")
+}
+func (UnimplementedConnectorAdminServiceServer) SyncNow(context.Context, *SyncNowRequest) (*SyncNowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SyncNow not implemented")
 }
 func (UnimplementedConnectorAdminServiceServer) ListPendingDeletions(context.Context, *ListPendingDeletionsRequest) (*ListPendingDeletionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListPendingDeletions not implemented")
@@ -236,6 +256,24 @@ func _ConnectorAdminService_ResumeSource_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConnectorAdminService_SyncNow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncNowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConnectorAdminServiceServer).SyncNow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConnectorAdminService_SyncNow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConnectorAdminServiceServer).SyncNow(ctx, req.(*SyncNowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ConnectorAdminService_ListPendingDeletions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListPendingDeletionsRequest)
 	if err := dec(in); err != nil {
@@ -308,6 +346,10 @@ var ConnectorAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResumeSource",
 			Handler:    _ConnectorAdminService_ResumeSource_Handler,
+		},
+		{
+			MethodName: "SyncNow",
+			Handler:    _ConnectorAdminService_SyncNow_Handler,
 		},
 		{
 			MethodName: "ListPendingDeletions",

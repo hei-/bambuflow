@@ -61,46 +61,67 @@ func New(addr string, token func() (string, error)) *Client {
 
 // ReadKV 读取 KV v2 引擎 mount 下 path 的最新版本，返回其中的键值。
 func (c *Client) ReadKV(ctx context.Context, mount, path string) (map[string]string, error) {
+	data, _, err := c.ReadKVVersion(ctx, mount, path)
+	return data, err
+}
+
+// ReadKVVersion 同 ReadKV，另返回版本号，供 WriteKVCAS 做乐观并发控制。
+func (c *Client) ReadKVVersion(ctx context.Context, mount, path string) (map[string]string, int, error) {
 	tok, err := c.token()
 	if err != nil {
-		return nil, fmt.Errorf("vault: 读取令牌: %w", err)
+		return nil, 0, fmt.Errorf("vault: 读取令牌: %w", err)
 	}
 	u := c.addr + "/v1/" + url.PathEscape(mount) + "/data/" + escapePath(path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("X-Vault-Token", tok)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("vault: %w", err)
+		return nil, 0, fmt.Errorf("vault: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound, http.StatusForbidden:
-		return nil, ErrNotFound
+		return nil, 0, ErrNotFound
 	default:
-		return nil, fmt.Errorf("vault: 读取 %s/%s 返回 %d", mount, path, resp.StatusCode)
+		return nil, 0, fmt.Errorf("vault: 读取 %s/%s 返回 %d", mount, path, resp.StatusCode)
 	}
 	var body struct {
 		Data struct {
-			Data map[string]string `json:"data"`
+			Data     map[string]string `json:"data"`
+			Metadata struct {
+				Version int `json:"version"`
+			} `json:"metadata"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, fmt.Errorf("vault: 解析响应: %w", err)
+		return nil, 0, fmt.Errorf("vault: 解析响应: %w", err)
 	}
-	return body.Data.Data, nil
+	return body.Data.Data, body.Data.Metadata.Version, nil
 }
+
+// ErrConflict 表示 WriteKVCAS 时密钥已被别人改过（版本号不是读到的那个）。
+var ErrConflict = errors.New("vault: 密钥已被并发修改")
 
 // WriteKV 在 KV v2 引擎 mount 下的 path 写入一个新版本（整份替换）。
 func (c *Client) WriteKV(ctx context.Context, mount, path string, data map[string]string) error {
+	return c.write(ctx, mount, path, map[string]any{"data": data})
+}
+
+// WriteKVCAS 只在当前版本仍是 version 时写入（KV v2 的 check-and-set），否则返回 ErrConflict。
+func (c *Client) WriteKVCAS(ctx context.Context, mount, path string, data map[string]string, version int) error {
+	return c.write(ctx, mount, path, map[string]any{"data": data, "options": map[string]int{"cas": version}})
+}
+
+func (c *Client) write(ctx context.Context, mount, path string, payload map[string]any) error {
 	tok, err := c.token()
 	if err != nil {
 		return fmt.Errorf("vault: 读取令牌: %w", err)
 	}
-	body, err := json.Marshal(map[string]any{"data": data})
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -116,11 +137,15 @@ func (c *Client) WriteKV(ctx context.Context, mount, path string, data map[strin
 		return fmt.Errorf("vault: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		// 不读响应体：Vault 的错误信息里可能回显请求内容
-		return fmt.Errorf("vault: 写入 %s/%s 返回 %d", mount, path, resp.StatusCode)
+	switch {
+	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent:
+		return nil
+	case resp.StatusCode == http.StatusBadRequest && payload["options"] != nil:
+		// KV v2 的 check-and-set 不满足时返回 400
+		return ErrConflict
 	}
-	return nil
+	// 不读响应体：Vault 的错误信息里可能回显请求内容
+	return fmt.Errorf("vault: 写入 %s/%s 返回 %d", mount, path, resp.StatusCode)
 }
 
 func escapePath(p string) string {

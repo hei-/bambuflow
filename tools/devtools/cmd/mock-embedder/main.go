@@ -12,10 +12,12 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/logging"
+	"github.com/hei-/bambuflow/libs/platform-go/logging"
 )
 
 const (
@@ -91,6 +93,55 @@ func embed(text string) []float32 {
 	return out
 }
 
+// SparseVocab 是模拟稀疏向量的词表大小（与 bge-m3 的词表一致，indexing 的 sparsevec 维数）。
+const SparseVocab = 250002
+
+// maxSparse 是一段文本的稀疏向量最多保留的词元数：pgvector 的 HNSW 只接受不超过 1000 个非零元素
+const maxSparse = 256
+
+// sparse 是模拟的学习型稀疏向量：字一元、二元组哈希到词表里的 ID，权重为 log(1 + 次数)，按权重留前 maxSparse 个。
+// 与真实的 bge-m3 词权重一样以“词元 ID → 权重”表示，调用方的处理代码相同。
+func sparse(text string) map[string]float32 {
+	counts := map[uint32]int{}
+	runes := []rune(strings.ToLower(text))
+	add := func(s string) {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(s))
+		counts[h.Sum32()%SparseVocab]++
+	}
+	for i, r := range runes {
+		if r == ' ' || r == '\n' || r == '\t' {
+			continue
+		}
+		add(string(r))
+		if i+1 < len(runes) {
+			add(string(runes[i : i+2]))
+		}
+	}
+	type kv struct {
+		id uint32
+		w  float32
+	}
+	all := make([]kv, 0, len(counts))
+	for id, n := range counts {
+		all = append(all, kv{id, float32(math.Log1p(float64(n)))})
+	}
+	slices.SortFunc(all, func(a, b kv) int {
+		if a.w != b.w {
+			if a.w > b.w {
+				return -1
+			}
+			return 1
+		}
+		return int(a.id) - int(b.id)
+	})
+	out := map[string]float32{}
+	for _, x := range all[:min(len(all), maxSparse)] {
+		out[strconv.FormatUint(uint64(x.id), 10)] = x.w
+	}
+	return out
+}
+
 type tensor struct {
 	Name     string   `json:"name"`
 	Shape    []int    `json:"shape"`
@@ -103,7 +154,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v2/health/ready", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /v2/models/"+model, func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"name": model, "versions": []string{version}, "platform": "mock"})
+		// 输出列表与真实部署一致：调用方按有没有 sparse 输出判断能不能做稀疏召回
+		_ = json.NewEncoder(w).Encode(map[string]any{"name": model, "versions": []string{version}, "platform": "mock",
+			"outputs": []map[string]any{{"name": "embedding", "datatype": "FP32"}, {"name": "sparse", "datatype": "BYTES"}}})
 	})
 	mux.HandleFunc("POST /v2/models/"+model+"/infer", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -115,12 +168,19 @@ func main() {
 		}
 		texts := req.Inputs[0].Data
 		flat := make([]float32, 0, len(texts)*dim)
+		sparses := make([]string, 0, len(texts))
 		for _, t := range texts {
 			flat = append(flat, embed(t)...)
+			b, _ := json.Marshal(sparse(t))
+			sparses = append(sparses, string(b))
 		}
+		// 第二个输出是稀疏向量：每段文本一个“词元 ID → 权重”的 JSON（与稠密向量同一次调用，retrieval 详设 6.2）
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"model_name": model, "model_version": version,
-			"outputs": []map[string]any{{"name": "embedding", "datatype": "FP32", "shape": []int{len(texts), dim}, "data": flat}},
+			"outputs": []map[string]any{
+				{"name": "embedding", "datatype": "FP32", "shape": []int{len(texts), dim}, "data": flat},
+				{"name": "sparse", "datatype": "BYTES", "shape": []int{len(texts)}, "data": sparses},
+			},
 		})
 	})
 	// 模拟精排模型：分数 = 查询的字二元组有多少出现在段落里（与 mock-nli 同一算法），只够验证精排链路

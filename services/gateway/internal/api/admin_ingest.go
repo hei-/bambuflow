@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"time"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 入库运维（入库管道详设 11、14.4）：入库状态、死信与隔离文档、按条件重放，由 processing 的管理服务实现，平台运维调用。
@@ -96,11 +99,17 @@ type replayJSON struct {
 	ErrorCode string   `json:"error_code"`
 	DocIDs    []string `json:"doc_ids"`
 	Reason    string   `json:"reason"`
+	// 时间段、组件版本，以及是否也重新处理已成功入库的文档（入库管道详设第 11 节）
+	From             string `json:"from"`
+	To               string `json:"to"`
+	PipelineVersion  string `json:"pipeline_version"`
+	IncludeSucceeded bool   `json:"include_succeeded"`
 }
 
 type replayResultJSON struct {
 	BatchID            string `json:"ingest_batch_id,omitempty"`
 	Replayed           int32  `json:"replayed"`
+	Reprocessed        int32  `json:"reprocessed"`
 	SkippedQuarantined int32  `json:"skipped_quarantined"`
 }
 
@@ -109,11 +118,22 @@ func (s *Server) replay(ctx context.Context, in *adminInput) (adminOutput, error
 	if err := decodeBody(in.body, &req); err != nil {
 		return adminOutput{}, err
 	}
-	r, err := s.Ingest.Replay(ctx, &adminv1.ReplayRequest{SourceId: req.SourceID, Stage: req.Stage, ErrorCode: req.ErrorCode,
-		DocIds: req.DocIDs, Reason: req.Reason})
+	pr := &adminv1.ReplayRequest{SourceId: req.SourceID, Stage: req.Stage, ErrorCode: req.ErrorCode,
+		DocIds: req.DocIDs, Reason: req.Reason, PipelineVersion: req.PipelineVersion, IncludeSucceeded: req.IncludeSucceeded}
+	for v, dst := range map[string]**timestamppb.Timestamp{req.From: &pr.From, req.To: &pr.To} {
+		if v == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			return adminOutput{}, problemInvalid
+		}
+		*dst = timestamppb.New(t)
+	}
+	r, err := s.Ingest.Replay(ctx, pr)
 	if err != nil {
 		return adminOutput{}, err
 	}
 	return adminOutput{body: replayResultJSON{BatchID: r.GetIngestBatchId(), Replayed: r.GetReplayed(),
-		SkippedQuarantined: r.GetSkippedQuarantined()}}, nil
+		SkippedQuarantined: r.GetSkippedQuarantined(), Reprocessed: r.GetReprocessed()}}, nil
 }

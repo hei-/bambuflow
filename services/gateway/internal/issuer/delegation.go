@@ -7,7 +7,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/libs/platform-go/principal"
 )
 
 const (
@@ -50,20 +50,22 @@ func (i *Issuer) IssueDelegation(d Delegation) (string, error) {
 		},
 		Tenant: d.Tenant, Actor: d.Actor, BatchID: d.BatchID, AuthTime: d.AuthTime,
 	})
-	tok.Header["kid"] = i.kid
-	return tok.SignedString(i.key)
+	k := i.keys.Load().signing
+	tok.Header["kid"] = k.kid
+	return tok.SignedString(k.priv)
 }
 
-// VerifyDelegation 校验委托并核对它属于 batchID。只认本实例当前的签名密钥：
-// 密钥轮换后，用旧密钥签发、还没执行完的批次会被拒绝（剩余条目失败），轮换时要保留旧密钥的验签能力至少 7 天。
+// VerifyDelegation 校验委托并核对它属于 batchID。认已发布的每一把密钥：上一把要留到下一次轮换，
+// 轮换周期不短于委托的最长有效期（Rotator），用旧密钥签发、还没执行完的批次不受轮换影响。
 func (i *Issuer) VerifyDelegation(raw, batchID string) (Delegation, error) {
 	var c delegationClaims
 	_, err := jwt.ParseWithClaims(raw, &c,
 		func(t *jwt.Token) (any, error) {
-			if kid, _ := t.Header["kid"].(string); kid != i.kid {
-				return nil, errors.New("kid 不是当前密钥")
+			kid, _ := t.Header["kid"].(string)
+			if pub, ok := i.publicKey(kid); ok {
+				return pub, nil
 			}
-			return &i.key.PublicKey, nil
+			return nil, errors.New("kid 不是已发布的密钥")
 		},
 		jwt.WithValidMethods([]string{jwt.SigningMethodES256.Alg()}),
 		jwt.WithIssuer(principal.Issuer),

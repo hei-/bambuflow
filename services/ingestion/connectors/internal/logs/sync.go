@@ -12,9 +12,10 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/docmeta"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/publish"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/streams"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/docmeta"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/publish"
 )
 
 // 一轮最多读这么多条：一次性任务也不能无限占用内存，剩下的下一轮再读
@@ -202,6 +203,11 @@ func (r *RedisTopic) Read(ctx context.Context, max int) ([]Message, error) {
 	if !r.started {
 		err := r.Client.XGroupCreateMkStream(ctx, r.Stream, r.Group, "0").Err()
 		if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+			return nil, err
+		}
+		// 每轮同步是新的 Pod、新的主机名：上一轮读了没确认的消息先认领过来。空闲 30 分钟以上才认领，
+		// 大于一轮同步的时长，不抢同时在跑的另一轮（如对账）手上的消息
+		if _, err := streams.ClaimIdle(ctx, r.Client, r.Stream, r.Group, r.Consumer, 30*time.Minute); err != nil {
 			return nil, err
 		}
 		r.started, r.pending = true, true

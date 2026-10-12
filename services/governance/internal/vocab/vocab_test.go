@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
-	configv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/config/v1"
-	"github.com/bambu-ai/bambuflow/libs/platform-go/snapshot"
+	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/snapshot"
 )
 
 func TestDevSeedIsValid(t *testing.T) {
@@ -85,6 +87,28 @@ func TestSnapshotGroupsTermsByVocabulary(t *testing.T) {
 	// 内容不变则版本不变，内容一变版本就变
 	if Version(terms) != Version(fixed(append([]Term{}, terms...))) || Version(terms) == Version(terms[:2]) {
 		t.Fatal("快照版本应随内容变化")
+	}
+}
+
+func TestCandidateOnlyForVerifiedCallersAndSigned(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	signer, _ := NewSigner(key)
+	s := &Server{Signer: signer, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Candidate: func(_ context.Context, service, version string) (*configv1.Canary, error) {
+			return &configv1.Canary{Object: "routing", Scope: "global", VersionId: version, Percent: 100}, nil
+		}}
+	req := &configv1.GetCandidateRequest{Service: "orchestrator", VersionId: "cfv_000000000000000000000001"}
+	// 没有经过评测身份校验的调用（拦截器没配上）也不放行
+	if _, err := s.GetCandidate(context.Background(), req); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("%v", err)
+	}
+	signed, err := s.GetCandidate(as(t), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := (&snapshot.Verifier{Client: keyClient{s}, Now: time.Now}).Open(context.Background(), signed.GetSnapshot())
+	if err != nil || resp.GetSnapshotVersion() != "candidate:"+req.GetVersionId() || len(resp.GetCanaries()) != 1 {
+		t.Fatalf("%v %v", resp, err)
 	}
 }
 

@@ -1,9 +1,9 @@
 """evaluation 常驻服务的 A/B 部分（evaluation 详设 2、7.2、8.2）：
 
-分析接口与每天的护栏检查。
+分析接口、每天的护栏检查与配置灰度的观察（governance 详设 4.1 第 ⑨ 步）。
 
-实验本身从 governance 的 ExperimentControlService 读，
-回答记录从 orchestrator 的 AnswerRecordService 读，两者都是服务间接口；
+实验与灰度从 governance 的 ExperimentControlService、RolloutControlService 读，
+回答记录从 orchestrator 的 AnswerRecordService 读，都是服务间接口；
 分析接口经 gateway 调用，要求平台管理员的管理 Principal。
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol
 
 import grpc
@@ -22,8 +22,8 @@ from bambuflow.admin.v1 import (
     experiment_analysis_pb2_grpc,
 )
 from bambuflow.answer.v1 import records_pb2
-from bambuflow.config.v1 import experiment_control_pb2
-from bambuflow_evaluation import abtest
+from bambuflow.config.v1 import experiment_control_pb2, rollout_control_pb2
+from bambuflow_evaluation import abtest, observe
 from bambuflow_platform.grpc_server import current_principal
 
 if TYPE_CHECKING:
@@ -34,6 +34,18 @@ else:
 _log = logging.getLogger(__name__)
 
 PLATFORM_ADMIN = "platform_admin"
+# 租户负责人在管理 Principal 里的角色是 tenant_owner:<租户>
+# （gateway 按租户配置的 owner_groups 给出）
+TENANT_OWNER_PREFIX = "tenant_owner:"
+
+
+def owned_tenants(roles: Sequence[str]) -> frozenset[str]:
+    """调用者作为租户负责人能看的租户。"""
+    return frozenset(
+        r.removeprefix(TENANT_OWNER_PREFIX) for r in roles if r.startswith(TENANT_OWNER_PREFIX)
+    )
+
+
 # 导出接口单次最多 31 天，按窗口分段读
 WINDOW = dt.timedelta(days=31)
 CALL_TIMEOUT = 10.0
@@ -58,6 +70,20 @@ class Control(Protocol):
     ) -> Callable[..., Awaitable[experiment_control_pb2.StopForGuardrailResponse]]: ...
 
 
+class RolloutControl(Protocol):
+    """governance 的 RolloutControlService。"""
+
+    @property
+    def ListRollouts(
+        self,
+    ) -> Callable[..., Awaitable[rollout_control_pb2.ListRolloutsResponse]]: ...
+
+    @property
+    def ReportObservation(
+        self,
+    ) -> Callable[..., Awaitable[rollout_control_pb2.ReportObservationResponse]]: ...
+
+
 class Records(Protocol):
     """orchestrator 的 AnswerRecordService。"""
 
@@ -76,16 +102,18 @@ def _window(
 
 
 async def records_of(
-    stub: Records, exp: experiment_admin_pb2.Experiment, since: dt.datetime, until: dt.datetime
+    stub: Records, tenant: str, since: dt.datetime, until: dt.datetime, experiment_id: str = ""
 ) -> AsyncIterator[records_pb2.AnswerRecord]:
-    """实验期间的全部回答记录，按 31 天一段、每段分页读取。"""
+    """租户在 [since, until) 的全部回答记录（给了实验时只要这个实验的），
+
+    按 31 天一段、每段分页读取。"""
     start = since
     while start < until:
         end = min(until, start + WINDOW)
         token = ""
         while True:
             req = records_pb2.ListAnswerRecordsRequest(
-                tenant=exp.tenant, experiment_id=exp.exp_id, page_token=token
+                tenant=tenant, experiment_id=experiment_id, page_token=token
             )
             req.since.FromDatetime(start)
             req.until.FromDatetime(end)
@@ -102,7 +130,9 @@ async def analyze(
     records: Records, exp: experiment_admin_pb2.Experiment, now: dt.datetime
 ) -> experiment_analysis_pb2.ExperimentAnalysis:
     since, until = _window(exp, now)
-    out = abtest.analyze(exp, [r async for r in records_of(records, exp, since, until)])
+    out = abtest.analyze(
+        exp, [r async for r in records_of(records, exp.tenant, since, until, exp.exp_id)]
+    )
     out.data_since.FromDatetime(since)
     out.data_until.FromDatetime(until)
     return out
@@ -165,3 +195,50 @@ async def guard(control: Control, records: Records, now: dt.datetime) -> list[st
         _log.warning("护栏触发，已停止实验", extra={"exp_id": exp.exp_id, "reasons": reasons})
         stopped.append(exp.exp_id)
     return stopped
+
+
+async def observe_rollouts(
+    control: RolloutControl, records: Records, now: dt.datetime
+) -> list[str]:
+    """观察所有灰度，把结论报给 governance（继续只记下观察结果，全量或终止由 governance 执行）。
+
+    返回全量或终止了的发布。单个灰度取数或上报失败只记日志、继续下一个（下一轮再看）；
+    governance 不可用时整次失败，由调度方重试。"""
+    listed = await control.ListRollouts(
+        rollout_control_pb2.ListRolloutsRequest(), timeout=CALL_TIMEOUT
+    )
+    concluded: list[str] = []
+    for ro in listed.rollouts:
+        (since, until), baseline = observe.windows(ro, now)
+        try:
+            during = [r async for r in records_of(records, ro.tenant, since, until)]
+            before = (
+                None
+                if baseline is None
+                else [r async for r in records_of(records, ro.tenant, *baseline)]
+            )
+            got = observe.judge(ro, *observe.split(ro, during, before), now)
+            await control.ReportObservation(
+                rollout_control_pb2.ReportObservationRequest(
+                    release_id=ro.release_id,
+                    version_id=ro.version_id,
+                    verdict=got.verdict,
+                    summary=got.summary,
+                ),
+                timeout=CALL_TIMEOUT,
+            )
+        except grpc.aio.AioRpcError as e:
+            # FAILED_PRECONDITION：这期间有人全量、终止或回退了，下一轮就不在列表里了
+            _log.warning("灰度观察失败", extra={"release_id": ro.release_id, "err": e.code().name})
+            continue
+        if got.verdict != observe.CONTINUE:
+            concluded.append(ro.release_id)
+            _log.warning(
+                "灰度观察已下结论",
+                extra={
+                    "release_id": ro.release_id,
+                    "verdict": rollout_control_pb2.Verdict.Name(got.verdict),
+                    "summary": got.summary,
+                },
+            )
+    return concluded

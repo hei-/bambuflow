@@ -166,10 +166,20 @@ type DailyQuality struct {
 	// 引文支持所在句子的比例
 	CitationPrecision float64 `protobuf:"fixed64,5,opt,name=citation_precision,json=citationPrecision,proto3" json:"citation_precision,omitempty"`
 	// 判定用的 NLI 模型（与线上校验器不同，evaluation 详设 6.1）
-	JudgeModel    string                 `protobuf:"bytes,6,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`
-	ComputedAt    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=computed_at,json=computedAt,proto3" json:"computed_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	JudgeModel string                 `protobuf:"bytes,6,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`
+	ComputedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=computed_at,json=computedAt,proto3" json:"computed_at,omitempty"`
+	// 当天全部回答数与收到各类反馈的回答数（技术设计文档 F8：反馈聚合）；一条回答可能有多种反馈
+	Answers             int32 `protobuf:"varint,8,opt,name=answers,proto3" json:"answers,omitempty"`
+	FeedbackUseful      int32 `protobuf:"varint,9,opt,name=feedback_useful,json=feedbackUseful,proto3" json:"feedback_useful,omitempty"`
+	FeedbackWrong       int32 `protobuf:"varint,10,opt,name=feedback_wrong,json=feedbackWrong,proto3" json:"feedback_wrong,omitempty"`
+	FeedbackBadCitation int32 `protobuf:"varint,11,opt,name=feedback_bad_citation,json=feedbackBadCitation,proto3" json:"feedback_bad_citation,omitempty"`
+	// LLM 评审的 Faithfulness（回答不与引文矛盾的比例，evaluation 详设 7.1）；没配评审模型或没评成时不设
+	Faithfulness *float64 `protobuf:"fixed64,12,opt,name=faithfulness,proto3,oneof" json:"faithfulness,omitempty"`
+	// 评审成功的回答数与评审模型（模型 + 提示词版本）
+	FaithfulnessJudged int32  `protobuf:"varint,13,opt,name=faithfulness_judged,json=faithfulnessJudged,proto3" json:"faithfulness_judged,omitempty"`
+	LlmJudge           string `protobuf:"bytes,14,opt,name=llm_judge,json=llmJudge,proto3" json:"llm_judge,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *DailyQuality) Reset() {
@@ -251,6 +261,55 @@ func (x *DailyQuality) GetComputedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *DailyQuality) GetAnswers() int32 {
+	if x != nil {
+		return x.Answers
+	}
+	return 0
+}
+
+func (x *DailyQuality) GetFeedbackUseful() int32 {
+	if x != nil {
+		return x.FeedbackUseful
+	}
+	return 0
+}
+
+func (x *DailyQuality) GetFeedbackWrong() int32 {
+	if x != nil {
+		return x.FeedbackWrong
+	}
+	return 0
+}
+
+func (x *DailyQuality) GetFeedbackBadCitation() int32 {
+	if x != nil {
+		return x.FeedbackBadCitation
+	}
+	return 0
+}
+
+func (x *DailyQuality) GetFaithfulness() float64 {
+	if x != nil && x.Faithfulness != nil {
+		return *x.Faithfulness
+	}
+	return 0
+}
+
+func (x *DailyQuality) GetFaithfulnessJudged() int32 {
+	if x != nil {
+		return x.FaithfulnessJudged
+	}
+	return 0
+}
+
+func (x *DailyQuality) GetLlmJudge() string {
+	if x != nil {
+		return x.LlmJudge
+	}
+	return ""
+}
+
 var File_bambuflow_admin_v1_quality_trend_proto protoreflect.FileDescriptor
 
 const file_bambuflow_admin_v1_quality_trend_proto_rawDesc = "" +
@@ -264,7 +323,7 @@ const file_bambuflow_admin_v1_quality_trend_proto_rawDesc = "" +
 	"\x04days\x18\x02 \x03(\v2 .bambuflow.admin.v1.DailyQualityR\x04days\x12'\n" +
 	"\x0fgroundedness_7d\x18\x03 \x01(\x01R\x0egroundedness7d\x12)\n" +
 	"\x10groundedness_30d\x18\x04 \x01(\x01R\x0fgroundedness30d\x12\x1c\n" +
-	"\tdeclining\x18\x05 \x01(\bR\tdeclining\"\x89\x02\n" +
+	"\tdeclining\x18\x05 \x01(\bR\tdeclining\"\xaf\x04\n" +
 	"\fDailyQuality\x12\x10\n" +
 	"\x03day\x18\x01 \x01(\tR\x03day\x12\x18\n" +
 	"\asampled\x18\x02 \x01(\x05R\asampled\x12\x1c\n" +
@@ -274,10 +333,19 @@ const file_bambuflow_admin_v1_quality_trend_proto_rawDesc = "" +
 	"\vjudge_model\x18\x06 \x01(\tR\n" +
 	"judgeModel\x12;\n" +
 	"\vcomputed_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"computedAt2\x84\x01\n" +
+	"computedAt\x12\x18\n" +
+	"\aanswers\x18\b \x01(\x05R\aanswers\x12'\n" +
+	"\x0ffeedback_useful\x18\t \x01(\x05R\x0efeedbackUseful\x12%\n" +
+	"\x0efeedback_wrong\x18\n" +
+	" \x01(\x05R\rfeedbackWrong\x122\n" +
+	"\x15feedback_bad_citation\x18\v \x01(\x05R\x13feedbackBadCitation\x12'\n" +
+	"\ffaithfulness\x18\f \x01(\x01H\x00R\ffaithfulness\x88\x01\x01\x12/\n" +
+	"\x13faithfulness_judged\x18\r \x01(\x05R\x12faithfulnessJudged\x12\x1b\n" +
+	"\tllm_judge\x18\x0e \x01(\tR\bllmJudgeB\x0f\n" +
+	"\r_faithfulness2\x84\x01\n" +
 	"\x13QualityTrendService\x12m\n" +
-	"\x10GetQualityTrends\x12+.bambuflow.admin.v1.GetQualityTrendsRequest\x1a,.bambuflow.admin.v1.GetQualityTrendsResponseB\xe0\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x11QualityTrendProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x10GetQualityTrends\x12+.bambuflow.admin.v1.GetQualityTrendsRequest\x1a,.bambuflow.admin.v1.GetQualityTrendsResponseB\xdc\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x11QualityTrendProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_quality_trend_proto_rawDescOnce sync.Once
@@ -315,6 +383,7 @@ func file_bambuflow_admin_v1_quality_trend_proto_init() {
 	if File_bambuflow_admin_v1_quality_trend_proto != nil {
 		return
 	}
+	file_bambuflow_admin_v1_quality_trend_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

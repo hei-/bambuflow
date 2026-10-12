@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strconv"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 在线抽样评审的趋势（evaluation 详设 7.1、8.2）：GET /v1/admin/quality-trends?tenant=&days=，由 evaluation 实现。
@@ -21,6 +21,15 @@ type dailyQualityJSON struct {
 	CitationPrecision float64 `json:"citation_precision"`
 	JudgeModel        string  `json:"judge_model"`
 	ComputedAt        string  `json:"computed_at,omitempty"`
+	// 反馈聚合（技术设计文档 F8）
+	Answers             int32 `json:"answers"`
+	FeedbackUseful      int32 `json:"feedback_useful"`
+	FeedbackWrong       int32 `json:"feedback_wrong"`
+	FeedbackBadCitation int32 `json:"feedback_bad_citation"`
+	// LLM 评审的 Faithfulness（evaluation 详设 7.1）；没配评审模型时不返回
+	Faithfulness       *float64 `json:"faithfulness,omitempty"`
+	FaithfulnessJudged int32    `json:"faithfulness_judged"`
+	LLMJudge           string   `json:"llm_judge,omitempty"`
 }
 
 type qualityTrendsJSON struct {
@@ -53,7 +62,9 @@ func (s *Server) qualityTrends(ctx context.Context, in *adminInput) (adminOutput
 	for _, d := range resp.GetDays() {
 		out.Days = append(out.Days, dailyQualityJSON{Day: d.GetDay(), Sampled: d.GetSampled(), Sentences: d.GetSentences(),
 			Groundedness: d.GetGroundedness(), CitationPrecision: d.GetCitationPrecision(), JudgeModel: d.GetJudgeModel(),
-			ComputedAt: rfc3339(d.GetComputedAt())})
+			ComputedAt: rfc3339(d.GetComputedAt()), Answers: d.GetAnswers(), FeedbackUseful: d.GetFeedbackUseful(),
+			FeedbackWrong: d.GetFeedbackWrong(), FeedbackBadCitation: d.GetFeedbackBadCitation(),
+			Faithfulness: d.Faithfulness, FaithfulnessJudged: d.GetFaithfulnessJudged(), LLMJudge: d.GetLlmJudge()})
 	}
 	return adminOutput{body: out}, nil
 }

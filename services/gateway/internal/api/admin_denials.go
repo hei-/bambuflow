@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 )
 
 // 紧急拒绝规则（技术设计文档 13.2，governance 详设 7.2）：GET/POST /v1/admin/emergency-denials，由 governance 实现。

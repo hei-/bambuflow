@@ -12,6 +12,9 @@ service ConnectorAdminService {
   // 暂停：之后的每轮同步整轮跳过，包括撤权与删除，直到恢复。平台运维
   rpc PauseSource(PauseSourceRequest) returns (PauseSourceResponse);
   rpc ResumeSource(ResumeSourceRequest) returns (ResumeSourceResponse);
+  // 立即同步：马上拉起一轮同步，不等下一次定时。平台运维。数据源暂停或已撤销时拒绝；
+  // 部署没有接入调度（BF_SYNC_TRIGGER 未配置）时返回 FAILED_PRECONDITION
+  rpc SyncNow(SyncNowRequest) returns (SyncNowResponse);
   // 删除保护拦下的待删批次（入库管道详设第 5 节）：数据属主查看、确认或丢弃。
   // 确认需两位不同的数据属主：第一位确认后待复核，第二位确认后下一轮同步执行（只删其中源端仍不存在的）
   rpc ListPendingDeletions(ListPendingDeletionsRequest) returns (ListPendingDeletionsResponse);
@@ -22,11 +25,11 @@ service ConnectorAdminService {
 
 // SyncRun 是一轮同步的结果。
 message SyncRun {
-  // sync-wiki、sync-fileshare、sync-logs、sync-dbschema
+  // sync-wiki、sync-fileshare、sync-logs、sync-dbschema、reconcile-wiki、reconcile-fileshare
   string command = 1;
   google.protobuf.Timestamp started_at = 2;
   google.protobuf.Timestamp finished_at = 3;
-  // succeeded、failed、skipped_paused
+  // succeeded、failed、skipped_paused、skipped_revoked
   string result = 4;
   // 失败原因摘要，最多 200 字
   string error = 5;
@@ -40,6 +43,28 @@ message SyncRun {
   string deletes_paused_reason = 11;
   // 按 RefetchRequested 重新拉取的文档数
   int32 refetched = 12;
+  // 对账（reconcile-*）才有：源端全量清单与已入库文档的比对结果
+  Reconciliation reconciliation = 13;
+  // 清单里没能读出、本轮跳过的文档数与前 20 项（“名称：原因”）。单份文档读不出不中止整轮，但这一轮不推断删除
+  // （deletes_paused_reason 为 incomplete_listing）
+  int32 skipped = 14;
+  repeated string skipped_items = 15;
+}
+
+// Reconciliation 是一次每日对账的结果（技术设计文档 5.5）。差异都已补发对应的变更事件，删除仍受删除保护约束。
+message Reconciliation {
+  // 源端有、索引里没有（事件丢失或入库失败）：补发 UPSERT
+  int32 missing = 1;
+  // 内容摘要不一致：补发 UPSERT
+  int32 content_mismatch = 2;
+  // 权限或密级不一致：补发 ACL_ONLY
+  int32 acl_mismatch = 3;
+  // 索引里在用、源端已没有：补发 DELETE（超过阈值时进待删批次）
+  int32 orphaned = 4;
+  // 已打删除标记、源端仍有：不补发（可能是按保留期到期，或待撤销的删除），只计数
+  int32 tombstoned_in_source = 5;
+  // 索引里已入库的文档数（含删除标记）
+  int32 indexed = 6;
 }
 
 message Pause {
@@ -62,6 +87,14 @@ message GetSyncStatusResponse {
   int64 freshness_seconds = 4;
   // 暂停时有值
   Pause pause = 5;
+  // 最近一次对账；没有对账过时为空
+  SyncRun last_reconcile = 6;
+  // 数据源被撤销的时间（governance 详设 6.2）：全部文档已写删除标记，之后的同步都跳过，不能恢复。没有撤销时为空
+  google.protobuf.Timestamp revoked_at = 7;
+  // 常驻清单轮询的当前间隔（秒，5–15 分钟按源系统的响应自动调整，入库管道详设第 5 节）与下一轮的时间；
+  // 按定时任务同步的源为 0 与空。间隔计入这个源的撤权与删除时效
+  int64 listing_interval_seconds = 8;
+  google.protobuf.Timestamp next_round_at = 9;
 }
 
 message PauseSourceRequest {
@@ -74,6 +107,18 @@ message PauseSourceResponse {
   Pause pause = 1;
   // false 表示本来就是暂停的，返回原来的暂停记录
   bool changed = 2;
+}
+
+message SyncNowRequest {
+  string source_id = 1;
+  // 必填，最多 500 字
+  string reason = 2;
+}
+
+message SyncNowResponse {
+  // 拉起的同步任务名（调度方的任务标识）
+  string job = 1;
+  google.protobuf.Timestamp requested_at = 2;
 }
 
 message ResumeSourceRequest {

@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bambu-ai/bambuflow/services/gateway/internal/roles"
+	"github.com/hei-/bambuflow/services/gateway/internal/roles"
 )
 
 // adminRoutes 是管理接口的路由表（gateway 详设 4.2）：方法 + 路径 → 实现方与允许的平台角色。
 // 只登记已经实现的接口；设计里列出、尚未实现的路径不登记，访问时与任何未知路径一样返回 404。
 // 角色按 governance 详设 9.1、入库管道详设 14.4；实现方会按管理 Principal 的角色再校验一次。
+// 审批类操作（stepUp）另要求最近做过加强认证（stepup.go）；回退、紧急拒绝等收紧类与一人即可执行的操作不要求。
 func (s *Server) adminRoutes() []adminRoute {
 	return []adminRoute{
 		{name: "admin-emergency-denials-list", method: http.MethodGet, pattern: "/v1/admin/emergency-denials", owner: "governance",
@@ -22,26 +23,32 @@ func (s *Server) adminRoutes() []adminRoute {
 		{name: "admin-index-versions-activate", method: http.MethodPost, pattern: "/v1/admin/index-versions/{version}/activate", owner: "indexing",
 			roles: []string{roles.PlatformOperator}, call: s.activateIndexVersion},
 		{name: "admin-index-versions-approve", method: http.MethodPost, pattern: "/v1/admin/index-versions/operations/{operation_id}/approve",
-			owner: "indexing", roles: []string{roles.PlatformOperator}, call: s.approveOperation},
+			owner: "indexing", roles: []string{roles.PlatformOperator}, stepUp: true, call: s.approveOperation},
 		// 全量重建：申请与开始双人复核，看进度与取消一人即可（入库管道详设第 10 节、14.4）
 		{name: "admin-index-rebuilds-start", method: http.MethodPost, pattern: "/v1/admin/index-rebuilds", owner: "indexing",
 			roles: []string{roles.PlatformOperator}, call: s.startRebuild},
 		{name: "admin-index-rebuilds-approve", method: http.MethodPost, pattern: "/v1/admin/index-rebuilds/operations/{operation_id}/approve",
-			owner: "indexing", roles: []string{roles.PlatformOperator}, call: s.approveRebuild},
+			owner: "indexing", roles: []string{roles.PlatformOperator}, stepUp: true, call: s.approveRebuild},
 		{name: "admin-index-rebuilds-get", method: http.MethodGet, pattern: "/v1/admin/index-rebuilds/{rebuild_id}", owner: "indexing",
 			roles: []string{roles.PlatformOperator}, call: s.getRebuild},
 		{name: "admin-index-rebuilds-cancel", method: http.MethodPost, pattern: "/v1/admin/index-rebuilds/{rebuild_id}/cancel", owner: "indexing",
 			roles: []string{roles.PlatformOperator}, call: s.cancelRebuild},
+		// 删除凭证（技术设计文档 9.2，K6）：审计岗与信息安全按文档或数据源查
+		{name: "admin-deletion-receipts-list", method: http.MethodGet, pattern: "/v1/admin/deletion-receipts", owner: "indexing",
+			roles: []string{roles.Auditor, roles.InfoSec}, call: s.listDeletionReceipts},
 		// 撤销误写的删除标记：同样双人复核（入库管道详设第 5 节、14.4）
 		{name: "admin-tombstone-revocations-create", method: http.MethodPost, pattern: "/v1/admin/tombstone-revocations", owner: "indexing",
 			roles: []string{roles.PlatformOperator}, call: s.revokeTombstones},
 		{name: "admin-tombstone-revocations-approve", method: http.MethodPost, pattern: "/v1/admin/tombstone-revocations/operations/{operation_id}/approve",
-			owner: "indexing", roles: []string{roles.PlatformOperator}, call: s.approveRevocation},
-		// 数据源：平台管理员注册，本部门的数据属主审批、撤销与授权（属主范围由 governance 判断）
+			owner: "indexing", roles: []string{roles.PlatformOperator}, stepUp: true, call: s.approveRevocation},
+		// 数据源：平台管理员注册，本部门的数据属主审批、撤销与授权（属主范围由 governance 判断）；
+		// 受限级数据源另由信息安全审批；列表按角色决定范围（数据属主只看本部门）
+		{name: "admin-sources-list", method: http.MethodGet, pattern: "/v1/admin/sources", owner: "governance",
+			roles: []string{roles.PlatformAdmin, roles.PlatformOperator, roles.InfoSec, roles.DataOwner, roles.TenantOwner}, call: s.listSources},
 		{name: "admin-sources-register", method: http.MethodPost, pattern: "/v1/admin/sources", owner: "governance",
 			roles: []string{roles.PlatformAdmin}, call: s.registerSource},
 		{name: "admin-sources-approve", method: http.MethodPost, pattern: "/v1/admin/sources/{src_id}/approve", owner: "governance",
-			roles: []string{roles.DataOwner}, call: s.approveSource},
+			roles: []string{roles.DataOwner, roles.InfoSec}, stepUp: true, call: s.approveSource},
 		{name: "admin-sources-revoke", method: http.MethodPost, pattern: "/v1/admin/sources/{src_id}/revoke", owner: "governance",
 			roles: []string{roles.DataOwner}, call: s.revokeSource},
 		{name: "admin-sources-grants-list", method: http.MethodGet, pattern: "/v1/admin/sources/{src_id}/grants", owner: "governance",
@@ -50,6 +57,18 @@ func (s *Server) adminRoutes() []adminRoute {
 			roles: []string{roles.DataOwner}, call: s.createGrant},
 		{name: "admin-sources-grants-delete", method: http.MethodDelete, pattern: "/v1/admin/sources/{src_id}/grants", owner: "governance",
 			roles: []string{roles.DataOwner}, call: s.deleteGrant},
+		// 授权申请（governance 详设 6.2、9.1）：租户负责人为本租户申请、撤回；数据源所属部门的数据属主审批或驳回
+		{name: "admin-grant-applications-list", method: http.MethodGet, pattern: "/v1/admin/grant-applications", owner: "governance",
+			roles: []string{roles.TenantOwner, roles.DataOwner}, call: s.listGrantApplications},
+		{name: "admin-grant-applications-create", method: http.MethodPost, pattern: "/v1/admin/grant-applications", owner: "governance",
+			roles: []string{roles.TenantOwner}, call: s.applyGrant},
+		{name: "admin-grant-applications-approve", method: http.MethodPost, pattern: "/v1/admin/grant-applications/{application_id}/approve",
+			owner: "governance", roles: []string{roles.DataOwner}, stepUp: true, call: s.approveGrantApplication},
+		{name: "admin-grant-applications-reject", method: http.MethodPost, pattern: "/v1/admin/grant-applications/{application_id}/reject",
+			owner: "governance", roles: []string{roles.TenantOwner, roles.DataOwner}, call: s.rejectGrantApplication},
+		// 配置快照的分发情况：各服务当前版本与每个实例加载到哪一版（governance 详设 8.2）
+		{name: "admin-snapshot-sync-list", method: http.MethodGet, pattern: "/v1/admin/snapshot-sync", owner: "governance",
+			roles: []string{roles.PlatformAdmin, roles.PlatformOperator}, call: s.listSnapshotSync},
 		// A/B 实验：平台管理员立项、按 5% → 20% → 50% 推进与停止（governance 详设 7.2、9.1）
 		{name: "admin-experiments-list", method: http.MethodGet, pattern: "/v1/admin/experiments", owner: "governance",
 			roles: []string{roles.PlatformAdmin}, call: s.listExperiments},
@@ -64,14 +83,14 @@ func (s *Server) adminRoutes() []adminRoute {
 		// A/B 分析由 evaluation 实现（evaluation 详设 8.2）；按用户聚合全部回答记录，给更长的超时
 		{name: "admin-experiments-analysis", method: http.MethodGet, pattern: "/v1/admin/experiments/{exp_id}/analysis", owner: "evaluation",
 			roles: []string{roles.PlatformAdmin}, deadline: 30 * time.Second, call: s.experimentAnalysis},
-		// 在线抽样评审的趋势（evaluation 详设 7.1、8.2）；设计里租户负责人也能看本租户，平台角色里还没有租户负责人
+		// 在线抽样评审的趋势（evaluation 详设 7.1、8.2）；租户负责人只能看本租户（evaluation 校验）
 		{name: "admin-quality-trends", method: http.MethodGet, pattern: "/v1/admin/quality-trends", owner: "evaluation",
-			roles: []string{roles.PlatformAdmin}, call: s.qualityTrends},
-		// 评测门禁的列表与报告（evaluation 详设 5.2、8.2）；设计里租户负责人也能看本租户，平台角色里还没有租户负责人
+			roles: []string{roles.PlatformAdmin, roles.TenantOwner}, call: s.qualityTrends},
+		// 评测门禁的列表与报告（evaluation 详设 5.2、8.2）；租户负责人只看覆盖本租户的门禁（evaluation 校验）
 		{name: "admin-eval-gates-list", method: http.MethodGet, pattern: "/v1/admin/eval-gates", owner: "evaluation",
-			roles: []string{roles.PlatformAdmin, roles.PlatformOperator}, call: s.listGates},
+			roles: []string{roles.PlatformAdmin, roles.PlatformOperator, roles.TenantOwner}, call: s.listGates},
 		{name: "admin-eval-gates-get", method: http.MethodGet, pattern: "/v1/admin/eval-gates/{gate_id}", owner: "evaluation",
-			roles: []string{roles.PlatformAdmin, roles.PlatformOperator}, call: s.getGate},
+			roles: []string{roles.PlatformAdmin, roles.PlatformOperator, roles.TenantOwner}, call: s.getGate},
 		// 评测集题目与候选题复核（evaluation 详设 3.4、8.2）：设计里的“标注人员”“业务专家”平台角色里还没有，
 		// 由数据属主（业务专家）与平台管理员（平台）提交与复核，入集需两类人各一
 		{name: "admin-golden-questions-list", method: http.MethodGet, pattern: "/v1/admin/golden-sets/{tenant}/questions", owner: "evaluation",
@@ -80,6 +99,12 @@ func (s *Server) adminRoutes() []adminRoute {
 			roles: []string{roles.PlatformAdmin, roles.DataOwner}, call: s.submitCandidate},
 		{name: "admin-golden-questions-review", method: http.MethodPost, pattern: "/v1/admin/golden-sets/{tenant}/questions/{question_id}/review",
 			owner: "evaluation", roles: []string{roles.PlatformAdmin, roles.DataOwner}, call: s.reviewCandidate},
+		// 负反馈案例（技术设计文档 F8）：业务专家据此出候选题后标为已转题，或驳回
+		{name: "admin-golden-feedback-cases-list", method: http.MethodGet, pattern: "/v1/admin/golden-sets/{tenant}/feedback-cases",
+			owner: "evaluation", roles: []string{roles.PlatformAdmin, roles.PlatformOperator, roles.DataOwner}, call: s.listFeedbackCases},
+		{name: "admin-golden-feedback-cases-resolve", method: http.MethodPost,
+			pattern: "/v1/admin/golden-sets/{tenant}/feedback-cases/{answer_id}/resolve", owner: "evaluation",
+			roles: []string{roles.PlatformAdmin, roles.DataOwner}, call: s.resolveFeedbackCase},
 		// 受控词表：平台管理员维护，编码只能停用不能删除（governance 详设 6.1、7.2）
 		{name: "admin-vocabulary-terms-list", method: http.MethodGet, pattern: "/v1/admin/vocabularies/{vocabulary}/terms", owner: "governance",
 			roles: []string{roles.PlatformAdmin}, call: s.listTerms},
@@ -94,6 +119,8 @@ func (s *Server) adminRoutes() []adminRoute {
 			roles: []string{roles.PlatformOperator}, call: s.pauseSource},
 		{name: "admin-sources-resume", method: http.MethodPost, pattern: "/v1/admin/sources/{src_id}/resume", owner: "connectors",
 			roles: []string{roles.PlatformOperator}, call: s.resumeSource},
+		{name: "admin-sources-sync", method: http.MethodPost, pattern: "/v1/admin/sources/{src_id}/sync", owner: "connectors",
+			roles: []string{roles.PlatformOperator}, call: s.syncSourceNow},
 		// 删除保护拦下的待删批次：数据属主确认或丢弃，确认需两位不同的属主（connectors 判断）
 		{name: "admin-sources-pending-deletions-list", method: http.MethodGet, pattern: "/v1/admin/sources/{src_id}/pending-deletions",
 			owner: "connectors", roles: []string{roles.PlatformOperator, roles.DataOwner}, call: s.listPendingDeletions},
@@ -118,25 +145,38 @@ func (s *Server) adminRoutes() []adminRoute {
 		{name: "admin-plugins-security-review", method: http.MethodPost, pattern: "/v1/admin/plugins/{plugin_id}/security-review",
 			owner: "governance", roles: []string{roles.InfoSec}, call: s.reviewPlugin},
 		// 租户配置的版本、变更单与发布（governance 详设 3、4、7.2）：平台管理员发起与审批，作者不能批自己的；
-		// 设计里发布由 CI 服务账号发起、租户负责人只读本租户，平台角色里还没有这两类，先都由平台管理员
+		// 设计里发布由 CI 服务账号发起，平台角色里还没有这一类，先由平台管理员；租户负责人只读本租户（governance 校验）
 		{name: "admin-tenants-list", method: http.MethodGet, pattern: "/v1/admin/tenants", owner: "governance",
-			roles: []string{roles.PlatformAdmin}, call: s.listTenants},
+			roles: []string{roles.PlatformAdmin, roles.TenantOwner}, call: s.listTenants},
 		{name: "admin-tenants-create", method: http.MethodPost, pattern: "/v1/admin/tenants", owner: "governance",
 			roles: []string{roles.PlatformAdmin}, call: s.createTenant},
 		{name: "admin-tenants-config-versions", method: http.MethodGet, pattern: "/v1/admin/tenants/{tenant}/config-versions",
-			owner: "governance", roles: []string{roles.PlatformAdmin}, call: s.listConfigVersions},
+			owner: "governance", roles: []string{roles.PlatformAdmin, roles.TenantOwner}, call: s.listConfigVersions},
+		{name: "admin-config-versions", method: http.MethodGet, pattern: "/v1/admin/config-versions", owner: "governance",
+			roles: []string{roles.PlatformAdmin}, call: s.listObjectVersions},
+		{name: "admin-change-requests-list", method: http.MethodGet, pattern: "/v1/admin/change-requests", owner: "governance",
+			roles: []string{roles.PlatformAdmin}, call: s.listChangeRequests},
 		{name: "admin-change-requests-create", method: http.MethodPost, pattern: "/v1/admin/change-requests", owner: "governance",
 			roles: []string{roles.PlatformAdmin}, call: s.createChangeRequest},
 		{name: "admin-change-requests-approve", method: http.MethodPost, pattern: "/v1/admin/change-requests/{chg_id}/approve",
-			owner: "governance", roles: []string{roles.PlatformAdmin}, call: s.approveChangeRequest},
+			owner: "governance", roles: []string{roles.PlatformAdmin}, stepUp: true, call: s.approveChangeRequest},
 		{name: "admin-change-requests-reject", method: http.MethodPost, pattern: "/v1/admin/change-requests/{chg_id}/reject",
-			owner: "governance", roles: []string{roles.PlatformAdmin}, call: s.rejectChangeRequest},
+			owner: "governance", roles: []string{roles.PlatformAdmin}, stepUp: true, call: s.rejectChangeRequest},
+		// 策略层的发布由信息安全、数据属主参与审批（governance 详设 4.2、9.1），他们也要能看到待审批的发布；
+		// 租户负责人审批本租户的 pipeline（详设 3.1），只看得到、操作得了这一类（governance 校验）
+		{name: "admin-releases-list", method: http.MethodGet, pattern: "/v1/admin/releases", owner: "governance",
+			roles: []string{roles.PlatformAdmin, roles.InfoSec, roles.DataOwner, roles.TenantOwner}, call: s.listReleases},
 		{name: "admin-releases-create", method: http.MethodPost, pattern: "/v1/admin/releases", owner: "governance",
 			roles: []string{roles.PlatformAdmin}, call: s.createRelease},
 		{name: "admin-releases-get", method: http.MethodGet, pattern: "/v1/admin/releases/{rel_id}", owner: "governance",
-			roles: []string{roles.PlatformAdmin}, call: s.getRelease},
+			roles: []string{roles.PlatformAdmin, roles.InfoSec, roles.DataOwner, roles.TenantOwner}, call: s.getRelease},
 		{name: "admin-releases-approve", method: http.MethodPost, pattern: "/v1/admin/releases/{rel_id}/approve", owner: "governance",
-			roles: []string{roles.PlatformAdmin}, call: s.approveRelease},
+			roles: []string{roles.PlatformAdmin, roles.InfoSec, roles.DataOwner, roles.TenantOwner}, stepUp: true, call: s.approveRelease},
+		// 灰度（governance 详设 3.2、4.1）：全量放宽了生效范围，要求加强认证；终止灰度是收紧，一人即可
+		{name: "admin-releases-promote", method: http.MethodPost, pattern: "/v1/admin/releases/{rel_id}/promote", owner: "governance",
+			roles: []string{roles.PlatformAdmin, roles.InfoSec, roles.DataOwner, roles.TenantOwner}, stepUp: true, call: s.promoteRelease},
+		{name: "admin-releases-abort", method: http.MethodPost, pattern: "/v1/admin/releases/{rel_id}/abort", owner: "governance",
+			roles: []string{roles.PlatformAdmin, roles.InfoSec, roles.DataOwner, roles.TenantOwner}, call: s.abortRollout},
 		{name: "admin-releases-rollback", method: http.MethodPost, pattern: "/v1/admin/releases/{rel_id}/rollback", owner: "governance",
 			roles: []string{roles.PlatformAdmin}, call: s.rollbackRelease},
 		// 审计查询只给审计岗；查询本身既有这里的管理审计，也有 governance 的变更审计（governance 详设 9.3）

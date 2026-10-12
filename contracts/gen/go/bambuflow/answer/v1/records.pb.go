@@ -188,9 +188,18 @@ type AnswerRecord struct {
 	// 正文未保存（涉及受限级数据）
 	BodyWithheld bool `protobuf:"varint,10,opt,name=body_withheld,json=bodyWithheld,proto3" json:"body_withheld,omitempty"`
 	// include_answer 且正文已保存时才有
-	Answer        *AnswerResponse `protobuf:"bytes,11,opt,name=answer,proto3" json:"answer,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Answer *AnswerResponse `protobuf:"bytes,11,opt,name=answer,proto3" json:"answer,omitempty"`
+	// include_answer 时才有：掩码后的问题（负反馈进候选题池用，evaluation 详设 3.4）
+	MaskedQuestion string `protobuf:"bytes,12,opt,name=masked_question,json=maskedQuestion,proto3" json:"masked_question,omitempty"`
+	// include_answer 时才有：反馈的说明（保存前已做 PII 掩码）
+	FeedbackComments []string `protobuf:"bytes,13,rep,name=feedback_comments,json=feedbackComments,proto3" json:"feedback_comments,omitempty"`
+	// 灰度观察用（governance 详设 4.1 第 ⑨ 步）：引用覆盖率（confidence.coverage）、返回前复核拦下的证据数，
+	// 与提问人所在的灰度（why.canary_releases），据此区分候选组与对照组
+	Coverage       float64  `protobuf:"fixed64,14,opt,name=coverage,proto3" json:"coverage,omitempty"`
+	AccessDenied   int32    `protobuf:"varint,15,opt,name=access_denied,json=accessDenied,proto3" json:"access_denied,omitempty"`
+	CanaryReleases []string `protobuf:"bytes,16,rep,name=canary_releases,json=canaryReleases,proto3" json:"canary_releases,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AnswerRecord) Reset() {
@@ -300,6 +309,41 @@ func (x *AnswerRecord) GetAnswer() *AnswerResponse {
 	return nil
 }
 
+func (x *AnswerRecord) GetMaskedQuestion() string {
+	if x != nil {
+		return x.MaskedQuestion
+	}
+	return ""
+}
+
+func (x *AnswerRecord) GetFeedbackComments() []string {
+	if x != nil {
+		return x.FeedbackComments
+	}
+	return nil
+}
+
+func (x *AnswerRecord) GetCoverage() float64 {
+	if x != nil {
+		return x.Coverage
+	}
+	return 0
+}
+
+func (x *AnswerRecord) GetAccessDenied() int32 {
+	if x != nil {
+		return x.AccessDenied
+	}
+	return 0
+}
+
+func (x *AnswerRecord) GetCanaryReleases() []string {
+	if x != nil {
+		return x.CanaryReleases
+	}
+	return nil
+}
+
 var File_bambuflow_answer_v1_records_proto protoreflect.FileDescriptor
 
 const file_bambuflow_answer_v1_records_proto_rawDesc = "" +
@@ -316,7 +360,7 @@ const file_bambuflow_answer_v1_records_proto_rawDesc = "" +
 	"page_token\x18\a \x01(\tR\tpageToken\"\x80\x01\n" +
 	"\x19ListAnswerRecordsResponse\x12;\n" +
 	"\arecords\x18\x01 \x03(\v2!.bambuflow.answer.v1.AnswerRecordR\arecords\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfa\x03\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xba\x05\n" +
 	"\fAnswerRecord\x12\x1b\n" +
 	"\tanswer_id\x18\x01 \x01(\tR\banswerId\x12\x19\n" +
 	"\buser_key\x18\x02 \x01(\tR\auserKey\x129\n" +
@@ -331,10 +375,15 @@ const file_bambuflow_answer_v1_records_proto_rawDesc = "" +
 	"\bfeedback\x18\t \x03(\tR\bfeedback\x12#\n" +
 	"\rbody_withheld\x18\n" +
 	" \x01(\bR\fbodyWithheld\x12;\n" +
-	"\x06answer\x18\v \x01(\v2#.bambuflow.answer.v1.AnswerResponseR\x06answer2\x89\x01\n" +
+	"\x06answer\x18\v \x01(\v2#.bambuflow.answer.v1.AnswerResponseR\x06answer\x12'\n" +
+	"\x0fmasked_question\x18\f \x01(\tR\x0emaskedQuestion\x12+\n" +
+	"\x11feedback_comments\x18\r \x03(\tR\x10feedbackComments\x12\x1a\n" +
+	"\bcoverage\x18\x0e \x01(\x01R\bcoverage\x12#\n" +
+	"\raccess_denied\x18\x0f \x01(\x05R\faccessDenied\x12'\n" +
+	"\x0fcanary_releases\x18\x10 \x03(\tR\x0ecanaryReleases2\x89\x01\n" +
 	"\x13AnswerRecordService\x12r\n" +
-	"\x11ListAnswerRecords\x12-.bambuflow.answer.v1.ListAnswerRecordsRequest\x1a..bambuflow.answer.v1.ListAnswerRecordsResponseB\xe2\x01\n" +
-	"\x17com.bambuflow.answer.v1B\fRecordsProtoP\x01ZKgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/answer/v1;answerv1\xa2\x02\x03BAX\xaa\x02\x13Bambuflow.Answer.V1\xca\x02\x13Bambuflow\\Answer\\V1\xe2\x02\x1fBambuflow\\Answer\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Answer::V1b\x06proto3"
+	"\x11ListAnswerRecords\x12-.bambuflow.answer.v1.ListAnswerRecordsRequest\x1a..bambuflow.answer.v1.ListAnswerRecordsResponseB\xde\x01\n" +
+	"\x17com.bambuflow.answer.v1B\fRecordsProtoP\x01ZGgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/answer/v1;answerv1\xa2\x02\x03BAX\xaa\x02\x13Bambuflow.Answer.V1\xca\x02\x13Bambuflow\\Answer\\V1\xe2\x02\x1fBambuflow\\Answer\\V1\\GPBMetadata\xea\x02\x15Bambuflow::Answer::V1b\x06proto3"
 
 var (
 	file_bambuflow_answer_v1_records_proto_rawDescOnce sync.Once

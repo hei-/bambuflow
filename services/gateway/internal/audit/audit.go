@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -48,10 +49,47 @@ type Record struct {
 	// orchestrator 回报的实际 token 用量（计入租户配额，不对外返回）
 	PromptTokens     int64 `json:"prompt_tokens,omitempty"`
 	CompletionTokens int64 `json:"completion_tokens,omitempty"`
+	// 影响结果的版本（技术设计文档 8.3）：问答取自 why，仅检索取自检索响应。回答记录按保留期销毁原文后，
+	// 审计里仍能查到当时用的是哪个索引、模型、提示词与策略
+	Versions *Versions `json:"versions,omitempty"`
+	// 问答的结果状态（answered、insufficient_evidence、refused 等），拒答与降级的原因见 Versions.Degraded；
+	// 回答摘要是已推送句子的文本按顺序连接后的 SHA-256，审计不存回答原文
+	AnswerStatus string `json:"answer_status,omitempty"`
+	AnswerSHA    string `json:"answer_sha256,omitempty"`
 	// 回放时调用者凭什么看到这条回答：asker（提问人本人）或 auditor（审计岗）
 	Access string `json:"access,omitempty"`
+	// restricted_access：受限级内容的单独访问记录（技术设计文档 8.6“每次访问单独审计”），在内容发出之前写，
+	// 写不进去就不发；ShownChunkIDs 与 ListedDocIDs 只含这一次发出的受限级块与文档。普通的入口审计为空
+	Event string `json:"event,omitempty"`
 	// 管理接口才有（gateway 详设 8.2）
 	Admin *Admin `json:"admin,omitempty"`
+}
+
+// Versions 是一次问答或检索用到的版本组合与降级。
+type Versions struct {
+	IndexVersion      string `json:"index_version,omitempty"`
+	PolicyVersion     string `json:"policy_version,omitempty"`
+	EmbeddingModel    string `json:"embedding_model,omitempty"`
+	RerankModel       string `json:"rerank_model,omitempty"`
+	GenerationModel   string `json:"generation_model,omitempty"`
+	PromptVersion     string `json:"prompt_version,omitempty"`
+	NLIModel          string `json:"nli_model,omitempty"`
+	CalculatorVersion string `json:"calculator_version,omitempty"`
+	ExperimentID      string `json:"experiment_id,omitempty"`
+	ExperimentArm     string `json:"experiment_arm,omitempty"`
+	PipelineVersion   string `json:"pipeline_version,omitempty"`
+	RoutingVersion    string `json:"routing_version,omitempty"`
+	// 降级与拒答原因：阶段:原因
+	Degraded []string `json:"degraded,omitempty"`
+}
+
+// AnswerDigest 是已推送句子的摘要；没有句子时为空。
+func AnswerDigest(sentences []string) string {
+	if len(sentences) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.Join(sentences, "\n")))
+	return hex.EncodeToString(sum[:])
 }
 
 // Admin 是管理操作审计：谁以什么角色、对哪个实现方做了什么。写操作另记请求体摘要与实现方返回的结果，
@@ -69,6 +107,9 @@ type Admin struct {
 	// 同一幂等键的重复请求：没有再调用实现方，返回的是第一次的结果
 	Replayed bool `json:"replayed,omitempty"`
 }
+
+// EventRestricted 是受限级内容的单独访问记录。
+const EventRestricted = "restricted_access"
 
 // MaxSummary 是管理审计里请求体与结果摘要的长度上限（字节）。超出部分截断，完整内容的摘要由 RequestSHA 保留。
 const MaxSummary = 2048

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,5 +102,41 @@ func TestWriteKV(t *testing.T) {
 	bad := New(srv.URL, func() (string, error) { return "wrong", nil })
 	if err := bad.WriteKV(context.Background(), "secret", "webhooks/whk_1", map[string]string{"current": "s1"}); err == nil {
 		t.Fatal("无权写入应报错")
+	}
+}
+
+func TestReadVersionAndCheckAndSet(t *testing.T) {
+	version := 3
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = fmt.Fprintf(w, `{"data":{"data":{"private_key":"k"},"metadata":{"version":%d}}}`, version)
+			return
+		}
+		var body struct {
+			Options struct {
+				CAS int `json:"cas"`
+			} `json:"options"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Options.CAS != version {
+			// Vault 的 check-and-set 不满足时返回 400
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		version++
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, func() (string, error) { return "t0k", nil })
+	ctx := context.Background()
+	_, v, err := c.ReadKVVersion(ctx, "secret", "gateway/principal-signing")
+	if err != nil || v != 3 {
+		t.Fatalf("got %d, %v", v, err)
+	}
+	if err := c.WriteKVCAS(ctx, "secret", "gateway/principal-signing", map[string]string{"private_key": "k2"}, v); err != nil {
+		t.Fatal(err)
+	}
+	// 别的副本已经写过：再用旧版本号写应冲突
+	if err := c.WriteKVCAS(ctx, "secret", "gateway/principal-signing", map[string]string{"private_key": "k3"}, v); !errors.Is(err, ErrConflict) {
+		t.Fatalf("应返回 ErrConflict，得到 %v", err)
 	}
 }

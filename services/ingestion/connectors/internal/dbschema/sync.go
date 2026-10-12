@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	ingestionv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/incremental"
-	"github.com/bambu-ai/bambuflow/services/ingestion/connectors/internal/publish"
+	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/incremental"
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/publish"
 )
 
 // KV 是一份 doc_id → 值的状态（Redis 哈希），与其他样例源的同步状态同一种存法。

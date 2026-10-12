@@ -28,6 +28,7 @@ from opentelemetry import metrics, trace
 
 from bambuflow.answer.v1 import answer_pb2, answer_pb2_grpc
 from bambuflow.common.v1 import types_pb2
+from bambuflow.config.v1 import config_pb2
 from bambuflow.identity.v1 import principal_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2
 from bambuflow_grounding import Grounder, GroundingUnavailableError, KServeNLI
@@ -36,18 +37,41 @@ from bambuflow_orchestrator import (
     flow,
     intent,
     listing,
+    llm_rerank,
     records,
     replay,
     structured,
+    summary,
     topics,
+    understand,
 )
 from bambuflow_orchestrator.admission import Admission, Overloaded
-from bambuflow_orchestrator.budget import AGENT_SECONDS, SINGLE_HOP_SECONDS, Deadline
+from bambuflow_orchestrator.budget import (
+    AGENT_SECONDS,
+    RELAXED_SINGLE_HOP_SECONDS,
+    SINGLE_HOP_SECONDS,
+    Deadline,
+)
+from bambuflow_orchestrator.config import CandidateUnavailableError
 from bambuflow_orchestrator.experiments import Experiments
-from bambuflow_orchestrator.llm import ChatClient, ChatGeneration
-from bambuflow_orchestrator.session import AgentStates, Session, Sessions, Store, owner_of
+from bambuflow_orchestrator.llm import (
+    ChatGeneration,
+    LLMUnavailableError,
+    RefusedGeneration,
+    Router,
+)
+from bambuflow_orchestrator.plans import Plans
+from bambuflow_orchestrator.session import (
+    AgentStates,
+    Cited,
+    Session,
+    Sessions,
+    Store,
+    StoreUnavailableError,
+    owner_of,
+)
 from bambuflow_platform import envelope
-from bambuflow_platform.grpc_server import current_principal, downstream
+from bambuflow_platform.grpc_server import EVAL_CONFIG_HEADER, current_principal, downstream
 
 if TYPE_CHECKING:
     # 异步桩的类型只在生成的 .pyi 里；运行时用 RetrievalServiceStub(aio 通道) 得到的就是它
@@ -76,6 +100,10 @@ RESERVE_AFTER_GENERATION = 0.4
 TOP_K = 20
 # 内部调用之间也校验格式；格式不对按新会话处理
 CONVERSATION_ID = re.compile(r"^conv_[A-Za-z0-9]{1,64}$")
+# 配置发布门禁的候选版本（评测副本才接受，governance 详设 4.1 第 ③④ 步）；
+# 取候选只在每个版本第一次用到时问 governance，之后走缓存
+CANDIDATE_VERSION = re.compile(r"^cfv_[0-9a-f]{24}$")
+CANDIDATE_BUDGET = 1.0
 # 回放与反馈的 answer_id；格式不对按不存在处理
 ANSWER_ID = re.compile(r"^ans_[A-Za-z0-9]{1,64}$")
 # 回答记录的写入上限：正常几毫秒，超过就放弃，不拖慢回答
@@ -120,22 +148,30 @@ class _Search:
         ctx: Ctx,
         deadline: Deadline,
         intent: retrieval_pb2.SearchIntent = retrieval_pb2.SEARCH_INTENT_UNSPECIFIED,
+        plan_version: str = "",
     ) -> None:
         self._stub, self._ctx, self._deadline, self._intent = stub, ctx, deadline, intent
+        # 实验组替换了 pipeline 时要 retrieval 用的检索计划（plans.Settings.plan_version）
+        self._plan_version = plan_version
 
     async def search(
-        self, question: str, filters: types_pb2.Filters | None
+        self, question: str, filters: types_pb2.Filters | None, variants: Sequence[str] = ()
     ) -> retrieval_pb2.SearchResponse:
         kw = downstream(self._ctx, budget=self._deadline.cap(SEARCH_BUDGET))
         kw["metadata"] += (("x-call-purpose", _purpose(self._ctx)),)
         # 回答生成总要精排（orchestrator 详设第 5 节第 4 步）：
         # 不依赖按调用目的的默认值，mcp 的默认是不精排
+        # 同义扩展的说法作为后续子查询（retrieval 按子查询分别召回后合并，最多 4 个）
+        texts = [question, *variants][:4]
         req = retrieval_pb2.SearchRequest(
-            queries=[retrieval_pb2.SubQuery(id="q1", text=question)],
+            queries=[retrieval_pb2.SubQuery(id=f"q{i}", text=t) for i, t in enumerate(texts, 1)],
             filters=filters,
             top_k=TOP_K,
             intent=self._intent,
             rerank=True,
+            # 各路分数写进回答的 why（retrieval 详设 7.5）
+            include_score_details=True,
+            plan_version=self._plan_version,
         )
         resp: retrieval_pb2.SearchResponse = await self._stub.Search(req, **kw)
         return resp
@@ -144,8 +180,8 @@ class _Search:
 class _AgentSearch:
     """agent 路径的 doc_search：调用目的 agent_round，带轮次（orchestrator 详设 3.4、6.3）。"""
 
-    def __init__(self, stub: RetrievalServiceAsyncStub, ctx: Ctx) -> None:
-        self._stub, self._ctx = stub, ctx
+    def __init__(self, stub: RetrievalServiceAsyncStub, ctx: Ctx, plan_version: str = "") -> None:
+        self._stub, self._ctx, self._plan_version = stub, ctx, plan_version
 
     async def search(
         self, query: str, filters: types_pb2.Filters | None, round_no: int, timeout: float
@@ -156,6 +192,8 @@ class _AgentSearch:
             queries=[retrieval_pb2.SubQuery(id="q1", text=query)],
             filters=filters,
             top_k=agent.TOP_K,
+            include_score_details=True,
+            plan_version=self._plan_version,
         )
         resp: retrieval_pb2.SearchResponse = await self._stub.Search(req, **kw)
         return resp
@@ -165,16 +203,19 @@ class _Access:
     """grounding 的权限复核：以调用者本人的 Principal 调 CheckAccess。
 
     local 是本次请求里 sql_query 以调用者身份查出的证据（不在索引里，CheckAccess 不认识）：
-    它们的权限已由数据库按调用者的角色判定，直接放行；其余一律经 retrieval 复核。"""
+    它们的权限已由数据库按调用者的角色判定，直接放行；其余一律经 retrieval 复核。
+    复核拦下的块记进 denied（一次回答共用），回答记录据此记越权拦截数
+    （灰度观察，governance 详设 4.1）。"""
 
     def __init__(
         self,
         stub: RetrievalServiceAsyncStub,
         ctx: Ctx,
         deadline: Deadline,
+        denied: set[str],
         local: set[str] | None = None,
     ) -> None:
-        self._stub, self._ctx, self._deadline = stub, ctx, deadline
+        self._stub, self._ctx, self._deadline, self._denied = stub, ctx, deadline, denied
         self._local = local if local is not None else set()
 
     async def allowed(self, chunk_ids: Sequence[str]) -> dict[str, bool]:
@@ -193,7 +234,10 @@ class _Access:
             )
         except grpc.aio.AioRpcError as e:
             raise GroundingUnavailableError(f"CheckAccess: {e.code().name}") from e
-        return {r.chunk_id: r.allowed for r in resp.results}
+        got = {r.chunk_id: r.allowed for r in resp.results}
+        # 不在结果里的按不可见处理（Grounder 同样如此）
+        self._denied.update(c for c in chunk_ids if not got.get(c, False))
+        return got
 
 
 class _Sql:
@@ -255,23 +299,50 @@ class _Tokens:
 
 
 class _LLM:
-    def __init__(self, client: ChatClient, deadline: Deadline, tokens: _Tokens) -> None:
-        self._client, self._deadline, self._tokens = client, deadline, tokens
+    def __init__(self, router: Router, deadline: Deadline, tokens: _Tokens) -> None:
+        self._router, self._deadline, self._tokens = router, deadline, tokens
 
-    def generate(self, system: str, user: str, timeout: float | None = None) -> ChatGeneration:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        timeout: float | None = None,
+        level: int = types_pb2.CLASSIFICATION_INTERNAL,
+        model: str = "",
+    ) -> ChatGeneration | RefusedGeneration:
         """timeout 由调用方给出（agent 的规划）时照用；
-        不给时是回答生成，按生成预算并给校验留出时间。"""
+        不给时是回答生成，按生成预算并给校验留出时间。
+        level 是这次输入里的最高密级，按它选允许的模型（总体设计 8.6）；model 是 routing 指定的
+        生成模型（空为默认模型），不在部署允许的模型里时同样不调用。"""
+        client = self._router.choose(level, model)
+        if client is None:
+            _log.warning(
+                "没有允许处理该密级内容的模型，不调用模型", extra={"level": level, "model": model}
+            )
+            return RefusedGeneration(level)
         remaining = self._deadline.remaining()
         use = "plan" if timeout is not None else "generate"
         if timeout is None:
             timeout = min(GENERATION_BUDGET, remaining - RESERVE_AFTER_GENERATION)
-        g = self._client.generate(system, user, max(0.1, min(timeout, remaining)))
+        g = client.generate(system, user, max(0.1, min(timeout, remaining)))
         self._tokens.calls.append((use, g))
         return g
 
 
+class _Rewriter:
+    """查询改写的模型调用（understand.Rewriter）：读完全部输出；用量随 _LLM 计入这次回答。"""
+
+    def __init__(self, llm: _LLM, model: str) -> None:
+        self._llm, self.model = llm, model
+
+    async def complete(self, system: str, user: str, timeout: float) -> str:
+        return "\n".join([line async for line in self._llm.generate(system, user, timeout)])
+
+
 # 计数与列表各自的时间预算（K2 详设第 5 节：各约 200 ms，留出余量）
 CATALOG_BUDGET = 0.5
+# 问题指代上一轮的文档时，最多取几份文档的标题给查询改写（详设 10.1）
+MAX_REFERENCES = 3
 # 枚举与计数接口这些错误时退回普通检索流程（K2 详设第 9 节）；权限、参数错误照常返回
 _FALLBACK = {
     grpc.StatusCode.UNAVAILABLE,
@@ -359,6 +430,17 @@ class _Computed(Protocol):
     def response(self) -> answer_pb2.AnswerResponse: ...
 
 
+def _context_level(run: _Run, resp: answer_pb2.AnswerResponse) -> int:
+    """本轮上下文的最高密级（会话按它决定能否存摘要，详设 10.1）：
+    单跳与 agent 看送进模型的全部证据，清单路径看列出的文档与引用。"""
+    if isinstance(run, _Replay) and run.restricted:
+        return types_pb2.CLASSIFICATION_RESTRICTED
+    levels = [c.classification for c in resp.citations]
+    if isinstance(run, flow.Answer):
+        levels += [h.classification for _, h in run.evidence]
+    return max(levels, default=types_pb2.CLASSIFICATION_INTERNAL)
+
+
 class _Replay:
     """已经全部算完的回答（清单路径：枚举、计数、主题汇总）：按原顺序重放事件。"""
 
@@ -388,13 +470,15 @@ class _Call:
     tokens: _Tokens = dataclasses.field(default_factory=_Tokens)
     # 收到请求的时刻，回答记录据此记耗时（A/B 护栏 p95）
     started: float = dataclasses.field(default_factory=time.monotonic)
+    # 返回前复核拦下的块（灰度观察的越权拦截数）
+    denied: set[str] = dataclasses.field(default_factory=set)
 
 
 class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
     def __init__(
         self,
         retrieval: RetrievalServiceAsyncStub,
-        llm: ChatClient,
+        llm: Router,
         nli: KServeNLI,
         vocab: Vocabularies,
         store: Store,
@@ -403,6 +487,8 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         experiments: Experiments | None = None,
         sql: tuple[structured.Catalog, structured.QueryService] | None = None,
         keys: envelope.AsyncKeyService | None = None,
+        plans: Plans | None = None,
+        candidates: Callable[..., Awaitable[config_pb2.Canary]] | None = None,
     ) -> None:
         self._retrieval, self._llm, self._nli, self._vocab = retrieval, llm, nli, vocab
         # 回答记录的信封加密（问题原文、受限级回答快照）；没有配置时不加密另存，
@@ -411,9 +497,14 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         self._records = answer_records
         self._admission = admission
         self._experiments = experiments if experiments is not None else Experiments()
+        # 租户 pipeline 与全局 routing（随配置快照更新）；没有时全部用默认值
+        self._plans = plans if plans is not None else Plans()
+        # 评测副本按版本取候选配置（config.ConfigClient.candidate）；线上实例为 None
+        self._candidates = candidates
         # 数据平台的只读查询服务（sql_query）；没有配置时结构化问题按普通问题处理
         self._sql = sql
         self._sessions, self._agent_states = Sessions(store), AgentStates(store)
+        self._store = store
         # 会话写入在回答返回后进行；保留任务的引用，避免执行完之前被回收
         self._background: set[asyncio.Task[None]] = set()
 
@@ -476,9 +567,18 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         session = await self._sessions.open(
             principal.tenant, owner_of(principal.tenant, principal.sub), conv
         )
+        candidate = await self._candidate(context)
         # 分组按提问人（user_id）算，代用户调用的业务系统与 agent 不影响分组（详设 12.3）
+        exp = self._experiments.assignment(principal.tenant, principal.sub)
+        variant = None
+        if exp is not None and exp.variant is not None:
+            variant = self._plans.settings(principal.tenant, principal.sub, candidate, exp.variant)
         req = dataclasses.replace(
-            req, experiment=self._experiments.assignment(principal.tenant, principal.sub)
+            req,
+            experiment=exp,
+            settings=self._plans.settings(principal.tenant, principal.sub, candidate),
+            variant=variant,
+            summary=session.summary,
         )
         if session.degraded:
             req = dataclasses.replace(
@@ -499,6 +599,23 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             principal.actor,
         )
 
+    async def _candidate(self, context: Ctx) -> config_pb2.Canary | None:
+        """配置发布的门禁指定的候选（governance 详设 4.1 第 ③④ 步）。
+
+        线上实例收到这个头已被 AuthInterceptor 拒绝。
+
+        取不到就拒绝这道题：不能拿生效的配置冒充候选去评（fail-closed）。"""
+        version = _metadata(context).get(EVAL_CONFIG_HEADER, "")
+        if not version:
+            return None
+        if self._candidates is None or not CANDIDATE_VERSION.match(version):
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "候选配置版本不合法")
+        try:
+            return await self._candidates(version, **downstream(context, budget=CANDIDATE_BUDGET))
+        except CandidateUnavailableError as e:
+            _log.warning("取候选配置失败", extra={"version_id": version, "err": str(e)})
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "候选配置不可用")
+
     def _deadline(self, context: Ctx, seconds: float) -> Deadline:
         remaining = context.time_remaining()
         return Deadline(seconds if remaining is None else min(remaining, seconds))
@@ -507,10 +624,35 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         self,
         req: flow.Request,
         context: Ctx,
-        tokens: _Tokens,
+        call: _Call,
         kind: answer_pb2.Intent = answer_pb2.INTENT_SINGLE_HOP,
     ) -> flow.Answer:
-        deadline = self._deadline(context, SINGLE_HOP_SECONDS)
+        # 取证据一侧的开关：实验组从一开始就用变体（flow.Answer）
+        pre = req.variant or req.settings
+        relaxed = pre.single_hop_llm_rerank
+        deadline = self._deadline(
+            context, RELAXED_SINGLE_HOP_SECONDS if relaxed else SINGLE_HOP_SECONDS
+        )
+        llm = _LLM(self._llm, deadline, call.tokens)
+
+        async def rerank(
+            question: str, hits: Sequence[retrieval_pb2.Hit]
+        ) -> tuple[list[retrieval_pb2.Hit], str, str]:
+            r = await llm_rerank.rerank(llm, question, (), hits, deadline.remaining)
+            return r.hits, r.version, r.degraded
+
+        # 查询理解（详设 5.1、5.2）：追问改写用会话里最近几轮问题，结果缓存在会话所在的 Redis
+        understander = understand.Understander(
+            self._vocab,
+            dt.date.today(),
+            call.session.recent_questions,
+            _Rewriter(llm, self._llm.model),
+            self._store,
+            call.tenant,
+            deadline.remaining,
+            call.session.summary,
+            lambda: self._titles(call, context, deadline),
+        )
         # 关系类问题也走单跳，只是让 retrieval 提高图召回的权重（详设 5.3）
         hint = (
             retrieval_pb2.SEARCH_INTENT_RELATION
@@ -519,9 +661,12 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         )
         return flow.Answer(
             req,
-            _Search(self._retrieval, context, deadline, hint),
-            _LLM(self._llm, deadline, tokens),
-            Grounder(self._nli, _Access(self._retrieval, context, deadline)),
+            _Search(self._retrieval, context, deadline, hint, pre.plan_version),
+            llm,
+            Grounder(self._nli, _Access(self._retrieval, context, deadline, call.denied)),
+            understander,
+            # 单跳 LLM 重排只对书面同意放宽 SLO 的租户开放（pipeline，技术设计文档 6.7）
+            rerank if relaxed else None,
         )
 
     def _structured(self, call: _Call) -> bool:
@@ -542,22 +687,30 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         principal = current_principal()
         if structured_query and self._sql is not None and principal is not None:
             sql = _Sql(*self._sql, principal, local)
+        pre = call.req.variant or call.req.settings
         run = agent.Agent(
             call.req.question,
             call.req.filters,
             call.session.recent_questions,
-            _AgentSearch(self._retrieval, context),
+            _AgentSearch(self._retrieval, context, pre.plan_version),
             llm,
             deadline,
             _AgentState(self._agent_states, call.tenant, call.answer_id),
             sql=sql,
+            summary=call.session.summary,
+            max_rounds=pre.agent_max_rounds,
+            max_sub_questions=pre.agent_max_sub_questions,
         )
-        grounder = Grounder(self._nli, _Access(self._retrieval, context, deadline, local))
+        grounder = Grounder(
+            self._nli, _Access(self._retrieval, context, deadline, call.denied, local)
+        )
         return agent.AgentAnswer(call.req, run, llm, grounder)
 
     async def _select(self, call: _Call, context: Ctx) -> _Run:
         """选择处理路径，并把实验分组写进 why（详设 12.3）。"""
         run = await self._route(call, context)
+        # 所有路径都记提问人所在的灰度：灰度观察按它分组，不受处理路径影响（governance 详设 4.1）
+        run.why.canary_releases.extend(call.req.settings.canary_releases)
         exp = call.req.experiment
         if exp is not None:
             run.why.experiment_id = exp.exp_id
@@ -591,14 +744,14 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
                 _Catalog(self._retrieval, context, deadline),
                 _Excerpts(self._retrieval, context, deadline),
                 _LLM(self._llm, deadline, call.tokens),
-                Grounder(self._nli, _Access(self._retrieval, context, deadline)),
+                Grounder(self._nli, _Access(self._retrieval, context, deadline, call.denied)),
             )
             ts.why.intent = kind
             ts.why.degraded.extend(req.degraded)
             try:
                 ready = [e async for e in ts.events()]
             except grpc.aio.AioRpcError as e:
-                run = self._single_hop(await _fall_back(e, req, context), context, call.tokens)
+                run = self._single_hop(await _fall_back(e, req, context), context, call)
             else:
                 return _Replay(ts, ready)
         elif found := self._listing(req):
@@ -610,24 +763,77 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             try:
                 ready = [e async for e in lst.events()]
             except grpc.aio.AioRpcError as e:
-                run = self._single_hop(await _fall_back(e, req, context), context, call.tokens)
+                run = self._single_hop(await _fall_back(e, req, context), context, call)
             else:
                 return _Replay(lst, ready)
         elif kind == answer_pb2.INTENT_MULTI_HOP:
             run = self._agent(call, context)
         else:
-            run = self._single_hop(req, context, call.tokens, kind)
+            run = self._single_hop(req, context, call, kind)
         run.why.intent = kind
         return run
 
-    def _remember(self, call: _Call, resp: answer_pb2.AnswerResponse) -> None:
-        """回答结束后异步写会话，不占用响应时间（详设 10.2）。"""
-        cited = [c.chunk_id for c in resp.citations]
+    def _remember(self, call: _Call, resp: answer_pb2.AnswerResponse, run: _Run) -> None:
+        """回答结束后异步写会话并更新摘要，不占用响应时间（详设 10.2）。
+        会话里存改写后的问题（详设 10.1），没有改写时存原问题。"""
+        cited = [Cited(c.chunk_id, c.doc_id) for c in resp.citations]
+        rewritten = run.rewritten if isinstance(run, flow.Answer) else ""
         task = asyncio.create_task(
-            self._sessions.record(call.tenant, call.session, call.req.question, cited)
+            self._remember_turn(
+                call,
+                rewritten or call.req.question,
+                cited,
+                _context_level(run, resp),
+                # 只在回答了的轮次更新摘要：拒答的问题（超出范围、疑似注入）不该送进模型，
+                # 没有证据或生成不可用的轮次也不为摘要单独调一次模型
+                summarize=resp.status == answer_pb2.STATUS_ANSWERED,
+            )
         )
         self._background.add(task)
         task.add_done_callback(self._background.discard)
+
+    async def _remember_turn(
+        self, call: _Call, question: str, cited: list[Cited], level: int, summarize: bool
+    ) -> None:
+        turn = await self._sessions.record(call.tenant, call.session, question, cited, level)
+        # 受限级会话不存摘要（详设 10.1）；摘要的输入只有用户的问题，按本轮上下文的密级选模型
+        restricted = call.session.restricted or level >= types_pb2.CLASSIFICATION_RESTRICTED
+        if turn is None or restricted or not summarize:
+            return
+        client = self._llm.choose(level)
+        if client is None:
+            return
+        try:
+            text = await asyncio.wait_for(
+                summary.update(client, call.session.summary, question), summary.SECONDS
+            )
+        except (LLMUnavailableError, TimeoutError) as e:
+            # 摘要更新失败不影响回答，下一轮退回只用最近的问题（详设 10.2）
+            _log.warning("会话摘要更新失败", extra={"err": type(e).__name__})
+            return
+        await self._sessions.update_summary(
+            call.tenant, call.session.conversation_id, call.session.owner, turn, text
+        )
+
+    async def _titles(self, call: _Call, context: Ctx, deadline: Deadline) -> list[str]:
+        """上一轮所引文档的标题（最多 3 份），以调用者当前的权限经 GetExcerpt 取：
+        这期间被撤权的文档不给（详设 10.1）。取不到只是不提供，不影响回答。"""
+        docs: dict[str, Cited] = {}
+        for c in call.session.last_citations:
+            if c.doc_id not in docs and len(docs) < MAX_REFERENCES:
+                docs[c.doc_id] = c
+        excerpts = _Excerpts(self._retrieval, context, deadline)
+        got = await asyncio.gather(
+            *(excerpts.excerpt(c.doc_id, c.chunk_id) for c in docs.values()),
+            return_exceptions=True,
+        )
+        titles: list[str] = []
+        for r in got:
+            if isinstance(r, retrieval_pb2.GetExcerptResponse) and r.title:
+                titles.append(r.title)
+            elif isinstance(r, Exception):
+                _log.warning("取上一轮引用的标题失败", extra={"err": type(r).__name__})
+        return titles
 
     async def _keep(
         self, call: _Call, run: _Run, trace_id: str, context: Ctx
@@ -653,6 +859,7 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             listed_restricted=isinstance(run, _Replay) and run.restricted,
             latency_ms=int((time.monotonic() - call.started) * 1000),
             usage=call.tokens.total(),
+            access_denied=len(call.denied),
         )
         if self._keys is not None:
             try:
@@ -694,7 +901,7 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             resp = await self._keep(call, run, _trace_id(), context)
         # 用量只交给 gateway 计配额，不进回答记录（回放不应再计一次）
         resp.usage.CopyFrom(call.tokens.total())
-        self._remember(call, resp)
+        self._remember(call, resp, run)
         return resp
 
     async def StreamAnswer(
@@ -731,7 +938,7 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
                 await _abort_search(e, context)
             finally:
                 call.tokens.log(call.tenant, call.purpose)
-        self._remember(call, resp if resp is not None else run.response())
+        self._remember(call, resp if resp is not None else run.response(), run)
 
     async def GetAnswer(
         self, request: answer_pb2.GetAnswerRequest, context: Ctx
@@ -805,6 +1012,24 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             await context.abort(grpc.StatusCode.UNAVAILABLE, "暂时不可用")
         _feedback.add(1, {"rating": saved.rating})
         return answer_pb2.CreateFeedbackResponse(feedback=saved.proto())
+
+    async def DeleteConversation(
+        self, request: answer_pb2.DeleteConversationRequest, context: Ctx
+    ) -> answer_pb2.DeleteConversationResponse:
+        """删除调用者自己的会话（详设 10.4）；不存在或不属于调用者时同样成功，不暴露别人的会话。"""
+        principal = await _principal(context)
+        if not CONVERSATION_ID.match(request.conversation_id):
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "conversation_id 不合法")
+        try:
+            await self._sessions.delete(
+                principal.tenant,
+                owner_of(principal.tenant, principal.sub),
+                request.conversation_id,
+            )
+        except StoreUnavailableError as e:
+            _log.warning("会话删除失败", extra={"err": str(e)})
+            await context.abort(grpc.StatusCode.UNAVAILABLE, "暂时不可用")
+        return answer_pb2.DeleteConversationResponse()
 
     async def _record(self, answer_id: str, context: Ctx) -> records.Record | None:
         if not ANSWER_ID.match(answer_id):

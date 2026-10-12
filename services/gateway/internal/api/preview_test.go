@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/bambu-ai/bambuflow/libs/platform-go/tenancy"
+	"github.com/hei-/bambuflow/libs/platform-go/tenancy"
 )
 
 func (e *env) get(t *testing.T, path, token, tenant string) resp {

@@ -67,3 +67,11 @@ func content(fp string) string {
 	h, _, _ := strings.Cut(fp, "|")
 	return h
 }
+
+// Incomplete 用在清单里有文档没能读出的一轮（入库管道详设第 11 节）：读不出的文档不在本轮清单里，
+// 不能当成源端已删，所以这一轮不发删除、也不记待删批次，其余变更照常。
+func (p *Plan) Incomplete() {
+	if len(p.Deletes) > 0 || len(p.Held) > 0 {
+		p.Deletes, p.Held, p.DeletesPaused, p.Reason = nil, nil, true, "incomplete_listing"
+	}
+}

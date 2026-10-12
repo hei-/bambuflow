@@ -139,7 +139,14 @@ class PlanOnly:
         self.output = output
         self.prompts: list[tuple[str, str]] = []
 
-    def generate(self, system: str, user: str, timeout: float | None = None) -> FakeGeneration:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        timeout: float | None = None,
+        level: int = 2,
+        model: str = "",
+    ) -> FakeGeneration:
         self.prompts.append((system, user))
         return FakeGeneration(self.output)
 
@@ -245,6 +252,9 @@ class NoNLI:
     async def support(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
         return [0.0] * len(pairs), "nli@t"
 
+    async def contradiction(self, pairs: Sequence[tuple[str, str]]) -> tuple[list[float], str]:
+        return [0.0] * len(pairs), "nli@t"
+
 
 class AllowAll:
     async def allowed(self, chunk_ids: Sequence[str]) -> dict[str, bool]:
@@ -255,8 +265,8 @@ def test_agent_answer_uses_sql_prompt_version(catalog: structured.Catalog) -> No
     clock = Clock()
     req = flow.Request("q", None, 8)
     for sql, version in (
-        (None, prompt.AGENT_PROMPT_VERSION),
-        (FakeSql(catalog), prompt.AGENT_SQL_PROMPT_VERSION),
+        (None, prompt.AGENT.version),
+        (FakeSql(catalog), f"{prompt.AGENT.version}+{prompt.SQL_PLAN_VERSION}"),
     ):
         a = agent.Agent(
             "q", None, (), Search(), PlanOnly(""), Deadline(10, clock), Sink(), clock, sql=sql

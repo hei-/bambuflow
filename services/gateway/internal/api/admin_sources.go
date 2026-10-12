@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"regexp"
 
-	adminv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1"
-	commonv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 )
 
 // 数据源注册、审批、撤销与租户授权（技术设计文档 13.2，governance 详设 6.2、7.2），由 governance 实现：
-// POST /v1/admin/sources、POST .../{src_id}/approve、POST .../{src_id}/revoke、GET/POST/DELETE .../{src_id}/grants。
+// GET/POST /v1/admin/sources、POST .../{src_id}/approve、POST .../{src_id}/revoke、GET/POST/DELETE .../{src_id}/grants。
 
 var (
 	sourceIDPattern = regexp.MustCompile(`^src_[A-Za-z0-9]{1,64}$`)
@@ -23,6 +23,18 @@ var (
 	classificationNames = map[string]commonv1.Classification{
 		"public": commonv1.Classification_CLASSIFICATION_PUBLIC, "internal": commonv1.Classification_CLASSIFICATION_INTERNAL,
 		"confidential": commonv1.Classification_CLASSIFICATION_CONFIDENTIAL, "restricted": commonv1.Classification_CLASSIFICATION_RESTRICTED,
+	}
+	sourceStatusNames = map[string]adminv1.SourceStatus{
+		"pending": adminv1.SourceStatus_SOURCE_STATUS_PENDING, "active": adminv1.SourceStatus_SOURCE_STATUS_ACTIVE,
+		"revoked": adminv1.SourceStatus_SOURCE_STATUS_REVOKED,
+	}
+	permissionModelNames = map[string]adminv1.PermissionModel{
+		"": adminv1.PermissionModel_PERMISSION_MODEL_DOCUMENT, "document": adminv1.PermissionModel_PERMISSION_MODEL_DOCUMENT,
+		"partition": adminv1.PermissionModel_PERMISSION_MODEL_PARTITION,
+	}
+	approvalCapacities = map[string]adminv1.ApprovalCapacity{
+		"": adminv1.ApprovalCapacity_APPROVAL_CAPACITY_DATA_OWNER, "data_owner": adminv1.ApprovalCapacity_APPROVAL_CAPACITY_DATA_OWNER,
+		"infosec": adminv1.ApprovalCapacity_APPROVAL_CAPACITY_INFOSEC,
 	}
 )
 
@@ -41,6 +53,12 @@ type sourceJSON struct {
 	RevokedBy             string `json:"revoked_by,omitempty"`
 	RevokedAt             string `json:"revoked_at,omitempty"`
 	RevokeReason          string `json:"revoke_reason,omitempty"`
+	// 信息安全的审批，只有受限级数据源有
+	SecurityApprovedBy    string `json:"security_approved_by,omitempty"`
+	SecurityApprovedAt    string `json:"security_approved_at,omitempty"`
+	SecurityApprovalBasis string `json:"security_approval_basis,omitempty"`
+	PushClient            string `json:"push_client,omitempty"`
+	PermissionModel       string `json:"permission_model"`
 	// 只有撤销的响应带：撤销时写入的按数据源的紧急拒绝规则
 	DenialID string `json:"denial_id,omitempty"`
 }
@@ -51,7 +69,32 @@ func sourceOf(x *adminv1.Source) sourceJSON {
 		DefaultClassification: enumName(x.GetDefaultClassification()), Description: x.GetDescription(), Status: enumName(x.GetStatus()),
 		CreatedBy: x.GetCreatedBy(), CreatedAt: rfc3339(x.GetCreatedAt()), ApprovedBy: x.GetApprovedBy(), ApprovedAt: rfc3339(x.GetApprovedAt()),
 		ApprovalBasis: x.GetApprovalBasis(), RevokedBy: x.GetRevokedBy(), RevokedAt: rfc3339(x.GetRevokedAt()), RevokeReason: x.GetRevokeReason(),
+		SecurityApprovedBy: x.GetSecurityApprovedBy(), SecurityApprovedAt: rfc3339(x.GetSecurityApprovedAt()),
+		SecurityApprovalBasis: x.GetSecurityApprovalBasis(), PushClient: x.GetPushClient(), PermissionModel: enumName(x.GetPermissionModel()),
 	}
+}
+
+// listSources 列出数据源，可按状态筛选；能看到哪些由 governance 按角色决定（数据属主只看本部门）。
+func (s *Server) listSources(ctx context.Context, in *adminInput) (adminOutput, error) {
+	req := &adminv1.ListSourcesRequest{}
+	if v := in.query.Get("status"); v != "" {
+		st, ok := sourceStatusNames[v]
+		if !ok {
+			return adminOutput{}, problemInvalid
+		}
+		req.Status = st
+	}
+	resp, err := s.Sources.ListSources(ctx, req)
+	if err != nil {
+		return adminOutput{}, err
+	}
+	out := struct {
+		Sources []sourceJSON `json:"sources"`
+	}{Sources: []sourceJSON{}}
+	for _, x := range resp.GetSources() {
+		out.Sources = append(out.Sources, sourceOf(x))
+	}
+	return adminOutput{body: out}, nil
 }
 
 type registerSourceJSON struct {
@@ -59,6 +102,9 @@ type registerSourceJSON struct {
 	OwnerDept             string `json:"owner_dept"`
 	DefaultClassification string `json:"default_classification"`
 	Description           string `json:"description"`
+	PushClient            string `json:"push_client"`
+	// document（默认）或 partition
+	PermissionModel string `json:"permission_model"`
 }
 
 func (s *Server) registerSource(ctx context.Context, in *adminInput) (adminOutput, error) {
@@ -68,11 +114,13 @@ func (s *Server) registerSource(ctx context.Context, in *adminInput) (adminOutpu
 	}
 	typ, ok1 := sourceTypeNames[req.Type]
 	cls, ok2 := classificationNames[req.DefaultClassification]
-	if !ok1 || !ok2 {
+	model, ok3 := permissionModelNames[req.PermissionModel]
+	if !ok1 || !ok2 || !ok3 {
 		return adminOutput{}, problemInvalid
 	}
 	resp, err := s.Sources.RegisterSource(ctx, &adminv1.RegisterSourceRequest{
-		Type: typ, OwnerDept: req.OwnerDept, DefaultClassification: cls, Description: req.Description,
+		Type: typ, OwnerDept: req.OwnerDept, DefaultClassification: cls, Description: req.Description, PushClient: req.PushClient,
+		PermissionModel: model,
 	})
 	if err != nil {
 		return adminOutput{}, err
@@ -96,11 +144,17 @@ func (s *Server) approveSource(ctx context.Context, in *adminInput) (adminOutput
 	}
 	var req struct {
 		Basis string `json:"basis"`
+		// data_owner（默认）或 infosec（受限级数据源的信息安全审批）
+		Capacity string `json:"capacity"`
 	}
 	if err := decodeBody(in.body, &req); err != nil {
 		return adminOutput{}, err
 	}
-	resp, err := s.Sources.ApproveSource(ctx, &adminv1.ApproveSourceRequest{SourceId: id, Basis: req.Basis})
+	capacity, ok := approvalCapacities[req.Capacity]
+	if !ok {
+		return adminOutput{}, problemInvalid
+	}
+	resp, err := s.Sources.ApproveSource(ctx, &adminv1.ApproveSourceRequest{SourceId: id, Basis: req.Basis, Capacity: capacity})
 	if err != nil {
 		return adminOutput{}, err
 	}
@@ -132,10 +186,13 @@ type grantJSON struct {
 	Tenant    string `json:"tenant"`
 	GrantedBy string `json:"granted_by,omitempty"`
 	GrantedAt string `json:"granted_at,omitempty"`
+	// 经授权申请审批的授权才有
+	ApplicationID string `json:"application_id,omitempty"`
 }
 
 func grantOf(g *adminv1.Grant) grantJSON {
-	return grantJSON{SourceID: g.GetSourceId(), Tenant: g.GetTenant(), GrantedBy: g.GetGrantedBy(), GrantedAt: rfc3339(g.GetGrantedAt())}
+	return grantJSON{SourceID: g.GetSourceId(), Tenant: g.GetTenant(), GrantedBy: g.GetGrantedBy(), GrantedAt: rfc3339(g.GetGrantedAt()),
+		ApplicationID: g.GetApplicationId()}
 }
 
 func (s *Server) listGrants(ctx context.Context, in *adminInput) (adminOutput, error) {

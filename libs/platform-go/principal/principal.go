@@ -14,12 +14,14 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	identityv1 "github.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/identity/v1"
+	identityv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/identity/v1"
 )
 
 const (
 	// Issuer 是 gateway 签发 Principal 时使用的签发方。
 	Issuer = "bambuflow-gateway"
+	// EvalIssuer 是 evaluation 签发评测身份时使用的签发方：只有评测副本信任它（evaluation 详设 4.2）。
+	EvalIssuer = "bambuflow-evaluation"
 	// Audience 是 Principal 的固定受众：只在平台内部使用，外部服务不接受。
 	Audience = "bambuflow-internal"
 	// MaxLifetime 是 Principal 的最长有效期。比它长的令牌即使签名正确也拒绝，防止签发端配置错误放大撤权延迟。
@@ -40,17 +42,25 @@ type Verifier struct {
 	now  func() time.Time
 	// operator 为真时只接受管理接口的 Principal（有平台角色、没有租户），否则只接受数据接口的 Principal
 	operator bool
+	issuer   string
 }
 
 // NewVerifier 返回数据接口用的校验器：Principal 必须带租户、不带平台角色。
 func NewVerifier(keys KeySource) *Verifier {
-	return &Verifier{keys: keys, now: time.Now}
+	return &Verifier{keys: keys, now: time.Now, issuer: Issuer}
+}
+
+// WithIssuer 改为只信任另一个签发方：评测副本只接受 evaluation 签发的评测身份（EvalIssuer），
+// 线上实例保持默认的 gateway，评测身份在线上无效（evaluation 详设 4.2）。
+func (v *Verifier) WithIssuer(iss string) *Verifier {
+	v.issuer = iss
+	return v
 }
 
 // NewOperatorVerifier 返回管理接口实现方用的校验器：Principal 必须带至少一个平台角色、不带租户
 // （gateway 详设 4.2）。两类 Principal 互不通用：管理身份查不了数据，数据身份调不了管理接口。
 func NewOperatorVerifier(keys KeySource) *Verifier {
-	return &Verifier{keys: keys, now: time.Now, operator: true}
+	return &Verifier{keys: keys, now: time.Now, operator: true, issuer: Issuer}
 }
 
 // Verify 校验签名、算法、签发方、受众与有效期，返回解析后的 Principal。
@@ -65,7 +75,7 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (*identityv1.Principa
 			return v.keys.Key(ctx, kid)
 		},
 		jwt.WithValidMethods([]string{jwt.SigningMethodES256.Alg()}),
-		jwt.WithIssuer(Issuer),
+		jwt.WithIssuer(v.issuer),
 		jwt.WithAudience(Audience),
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuedAt(),

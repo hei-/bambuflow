@@ -1,5 +1,6 @@
 // Package syncstatus 记录每个数据源的同步结果与暂停状态（入库管道详设 14.4），存在 Redis 哈希
-// bf:connector:<source_id>:sync：last 是最近一轮，last_success 是最近一次成功，pause 是暂停记录。
+// bf:connector:<source_id>:sync：last 是最近一轮，last_success 是最近一次成功，last_reconcile 是最近一次对账，
+// pause 是暂停记录，revoked_at 是撤销时间（internal/revoke 写入），polling 是常驻清单轮询的当前间隔（internal/poll）。
 // 同步命令每轮写一次；管理服务（internal/admin）读它，并写暂停与恢复。
 package syncstatus
 
@@ -11,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/docmeta"
 )
 
 // 一轮同步的结果
@@ -18,6 +21,8 @@ const (
 	Succeeded     = "succeeded"
 	Failed        = "failed"
 	SkippedPaused = "skipped_paused"
+	// 数据源已撤销（governance 详设 6.2）：之后的每轮同步都跳过，不能恢复
+	SkippedRevoked = "skipped_revoked"
 )
 
 const errorLimit = 200
@@ -36,6 +41,35 @@ type Run struct {
 	DeletesPaused       bool      `json:"deletes_paused"`
 	DeletesPausedReason string    `json:"deletes_paused_reason,omitempty"`
 	Refetched           int       `json:"refetched"`
+	// 清单里没能读出、本轮跳过的文档（最多记 20 项“名称：原因”）；有跳过时这一轮不推断删除
+	Skipped *Skipped `json:"skipped,omitempty"`
+	// 对账（reconcile-*）才有
+	Reconciliation *Reconciliation `json:"reconciliation,omitempty"`
+}
+
+// Skipped 是一轮同步跳过的文档。
+type Skipped struct {
+	Count int      `json:"count"`
+	Items []string `json:"items"`
+}
+
+// SkippedOf 汇总跳过的文档。
+func SkippedOf(xs []docmeta.Skipped) *Skipped {
+	out := &Skipped{Count: len(xs)}
+	for _, x := range xs[:min(len(xs), 20)] {
+		out.Items = append(out.Items, truncate(x.Name+"："+x.Reason))
+	}
+	return out
+}
+
+// Reconciliation 是一次对账的计数（internal/reconcile.Counts）。
+type Reconciliation struct {
+	Missing            int `json:"missing"`
+	ContentMismatch    int `json:"content_mismatch"`
+	ACLMismatch        int `json:"acl_mismatch"`
+	Orphaned           int `json:"orphaned"`
+	TombstonedInSource int `json:"tombstoned_in_source"`
+	Indexed            int `json:"indexed"`
 }
 
 // Finish 按 err 填结果；错误摘要截断到 200 字。
@@ -60,6 +94,20 @@ type Pause struct {
 	Reason string    `json:"reason"`
 }
 
+// Polling 是常驻清单轮询的状态：当前间隔与下一轮的时间。每轮结束时写，也是轮询进程还活着的心跳。
+type Polling struct {
+	IntervalSeconds int64     `json:"interval_seconds"`
+	NextRoundAt     time.Time `json:"next_round_at"`
+}
+
+// pollingStale：过了预定的下一轮这么久还没有新的记录，就认为轮询进程已经不在了（一轮最长约 1 小时）
+const pollingStale = time.Hour + 15*time.Minute
+
+// Alive 判断轮询进程是否还在。
+func (p *Polling) Alive(now time.Time) bool {
+	return p != nil && now.Before(p.NextRoundAt.Add(pollingStale))
+}
+
 // Store 读写同步状态。
 type Store struct {
 	Client redis.Cmdable
@@ -77,6 +125,9 @@ func (s Store) Record(ctx context.Context, sourceID string, r Run) error {
 	if r.Result == Succeeded {
 		fields = append(fields, "last_success", b)
 	}
+	if r.Reconciliation != nil {
+		fields = append(fields, "last_reconcile", b)
+	}
 	return s.Client.HSet(ctx, key(sourceID), fields...).Err()
 }
 
@@ -85,7 +136,11 @@ type Status struct {
 	Found       bool
 	Last        *Run
 	LastSuccess *Run
-	Pause       *Pause
+	// 最近一次完成比对的对账（比对之后的同步失败也算）
+	LastReconcile *Run
+	Pause         *Pause
+	RevokedAt     *time.Time
+	Polling       *Polling
 }
 
 func (s Store) Get(ctx context.Context, sourceID string) (Status, error) {
@@ -94,7 +149,8 @@ func (s Store) Get(ctx context.Context, sourceID string) (Status, error) {
 		return Status{}, err
 	}
 	var st Status
-	for field, dst := range map[string]any{"last": &st.Last, "last_success": &st.LastSuccess, "pause": &st.Pause} {
+	for field, dst := range map[string]any{"last": &st.Last, "last_success": &st.LastSuccess, "last_reconcile": &st.LastReconcile,
+		"pause": &st.Pause, "revoked_at": &st.RevokedAt, "polling": &st.Polling} {
 		if v, ok := h[field]; ok {
 			if err := json.Unmarshal([]byte(v), dst); err != nil {
 				return Status{}, err
@@ -136,4 +192,27 @@ func (s Store) SetPause(ctx context.Context, sourceID string, p Pause) (Pause, b
 func (s Store) Resume(ctx context.Context, sourceID string) (bool, error) {
 	n, err := s.Client.HDel(ctx, key(sourceID), "pause").Result()
 	return n > 0, err
+}
+
+// SetRevoked 记下数据源已撤销；已经记过时保留最早的时间。
+func (s Store) SetRevoked(ctx context.Context, sourceID string, at time.Time) error {
+	b, err := json.Marshal(at)
+	if err != nil {
+		return err
+	}
+	return s.Client.HSetNX(ctx, key(sourceID), "revoked_at", b).Err()
+}
+
+// Revoked 返回数据源是否已撤销。
+func (s Store) Revoked(ctx context.Context, sourceID string) (bool, error) {
+	return s.Client.HExists(ctx, key(sourceID), "revoked_at").Result()
+}
+
+// SetPolling 记下常驻清单轮询的当前间隔与下一轮的时间。
+func (s Store) SetPolling(ctx context.Context, sourceID string, p Polling) error {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	return s.Client.HSet(ctx, key(sourceID), "polling", b).Err()
 }

@@ -529,8 +529,8 @@ const file_bambuflow_admin_v1_experiment_analysis_proto_rawDesc = "" +
 	"\n" +
 	"data_until\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tdataUntil2\x99\x01\n" +
 	"\x19ExperimentAnalysisService\x12|\n" +
-	"\x15GetExperimentAnalysis\x120.bambuflow.admin.v1.GetExperimentAnalysisRequest\x1a1.bambuflow.admin.v1.GetExperimentAnalysisResponseB\xe6\x01\n" +
-	"\x16com.bambuflow.admin.v1B\x17ExperimentAnalysisProtoP\x01ZIgithub.com/bambu-ai/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
+	"\x15GetExperimentAnalysis\x120.bambuflow.admin.v1.GetExperimentAnalysisRequest\x1a1.bambuflow.admin.v1.GetExperimentAnalysisResponseB\xe2\x01\n" +
+	"\x16com.bambuflow.admin.v1B\x17ExperimentAnalysisProtoP\x01ZEgithub.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1;adminv1\xa2\x02\x03BAX\xaa\x02\x12Bambuflow.Admin.V1\xca\x02\x12Bambuflow\\Admin\\V1\xe2\x02\x1eBambuflow\\Admin\\V1\\GPBMetadata\xea\x02\x14Bambuflow::Admin::V1b\x06proto3"
 
 var (
 	file_bambuflow_admin_v1_experiment_analysis_proto_rawDescOnce sync.Once
