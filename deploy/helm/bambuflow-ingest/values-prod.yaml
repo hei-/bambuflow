@@ -23,10 +23,15 @@ online:
 
 redisAddr: redis.corp.example:6379
 
+revocationRedisAddr: redis-revocation.corp.example:6379
+
 objectStore:
   endpoint: https://s3.corp.example
 
 audit:
+  s3Endpoint: https://s3.corp.example
+
+backup:
   s3Endpoint: https://s3.corp.example
 
 indexing:

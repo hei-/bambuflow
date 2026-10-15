@@ -94,7 +94,8 @@ func (x *ListDeletionReceiptsRequest) GetPageToken() string {
 
 type StoreDeletion struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// chunks（含关键词与向量索引）、sections、graph、manifests、metadata、object_store
+	// chunks（含关键词与向量索引）、sections、graph、manifests、metadata、backups（灾备备份里这份文档的数据密钥已销毁）、
+	// object_store、llm_traces
 	Store         string                 `protobuf:"bytes,1,opt,name=store,proto3" json:"store,omitempty"`
 	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -154,7 +155,8 @@ type DeletionReceipt struct {
 	// 删除标记的时间（删除事件的发生时间）
 	TombstonedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=tombstoned_at,json=tombstonedAt,proto3" json:"tombstoned_at,omitempty"`
 	Stores       []*StoreDeletion       `protobuf:"bytes,5,rep,name=stores,proto3" json:"stores,omitempty"`
-	// 还没有完成删除的存储（如 connectors 还没删完对象存储里的原文）
+	// 还没有完成删除的存储（如 connectors 还没删完对象存储里的原文、orchestrator 还没删完 LLM 追踪记录、
+	// 下一次灾备备份还没重写销毁了密钥的密钥环）
 	PendingStores []string               `protobuf:"bytes,6,rep,name=pending_stores,json=pendingStores,proto3" json:"pending_stores,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields

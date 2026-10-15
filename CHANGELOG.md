@@ -10,6 +10,43 @@
 - **1.0.0**：可以投入生产时发布：Kubernetes 部署完整（含评测副本与各类定时任务）、至少接入一个真实数据源、
   质量门禁有基线并通过、对外契约冻结。之后按语义化版本的常规规则递增。
 
+## v0.2.0
+
+可以上生产前做运维准备的版本：各服务的指标、告警与仪表盘，元数据库按读副本部署时撤权不会被旧副本绕过，
+索引每小时加密备份并能在灾备站点恢复，文档删除覆盖到 LLM 追踪记录与灾备备份；附压测计划与压测工具。
+本版的两个 Helm chart 只做了 lint、values schema 与 kubeconform 检查，没有在单节点 Kubernetes 上做冒烟验证（helm-smoke）。
+
+- 指标：各服务在 9464 端口提供 Prometheus 格式的 `/metrics`（`BF_METRICS_LISTEN` 可改），含 gRPC 与 HTTP 的请求量、
+  错误与耗时；compose 新增 `obs` profile（Prometheus 与 Grafana，`make up PROFILE=core,obs`），带“服务 RED”仪表盘。
+  Helm 的 Pod 带 `prometheus.io/*` 抓取注解，网络策略对监控命名空间只放行 9464（原来放行的内部端口 8081 收回）。
+- 业务指标：问答（状态、耗时、第一句、引用覆盖率、token、降级、丢句、权限复核拦截、模型路由越界、LLM 熔断）、
+  检索（各路召回、二次过滤丢弃、缓存命中）、入库（变更到可检索、撤权与删除到生效、死信、向量缓存、连接器连续失败）、
+  gateway（结果码、SSE 流数、签名密钥剩余有效期）、身份同步、配置快照加载与灰度自动终止、在线抽样 Groundedness。
+- 告警规则 `deploy/observability/rules/bambuflow.yaml`（技术设计文档 14.3 的六条与各模块告警，带规则单元测试，
+  `make alerts-check`）与“RAG 概览”仪表盘；监控平台导入这份规则文件即可。
+- LLM 追踪库：每次回答的全部模型调用（提示词、输出原文、用量）与逐句校验结果加密存进 orchestrator 的库，
+  上下文有受限级内容的不写；`GET /v1/admin/llm-traces/{trace_id}` 只给新角色 `llm_debugger`（LLM 调试人员）看，查看写管理审计。
+  文档物理删除时一并删掉引用过它的记录，删除凭证新增 `llm_traces` 一项；过了回答记录保留期由 `purge` 清理。
+  部署：orchestrator 新增 `BF_INDEXING_ADDR`、`BF_EVENTS_REDIS_ADDR`（Helm 已配），入库平面放行 orchestrator → indexing:9090；
+  需要的话在 `gateway.adminRoles` 里给 `llm_debugger` 配群组。
+- 元数据库可用性（K9）：retrieval 的权限复核改为在权限读副本上按复制位点校验（只采纳回放位点不低于撤权位点的副本，
+  撤权位点读不到时改用同步备库位点，都没有就 fail-closed、不改读主库）；文档列举与计数改走查询读副本。indexing 的快速通道
+  与紧急拒绝规则按“登记待生效撤权名单 → 提交 → 抬撤权位点 → 等权限读副本追上 → 通知 → 移出名单”执行，主库写不进时
+  名单里的文档与分区立即对所有人隐藏；副本回放落后超过 1 秒时内容写入放慢。新增 9 条告警与仪表盘“元数据库”一行。
+  部署：新增撤权用的独立 Redis（Helm `revocation.redisAddr`、入库 chart `revocationRedisAddr`，compose 的 `redis-revocation`）；
+  读副本连接串经 Vault 注入（`BF_PERMISSION_REPLICA_DSNS`、`BF_QUERY_REPLICA_DSN`、`BF_SYNC_STANDBY_DSNS`），都不配时与原来一样读单个库。
+- 灾备备份：`indexing backup`（入库 chart 的 CronJob，每小时）把线上索引版本写进备份桶，桶跨地域复制到灾备站点；
+  每份文档一把数据密钥（经 Vault transit 的 `bambuflow-backup` 包裹），快照保留 48 小时。灾备站点用 `indexing restore [快照]`
+  恢复进空库后切别名与 DNS。文档物理删除时销毁它的备份数据密钥，下一次备份重写密钥环后补记删除凭证的 `backups` 一项。
+  `make dr-drill` 在 compose 里演练备份与恢复。部署：入库 chart 新增 `backup`（桶地址、桶名、主密钥名、调度），
+  凭证 `BF_BACKUP_S3_ACCESS_KEY`、`BF_BACKUP_S3_SECRET_KEY` 放在 Vault 的 bambuflow/indexing，入库平面的 Vault 角色要能用
+  `bambuflow-backup` 做 transit 加解密；备份桶配跨地域复制，灾备站点的复制桶配“非当前版本 1 天后过期”。
+- 修复：平台授权服务的外部令牌交换（业务系统代用户调用）校验公司 IdP 令牌要用它的 userinfo 端点，realm 里补上
+  `userInfoUrl`（取 issuer 下的标准路径）；公司 IdP 须对平台授权服务开放 userinfo。开发与测试用的 bench 租户补上租户配置
+  （没有它全新环境里 governance 起不来）。
+- 压测计划（`docs/loadtest-plan.md`）的八个场景与压测工具 `loadtest`（测试工具镜像里），
+  按目标速率开环发请求，按分钟统计耗时分位、错误率与 429，按通过标准判定。
+
 ## v0.1.0
 
 可以交出去演示的版本：`make demo` 一条命令起环境，在浏览器里演示问答与管理操作，见 `docs/demo.md`。

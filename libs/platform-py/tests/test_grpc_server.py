@@ -293,3 +293,42 @@ def test_eval_headers_only_in_eval_mode_and_forwarded(gateway: FakeGateway) -> N
     # 线上实例收到指定索引版本或候选配置的请求直接拒绝；评测实例接受并原样转给下游
     assert refused == [grpc.StatusCode.PERMISSION_DENIED] * 2
     assert forwarded.answer == "ix-2,cfv_" + "1" * 24
+
+
+def test_operator_services_only_accept_operator_principals(gateway: FakeGateway) -> None:
+    """operators 里的服务（管理接口）只认管理 Principal；
+    同一服务端上的其他服务照旧只认用户 Principal。"""
+    jwks = JWKS("http://gateway/jwks", fetch=gateway.fetch)
+    user = gateway.sign("k1")
+    operator = gateway.sign("k1", tenant=None, roles=["llm_debugger"])
+
+    async def scenario(operators: frozenset[str]) -> list[Any]:
+        server = grpc.aio.server(
+            interceptors=[
+                AuthInterceptor(
+                    Verifier(jwks),
+                    operators=operators,
+                    operator_verifier=Verifier(jwks, operator=True),
+                )
+            ]
+        )
+        answer_pb2_grpc.add_AnswerServiceServicer_to_server(Leaf(), server)
+        target = f"127.0.0.1:{server.add_insecure_port('127.0.0.1:0')}"
+        await server.start()
+        out: list[Any] = []
+        try:
+            for token in (user, operator):
+                try:
+                    out.append((await _call(target, token, 5.0)).answer)
+                except grpc.aio.AioRpcError as e:
+                    out.append(e.code())
+            return out
+        finally:
+            await server.stop(None)
+
+    admin = asyncio.run(scenario(frozenset({"bambuflow.answer.v1.AnswerService"})))
+    assert admin == [grpc.StatusCode.UNAUTHENTICATED, "alice@"]
+    plain = asyncio.run(scenario(frozenset()))
+    assert plain == ["alice@credit", grpc.StatusCode.UNAUTHENTICATED]
+    with pytest.raises(ValueError):
+        AuthInterceptor(Verifier(jwks), operators=frozenset({"x"}))

@@ -31,6 +31,7 @@ import (
 	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
 	"github.com/hei-/bambuflow/libs/platform-go/logging"
 	"github.com/hei-/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/libs/platform-go/revocation"
 	"github.com/hei-/bambuflow/libs/platform-go/snapshot"
 	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 	"github.com/hei-/bambuflow/libs/platform-go/vault"
@@ -92,6 +93,17 @@ func admission() (*guard.Admission, error) {
 	}, nil
 }
 
+// list 读逗号分隔的环境变量，去掉空项
+func list(name string) []string {
+	var out []string
+	for v := range strings.SplitSeq(os.Getenv(name), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 func envOr(name, def string) string {
 	if v := os.Getenv(name); v != "" {
 		return v
@@ -107,6 +119,9 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		}
 		defer func() { _ = shutdown(context.WithoutCancel(ctx)) }()
 	}
+	if err := telemetry.ServeMetrics(ctx, "retrieval", log); err != nil {
+		return err
+	}
 	jwksURL, err := env("BF_PRINCIPAL_JWKS_URL")
 	if err != nil {
 		return err
@@ -119,7 +134,17 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	st, err := store.Open(ctx, dsn)
+	// 撤权位点与待生效撤权名单所在的 Redis，与事件流的 Redis 分开（元数据库可用性详设第 9 节第 3 项）
+	revAddr, err := env("BF_REVOCATION_REDIS_ADDR")
+	if err != nil {
+		return err
+	}
+	revRDB := redis.NewClient(&redis.Options{Addr: revAddr, Password: os.Getenv("BF_REVOCATION_REDIS_PASSWORD")})
+	defer func() { _ = revRDB.Close() }()
+	// 权限读副本组、查询读副本组与同步备库（详设 3.1）；都不配时全部读 BF_PG_DSN（单实例部署）
+	st, err := store.Open(ctx, store.Config{DSN: dsn, PermissionDSNs: list("BF_PERMISSION_REPLICA_DSNS"),
+		QueryDSN: os.Getenv("BF_QUERY_REPLICA_DSN"), StandbyDSNs: list("BF_SYNC_STANDBY_DSNS"),
+		Revocation: &revocation.Store{Redis: revRDB}, Log: log})
 	if err != nil {
 		return err
 	}

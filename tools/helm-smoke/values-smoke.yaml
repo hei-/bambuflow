@@ -21,6 +21,9 @@ otel:
 events:
   redisAddr: redis:6379
 
+revocation:
+  redisAddr: redis-revocation:6379
+
 tenants:
   credit: {rollout: general, member_groups: [credit-l2], pilot_groups: [], bound_clients: []}
   ops: {rollout: general, member_groups: [all-staff], pilot_groups: [], bound_clients: []}

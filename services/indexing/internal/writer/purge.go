@@ -3,6 +3,7 @@ package writer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -17,10 +18,14 @@ import (
 
 	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/services/indexing/internal/backup"
 )
 
 // 索引之外由别的组件删除、补记进删除凭证的存储（RecordPurge）
-const storeObjectStore = "object_store"
+const (
+	storeObjectStore = "object_store"
+	storeLLMTraces   = "llm_traces"
+)
 
 // PurgeStream 是 DocumentPurged 的事件流，connectors 消费。
 const PurgeStream = "ingest:document-purged"
@@ -83,11 +88,29 @@ func PurgeDeleted(ctx context.Context, pool *pgxpool.Pool, grace time.Duration, 
 					}
 					stores[step.store] = time.Now().UTC()
 				}
+				receipt := "del_" + strings.TrimPrefix(newOperationID(), "op_")
+				// 灾备备份：销毁这份文档的备份数据密钥（加密删除）。备份桶里的密钥环分片重写后才补记 backups；
+				// 从没备份过的文档没有密钥，备份里也没有它，直接记为完成
+				var shard int16
+				err := tx.QueryRow(ctx, `DELETE FROM idx.backup_keys WHERE doc_id = $1 RETURNING shard`, d.doc).Scan(&shard)
+				switch {
+				case errors.Is(err, pgx.ErrNoRows):
+					stores[backup.StoreBackups] = time.Now().UTC()
+				case err != nil:
+					return err
+				default:
+					if _, err := tx.Exec(ctx, `INSERT INTO idx.backup_shreds (receipt_id, shard) VALUES ($1, $2)`, receipt, shard); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, `INSERT INTO idx.backup_keyring_dirty (shard) VALUES ($1)
+						ON CONFLICT (shard) DO UPDATE SET marked_at = now()`, shard); err != nil {
+						return err
+					}
+				}
 				b, err := json.Marshal(stores)
 				if err != nil {
 					return err
 				}
-				receipt := "del_" + strings.TrimPrefix(newOperationID(), "op_")
 				if _, err := tx.Exec(ctx, `INSERT INTO idx.deletion_receipts (receipt_id, doc_id, source_id, tombstoned_at, stores)
 					VALUES ($1, $2, $3, $4, $5)`, receipt, d.doc, d.source, d.at, b); err != nil {
 					return err

@@ -39,6 +39,7 @@ func (p *PrincipalServer) Exchange(ctx context.Context, req *identityv1.Exchange
 		code, reason = http.StatusServiceUnavailable, "service_unavailable"
 	}
 	// 换发是批量任务以用户身份访问数据的入口，和在线请求一样每次都写审计；写不进去就不签发
+	countRequest(c, code, reason)
 	if aerr := s.writeAudit(c, code, reason, ""); aerr != nil {
 		s.Log.ErrorContext(ctx, "入口审计写入失败", slog.Any("err", aerr))
 		return nil, status.Error(codes.Unavailable, "审计不可用")

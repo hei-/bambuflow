@@ -46,6 +46,39 @@ func TestRecordKeepsLastSuccessAcrossFailures(t *testing.T) {
 	}
 }
 
+// 连续失败次数在成功后清零，健康度按数据源列出（连接器连续失败的告警依据）。
+func TestHealthsCountConsecutiveFailures(t *testing.T) {
+	ctx, s := context.Background(), store(t)
+	t0 := time.Date(2026, 10, 8, 1, 0, 0, 0, time.UTC)
+	record := func(src string, err error, at time.Time) {
+		t.Helper()
+		r := Run{Command: "sync-wiki", StartedAt: at}
+		r.Finish(err, at)
+		if e := s.Record(ctx, src, r); e != nil {
+			t.Fatal(e)
+		}
+	}
+	record("src_wiki", nil, t0)
+	record("src_wiki", errors.New("x"), t0.Add(time.Hour))
+	record("src_wiki", errors.New("x"), t0.Add(2*time.Hour))
+	record("src_logs", errors.New("x"), t0)
+	record("src_logs", nil, t0.Add(time.Hour))
+	hs, err := s.Healths(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Health{}
+	for _, h := range hs {
+		got[h.SourceID] = h
+	}
+	if w := got["src_wiki"]; w.ConsecutiveFailures != 2 || !w.LastSuccess.Equal(t0) {
+		t.Fatalf("src_wiki: %+v", w)
+	}
+	if l := got["src_logs"]; l.ConsecutiveFailures != 0 || !l.LastSuccess.Equal(t0.Add(time.Hour)) {
+		t.Fatalf("src_logs: %+v", l)
+	}
+}
+
 func TestPauseIsIdempotentAndResumable(t *testing.T) {
 	ctx, s := context.Background(), store(t)
 	p := Pause{By: "olga", At: time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), Reason: "源系统维护"}

@@ -197,7 +197,7 @@ type RecordPurgeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 前缀 del_。
 	ReceiptId string `protobuf:"bytes,1,opt,name=receipt_id,json=receiptId,proto3" json:"receipt_id,omitempty"`
-	// object_store
+	// object_store 或 llm_traces
 	Store         string                 `protobuf:"bytes,2,opt,name=store,proto3" json:"store,omitempty"`
 	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
 	unknownFields protoimpl.UnknownFields

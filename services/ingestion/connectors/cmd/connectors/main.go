@@ -38,6 +38,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -47,6 +49,7 @@ import (
 	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
 	"github.com/hei-/bambuflow/libs/platform-go/logging"
 	"github.com/hei-/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 	"github.com/hei-/bambuflow/libs/platform-go/worm"
 	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/admin"
 	"github.com/hei-/bambuflow/services/ingestion/connectors/internal/dbschema"
@@ -144,6 +147,9 @@ func runPoll(ctx context.Context, log *slog.Logger, command string) error {
 	if !ok || !strings.HasPrefix(command, "sync-") {
 		return fmt.Errorf("poll 只能跑 sync-* 命令，收到 %q", command)
 	}
+	if err := telemetry.ServeMetrics(ctx, "connectors-poll", log); err != nil {
+		return err
+	}
 	vals, err := envs("BF_SOURCE_ID", "BF_REDIS_ADDR")
 	if err != nil {
 		return err
@@ -169,7 +175,7 @@ func runPoll(ctx context.Context, log *slog.Logger, command string) error {
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: telemetry.HTTPServer(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("Webhook 接收退出", slog.Any("err", err))
@@ -282,12 +288,18 @@ func recorded(ctx context.Context, log *slog.Logger, command string, sync syncFu
 
 // serveAdmin 是数据源运维接口（internal/admin），只接受 gateway 签发的管理 Principal。
 func serveAdmin(ctx context.Context, log *slog.Logger) error {
+	if err := telemetry.ServeMetrics(ctx, "connectors", log); err != nil {
+		return err
+	}
 	vals, err := envs("BF_REDIS_ADDR", "BF_PRINCIPAL_JWKS_URL", "BF_INDEXING_ADDR")
 	if err != nil {
 		return err
 	}
 	rdb := newRedis(vals[0])
 	defer func() { _ = rdb.Close() }()
+	if err := syncMetrics(syncstatus.Store{Client: rdb}); err != nil {
+		return err
+	}
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listenAddr())
 	if err != nil {
 		return err
@@ -305,7 +317,7 @@ func serveAdmin(ctx context.Context, log *slog.Logger) error {
 	default:
 		return fmt.Errorf("BF_SYNC_TRIGGER 只能是 kubernetes 或不设置，收到 %q", v)
 	}
-	s := grpc.NewServer(grpc.UnaryInterceptor(grpcmw.UnaryServer(principal.NewOperatorVerifier(principal.NewJWKS(vals[1], nil)), log)))
+	s := grpc.NewServer(telemetry.ServerOption(), grpc.UnaryInterceptor(grpcmw.UnaryServer(principal.NewOperatorVerifier(principal.NewJWKS(vals[1], nil)), log)))
 	adminv1.RegisterConnectorAdminServiceServer(s, &admin.Server{Store: syncstatus.Store{Client: rdb}, Holds: holds.Store{Client: rdb},
 		Trigger: tr, Wake: func(ctx context.Context, id string) error { return poll.Wake(ctx, rdb, id) }, Log: log, Now: time.Now})
 	// 撤销数据源（internal/revoke）：消费平台事件流里的 source.revoked，对该源全部文档写删除标记
@@ -792,4 +804,38 @@ func reconcileState(ctx context.Context, rdb *redis.Client, stateKey, sourceID s
 	}
 	return syncstatus.Reconciliation{Missing: c.Missing, ContentMismatch: c.ContentMismatch, ACLMismatch: c.ACLMismatch,
 		Orphaned: c.Orphaned, TombstonedInSource: c.TombstonedInSource, Indexed: c.Indexed}, nil
+}
+
+// syncMetrics 登记各数据源的同步健康度（入库管道详设 13 节“连接器失败次数”）：同步命令多以定时任务运行、没有指标端口，
+// 由常驻的管理服务在抓取时从同步状态读出。读不到 Redis 时这次抓取没有值，管理服务的就绪检查另会失败。
+func syncMetrics(store syncstatus.Store) error {
+	m := telemetry.Meter("bambuflow/connectors")
+	failures, err := m.Int64ObservableGauge("connectors.sync.consecutive_failures", metric.WithDescription("数据源同步连续失败的轮数"))
+	if err != nil {
+		return err
+	}
+	last, err := m.Float64ObservableGauge("connectors.sync.last_success", metric.WithUnit("s"),
+		metric.WithDescription("数据源最近一次同步成功的时间（Unix 秒，0 为从未成功）"))
+	if err != nil {
+		return err
+	}
+	_, err = m.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		hs, err := store.Healths(ctx)
+		if err != nil {
+			return err
+		}
+		for _, h := range hs {
+			src := metric.WithAttributes(attribute.String("source", h.SourceID))
+			o.ObserveInt64(failures, h.ConsecutiveFailures, src)
+			at := 0.0
+			if !h.LastSuccess.IsZero() {
+				at = float64(h.LastSuccess.Unix())
+			}
+			o.ObserveFloat64(last, at, src)
+		}
+		return nil
+	}, failures, last)
+	return err
 }

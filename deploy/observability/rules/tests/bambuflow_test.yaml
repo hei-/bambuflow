@@ -1,0 +1,148 @@
+# 告警规则的单元测试（promtool test rules，make alerts-check）：安全类与上线前必须正确的几条。
+rule_files:
+  - ../bambuflow.yaml
+evaluation_interval: 1m
+
+tests:
+  # 返回前复核拦到越权块：一次就告警，按安全事件
+  - interval: 1m
+    input_series:
+      - series: orchestrator_security_total{tenant="credit",kind="permission_recheck_blocked"}
+        values: 0 0 0 1 1 1
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PermissionRecheckBlocked
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: PermissionRecheckBlocked
+        exp_alerts:
+          - exp_labels: {severity: critical, security: "true", tenant: credit, kind: permission_recheck_blocked}
+            exp_annotations:
+              summary: 租户 credit 返回前复核拦下了越权块
+              runbook: 安全事件：通知信息安全，冻结相关数据源，查 trace 与审计定位哪一路召回漏了过滤
+
+  # 错误预算：1 小时错误率 5% 告警，1% 不告警（阈值 1.44%）
+  - interval: 1m
+    input_series:
+      - series: gateway_requests_total{endpoint="answers",tenant="credit",status="200",reason=""}
+        values: 0+95x70
+      - series: gateway_requests_total{endpoint="answers",tenant="credit",status="503",reason="service_unavailable"}
+        values: 0+5x70
+      - series: gateway_requests_total{endpoint="search",tenant="ops",status="200",reason=""}
+        values: 0+99x70
+      - series: gateway_requests_total{endpoint="search",tenant="ops",status="503",reason="service_unavailable"}
+        values: 0+1x70
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: ErrorBudgetBurn
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: 1 小时错误率 3%，错误预算消耗过快
+              runbook: 冻结发布，回滚最近的变更（索引版本、配置发布、镜像）
+
+  - interval: 1m
+    input_series:
+      - series: gateway_requests_total{endpoint="answers",tenant="credit",status="200",reason=""}
+        values: 0+99x70
+      - series: gateway_requests_total{endpoint="answers",tenant="credit",status="503",reason="service_unavailable"}
+        values: 0+1x70
+      # 管理接口的错误不算进问答的错误预算
+      - series: gateway_requests_total{endpoint="admin",tenant="credit",status="503",reason="service_unavailable"}
+        values: 0+50x70
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: ErrorBudgetBurn
+        exp_alerts: []
+
+  # 签名密钥：轮换写不回 Vault，剩余有效期跌破 7 天
+  - interval: 1m
+    input_series:
+      - series: gateway_signing_key_remaining_seconds{service="gateway"}
+        values: 86400
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: SigningKeyExpiring
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Principal 签名密钥剩余有效期 1d 0h 0m 0s
+              runbook: 检查 gateway 对 Vault 签名密钥路径的写权限与轮换日志
+
+  # 身份同步：从未成功（0）时告警
+  - interval: 1m
+    input_series:
+      - series: identity_sync_last_success_seconds{service="identity-sync"}
+        values: 0x10
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: IdentitySyncStale
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: 身份同步 10m 0s 没有成功
+              runbook: 检查上游目录或 IAM 的连通性与 identity-sync 日志
+
+  # 连接器：连续失败 3 轮告警，2 轮不告警
+  - interval: 1m
+    input_series:
+      - series: connectors_sync_consecutive_failures{source="src_wiki"}
+        values: 3
+      - series: connectors_sync_consecutive_failures{source="src_logs"}
+        values: 2
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ConnectorFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, source: src_wiki}
+            exp_annotations:
+              summary: 数据源 src_wiki 同步连续失败 3 轮
+              runbook: 在控制台的数据源同步页查看错误；检查源系统与连接器凭证
+
+  # 权限读副本：三个里两个落后于撤权位点 → 可用的少于 2 个；只有一个（直接读主库的单实例部署）时不告警
+  - interval: 1m
+    input_series:
+      - series: retrieval_permission_replica_lag_bytes{instance="retrieval-0",replica="pg-r1:5432"}
+        values: 0 0 0 0 0
+      - series: retrieval_permission_replica_lag_bytes{instance="retrieval-0",replica="pg-r2:5432"}
+        values: 0 4096 4096 4096 4096
+      - series: retrieval_permission_replica_lag_bytes{instance="retrieval-0",replica="pg-r3:5432"}
+        values: 0 8192 8192 8192 8192
+      - series: retrieval_permission_replica_lag_bytes{instance="retrieval-1",replica="primary"}
+        values: 0 0 0 0 0
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: PermissionReplicasFewFresh
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: retrieval-0}
+            exp_annotations:
+              summary: retrieval-0 可用的权限读副本少于 2 个
+              runbook: 恢复或重建落后的副本；检查主库写入压力（全量重建是否在跑）
+      - eval_time: 4m
+        alertname: PermissionReplicaBehindFence
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: retrieval-0, replica: "pg-r2:5432"}
+            exp_annotations:
+              summary: 权限读副本 pg-r2:5432 持续落后于撤权位点（4kiB）
+              runbook: 看该副本的复制延迟与回放是否卡住；落后的副本读取会被拒绝，问答换副本继续
+          - exp_labels: {severity: warning, instance: retrieval-0, replica: "pg-r3:5432"}
+            exp_annotations:
+              summary: 权限读副本 pg-r3:5432 持续落后于撤权位点（8kiB）
+              runbook: 看该副本的复制延迟与回放是否卡住；落后的副本读取会被拒绝，问答换副本继续
+
+  # 待生效撤权名单最老条目超过 5 分钟：撤权写入卡住
+  - interval: 1m
+    input_series:
+      - series: indexing_revocation_pending_oldest_seconds{instance="indexing-0"}
+        values: 0 60 120 180 240 300 360
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RevocationPendingStuck
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: RevocationPendingStuck
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: 待生效撤权名单最老条目已 6m 0s
+              runbook: 检查主库与 indexing 快速通道；名单期间这些文档对所有人隐藏

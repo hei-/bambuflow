@@ -26,7 +26,8 @@ connectors-admin 的立即同步经 Kubernetes API 从数据源的 CronJob 建 J
     "image" "indexing" "args" (list "serve") "replicas" $v.indexing.replicas "resources" $v.indexing.resources "secret" "indexing"
     "env" (merge (dict
       "BF_PRINCIPAL_JWKS_URL" $v.online.jwksUrl
-      "BF_REDIS_ADDR" $v.redisAddr) $audit)
+      "BF_REDIS_ADDR" $v.redisAddr
+      "BF_REVOCATION_REDIS_ADDR" $v.revocationRedisAddr) $audit)
     "probe" (dict "exec" (dict "command" (list "indexing" "healthcheck"))))
   "processing" (dict
     "image" "processing" "args" (list "serve") "replicas" $v.processing.replicas "resources" $v.processing.resources
@@ -83,8 +84,9 @@ spec:
     metadata:
       labels:
         {{- include "bambuflow.labels" $ctx | nindent 8 }}
-      {{- if $c.vault }}
       annotations:
+        {{- include "bambuflow.metricsAnnotations" $ | nindent 8 }}
+      {{- if $c.vault }}
         # processing 入库时经 Vault transit 加密 PII 原值：Vault Agent 注入令牌文件并续期
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/agent-inject-token: "true"
@@ -121,11 +123,13 @@ spec:
           image: "{{ $v.image.registry }}/{{ $c.image }}:{{ $v.image.tag }}"
           imagePullPolicy: {{ $v.image.pullPolicy }}
           args: {{ toJson $c.args }}
-          {{- if not $c.noService }}
           ports:
+            - name: metrics
+              containerPort: 9464
+            {{- if not $c.noService }}
             - name: grpc
               containerPort: 9090
-          {{- end }}
+            {{- end }}
           env:
             {{- range $k, $val := $c.env }}
             - name: {{ $k }}

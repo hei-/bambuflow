@@ -21,7 +21,7 @@
     "schedule": {"type": "string", "minLength": 9},
     "sourceID": {"type": "string", "pattern": "^src_[A-Za-z0-9_]+$"}
   },
-  "required": ["image", "vault", "networkPolicy", "online", "redisAddr", "objectStore", "audit", "indexing", "processing", "rebuildWorker", "connectors"],
+  "required": ["image", "vault", "networkPolicy", "online", "redisAddr", "revocationRedisAddr", "objectStore", "audit", "backup", "indexing", "processing", "rebuildWorker", "connectors"],
   "properties": {
     "image": {
       "type": "object",
@@ -51,6 +51,7 @@
       }
     },
     "redisAddr": {"$ref": "#/definitions/addr"},
+    "revocationRedisAddr": {"$ref": "#/definitions/addr"},
     "objectStore": {
       "type": "object",
       "required": ["endpoint", "bucket"],
@@ -60,6 +61,16 @@
       "type": "object",
       "required": ["s3Endpoint", "bucket", "retentionDays"],
       "properties": {"s3Endpoint": {"$ref": "#/definitions/url"}, "bucket": {"type": "string", "minLength": 3}, "retentionDays": {"type": "integer", "minimum": 1}}
+    },
+    "backup": {
+      "type": "object",
+      "required": ["s3Endpoint", "bucket", "keyName", "schedule"],
+      "properties": {
+        "s3Endpoint": {"$ref": "#/definitions/url"},
+        "bucket": {"type": "string", "minLength": 3},
+        "keyName": {"type": "string", "minLength": 1},
+        "schedule": {"$ref": "#/definitions/schedule"}
+      }
     },
     "indexing": {
       "type": "object",

@@ -9,6 +9,9 @@ COPY --from=node:24-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 COPY --from=node:24-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+# 告警规则的检查与单元测试（make alerts-check）；与 compose 的 Prometheus 同一镜像版本。
+# 不用 go install：prometheus 的 go.mod 带 replace 指令，go install 拒绝安装
+COPY --from=prom/prometheus:v3.5.0 /bin/promtool /usr/local/bin/promtool
 
 LABEL org.bambuflow.role=toolbox
 

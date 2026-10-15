@@ -8,7 +8,7 @@ image:
 vault:
   addr: ""
   # 入库平面的角色：读 <kvMount>/bambuflow/{indexing,processing,connectors}，以及 transit/encrypt/bambuflow-pii
-  # （processing 入库时加密 PII 原值）
+  # （processing 入库时加密 PII 原值）、transit/encrypt 与 transit/decrypt 的 bambuflow-backup（灾备备份）
   role: ""
   kvMount: secret
   authMount: kubernetes
@@ -35,6 +35,10 @@ online:
 # 平台事件流与入库事件流所在的 Redis（与在线平面的 events.redisAddr 是同一个）；口令 BF_REDIS_PASSWORD 经 Vault 注入
 redisAddr: ""
 
+# 撤权位点与待生效撤权名单所在的 Redis（与在线平面的 revocation.redisAddr 是同一个）；口令 BF_REVOCATION_REDIS_PASSWORD 经 Vault 注入。
+# 权限读副本 BF_PERMISSION_REPLICA_DSNS 同样经 Vault 注入（bambuflow/indexing）：快速通道提交后等它们回放到提交位点；不配时不等
+revocationRedisAddr: ""
+
 # 文档包与原文所在的对象存储（访问密钥 BF_S3_ACCESS_KEY/SECRET_KEY 经 Vault 注入）
 objectStore:
   endpoint: ""
@@ -47,6 +51,19 @@ audit:
   s3Endpoint: ""
   bucket: bambuflow-audit
   retentionDays: 2555
+
+# 灾备备份（总体设计 11.5，indexing backup）：每小时把线上索引版本按文档加密写进备份桶，快照保留 48 小时。
+# 备份桶要配跨地域复制到灾备站点（复制规则在对象存储上配）；桶开了版本控制时，备份任务自己清掉密钥环的旧版本，
+# 灾备站点的复制桶要配“非当前版本 1 天后过期”的生命周期规则，否则销毁的密钥会留在那边的旧版本里。
+# 凭证 BF_BACKUP_S3_ACCESS_KEY、BF_BACKUP_S3_SECRET_KEY 经 Vault 注入（bambuflow/indexing）；数据密钥由 Vault transit 的
+# keyName 包裹（入库平面的 Vault 角色要能调用 transit/encrypt 与 transit/decrypt 的这把密钥）
+# 这里只备份索引（idx schema）。元数据库的其余 schema 由数据库团队按常规做逻辑备份，必须排除 idx schema 与
+# orchestrator.llm_traces 的数据：库级备份里留着它们，文档删除时的加密删除就被绕过了（部署配置清单 P2）
+backup:
+  s3Endpoint: ""
+  bucket: bambuflow-backup
+  keyName: bambuflow-backup
+  schedule: "17 * * * *"
 
 # indexing：唯一的索引写入口与发布、管理接口（常驻）；数据库连接串 BF_PG_DSN 经 Vault 注入（bambuflow/indexing）。
 # 升级前执行 indexing migrate

@@ -32,7 +32,7 @@
     "replicas": {"type": "integer", "minimum": 2, "description": "HPA 下限；至少 2 个，PDB 才能在驱逐时保住一个"},
     "maxReplicas": {"type": "integer", "minimum": 2}
   },
-  "required": ["image", "vault", "networkPolicy", "otel", "events", "tenants", "policyLayers", "indexing", "processingAdmin", "connectorsAdmin", "gateway", "retrieval", "governance", "orchestrator", "batch", "evaluation", "evalReplicas", "webhook", "identitySync"],
+  "required": ["image", "vault", "networkPolicy", "otel", "events", "revocation", "tenants", "policyLayers", "indexing", "processingAdmin", "connectorsAdmin", "gateway", "retrieval", "governance", "orchestrator", "batch", "evaluation", "evalReplicas", "webhook", "identitySync"],
   "properties": {
     "image": {
       "type": "object",
@@ -122,6 +122,11 @@
       "required": ["redisAddr"],
       "properties": {"redisAddr": {"$ref": "#/definitions/redisAddr"}}
     },
+    "revocation": {
+      "type": "object",
+      "required": ["redisAddr"],
+      "properties": {"redisAddr": {"$ref": "#/definitions/redisAddr"}}
+    },
     "indexing": {
       "type": "object",
       "required": ["addr"],
@@ -167,7 +172,7 @@
         "signingKeyRotateEvery": {"type": "string", "pattern": "^[0-9]+h$"},
         "adminRoles": {
           "type": "object",
-          "propertyNames": {"enum": ["platform_admin", "platform_operator", "infosec", "data_owner", "auditor"]},
+          "propertyNames": {"enum": ["platform_admin", "platform_operator", "infosec", "data_owner", "auditor", "llm_debugger"]},
           "additionalProperties": {"type": "array", "items": {"type": "string", "minLength": 1}}
         },
         "audit": {

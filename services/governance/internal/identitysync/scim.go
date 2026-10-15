@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 )
 
 // SCIM 推送端点（gateway 详设 3.5，RFC 7643、7644）：上游目录或 IAM 把用户与群组的变化推送过来，秒级生效。
@@ -83,7 +85,7 @@ func NewSCIMServer(cfg *Config, store SCIMStore, log *slog.Logger, getenv func(s
 
 // Run 在 cfg.SCIM.Listen 上提供端点，并每隔 interval 记一次同步成功，直到 ctx 结束。
 func (s *SCIMServer) Run(ctx context.Context) error {
-	srv := &http.Server{Addr: s.cfg.SCIM.Listen, Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: s.cfg.SCIM.Listen, Handler: telemetry.HTTPServer(s.Handler()), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)

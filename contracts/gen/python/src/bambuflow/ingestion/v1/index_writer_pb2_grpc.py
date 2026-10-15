@@ -105,7 +105,8 @@ class IndexWriterServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def RecordPurge(self, request, context):
-        """RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+        """RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（DocumentPurged 的消费方删完后调用：connectors 删对象存储里的原文，
+        orchestrator 删 LLM 追踪库里引用过这份文档的记录）。
         同一存储重复记录时保留最早的时间。
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)

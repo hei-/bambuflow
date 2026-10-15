@@ -20,6 +20,7 @@ import httpx
 from opentelemetry import trace
 
 from bambuflow.common.v1 import types_pb2
+from bambuflow_orchestrator import metrics as bf_metrics
 from bambuflow_orchestrator.circuit import Breaker
 
 # 采样参数（orchestrator 详设 8.3）
@@ -97,11 +98,18 @@ class RefusedGeneration:
     def __init__(self, level: int) -> None:
         self.model = ""
         self.usage = Usage()
+        self.output = ""
         self._level = level
+        # 模型路由越界（详设 13.4：大于 0 按安全事件处理）
+        bf_metrics.security.add(1, {"kind": "model_route_denied"})
 
     async def __aiter__(self) -> AsyncGenerator[str, None]:
         raise ModelNotAllowedError(f"没有允许处理密级 {self._level} 内容的模型")
         yield ""  # 让这个函数成为异步生成器
+
+    def prompts(self) -> tuple[str, str]:
+        """没有调用模型：不记提示词。"""
+        return "", ""
 
 
 class ChatClient:
@@ -167,6 +175,8 @@ class ChatGeneration:
         self.usage = Usage()
         self._reported: dict[str, Any] | None = None
         self._output_chars = 0
+        # 已读到的输出原文：只给 LLM 追踪库（llmtrace），不进日志与指标
+        self.output = ""
 
     async def __aiter__(self) -> AsyncGenerator[str, None]:
         if not self._breaker.allow():
@@ -256,7 +266,14 @@ class ChatGeneration:
         if not isinstance(content, str):
             raise TypeError("content 不是字符串")
         self._output_chars += len(content)
+        self.output += content
         return content
+
+    def prompts(self) -> tuple[str, str]:
+        """这次调用的系统提示词与用户提示词。"""
+        messages = self._body["messages"]
+        by_role = {str(m.get("role")): str(m.get("content", "")) for m in messages}
+        return by_role.get("system", ""), by_role.get("user", "")
 
 
 def _data(line: str) -> str | None:

@@ -20,11 +20,12 @@ import (
 	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
 	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
 	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/services/indexing/internal/backup"
 )
 
-// RecordPurge 把对象存储完成删除的时间补记进删除凭证；已记过的保留最早的时间。
+// RecordPurge 把索引之外的存储（对象存储、LLM 追踪库）完成删除的时间补记进删除凭证；已记过的保留最早的时间。
 func (s *Server) RecordPurge(ctx context.Context, r *ingestionv1.RecordPurgeRequest) (*ingestionv1.RecordPurgeResponse, error) {
-	if !strings.HasPrefix(r.GetReceiptId(), "del_") || r.GetStore() != storeObjectStore || r.GetCompletedAt() == nil {
+	if !strings.HasPrefix(r.GetReceiptId(), "del_") || !slices.Contains(externalStores, r.GetStore()) || r.GetCompletedAt() == nil {
 		return nil, status.Error(codes.InvalidArgument, "receipt_id、store 或 completed_at 不合法")
 	}
 	at, err := json.Marshal(r.GetCompletedAt().AsTime().UTC())
@@ -44,13 +45,18 @@ func (s *Server) RecordPurge(ctx context.Context, r *ingestionv1.RecordPurgeRequ
 	return &ingestionv1.RecordPurgeResponse{}, nil
 }
 
-// ExpectedStores 是一份完整的删除凭证应有的存储：索引侧各副本加对象存储。
+// externalStores 是索引之外、由别的服务删完后补记的存储：connectors 删对象存储里的原文，
+// orchestrator 删 LLM 追踪库里引用过这份文档的记录（部署配置清单 P2）。
+var externalStores = []string{storeObjectStore, storeLLMTraces}
+
+// ExpectedStores 是一份完整的删除凭证应有的存储：索引侧各副本、灾备备份（销毁备份数据密钥，internal/backup）加 externalStores。
 func ExpectedStores() []string {
-	out := make([]string, 0, len(purgeSteps)+1)
+	out := make([]string, 0, len(purgeSteps)+1+len(externalStores))
 	for _, st := range purgeSteps {
 		out = append(out, st.store)
 	}
-	return append(out, storeObjectStore)
+	out = append(out, backup.StoreBackups)
+	return append(out, externalStores...)
 }
 
 // pendingStores 是凭证里还没有完成时间的存储。

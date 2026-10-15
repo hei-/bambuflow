@@ -123,6 +123,9 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		}
 		defer func() { _ = shutdown(context.WithoutCancel(ctx)) }()
 	}
+	if err := telemetry.ServeMetrics(ctx, "qa-batch", log); err != nil {
+		return err
+	}
 	cfg, err := config()
 	if err != nil {
 		return err

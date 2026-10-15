@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -17,30 +19,104 @@ import (
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
 
 	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/revocation"
 	"github.com/hei-/bambuflow/services/retrieval/internal/search"
 )
 
 // PG 实现 search.Store。
 type PG struct {
+	// pool 读索引与引用元数据（BF_PG_DSN）
 	pool *pgxpool.Pool
+	// query 是查询读副本组（元数据库可用性详设 3.1）：文档列举与计数这类可能很慢的查询，不能抢权限读取的连接
+	query *pgxpool.Pool
+	perm  *permissions
+	pools []*pgxpool.Pool
+}
+
+// Config 是元数据库的几组连接（元数据库可用性详设 3.1）。
+type Config struct {
+	// DSN 是索引与引用元数据
+	DSN string
+	// PermissionDSNs 是权限读副本组；为空表示没有单独的读副本，权限直接读 DSN（单实例部署）
+	PermissionDSNs []string
+	// QueryDSN 是查询读副本组；为空时用 DSN
+	QueryDSN string
+	// StandbyDSNs 是同步备库，撤权位点读不到时用它们的已接收位点兜底；配置了读副本而没配它时，撤权位点读不到就拒绝
+	StandbyDSNs []string
+	// Revocation 是撤权位点与待生效撤权名单
+	Revocation *revocation.Store
+	Log        *slog.Logger
 }
 
 // Open 建立连接池，不立即连接：元数据库暂时不可用时进程照常启动，请求按 fail-closed 拒绝，readiness 为 false。
-func Open(ctx context.Context, dsn string) (*PG, error) {
+// 同步备库的位点采样随 ctx 运行。
+func Open(ctx context.Context, c Config) (*PG, error) {
+	s := &PG{}
+	open := func(dsn string) (*pgxpool.Pool, error) {
+		p, err := openPool(ctx, dsn)
+		if err == nil {
+			s.pools = append(s.pools, p)
+		}
+		return p, err
+	}
+	var err error
+	if s.pool, err = open(c.DSN); err != nil {
+		return nil, err
+	}
+	s.query = s.pool
+	if c.QueryDSN != "" {
+		if s.query, err = open(c.QueryDSN); err != nil {
+			s.Close()
+			return nil, err
+		}
+	}
+	s.perm = &permissions{rev: c.Revocation, log: c.Log, standby: primaryFloor{}}
+	if len(c.PermissionDSNs) == 0 {
+		s.perm.replicas = []*replica{{name: "primary", db: s.pool}}
+	} else {
+		s.perm.standby = noFloor{}
+	}
+	for _, dsn := range c.PermissionDSNs {
+		p, err := open(dsn)
+		if err != nil {
+			s.Close()
+			return nil, err
+		}
+		cc := p.Config().ConnConfig
+		s.perm.replicas = append(s.perm.replicas, &replica{name: fmt.Sprintf("%s:%d", cc.Host, cc.Port), db: p})
+	}
+	if len(c.StandbyDSNs) > 0 {
+		sb := &Standbys{}
+		for _, dsn := range c.StandbyDSNs {
+			p, err := open(dsn)
+			if err != nil {
+				s.Close()
+				return nil, err
+			}
+			sb.DBs = append(sb.DBs, p)
+		}
+		s.perm.standby = sb
+		go sb.Run(ctx)
+	}
+	s.perm.gauges()
+	return s, nil
+}
+
+func openPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
 	}
 	cfg.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
 	cfg.AfterConnect = func(ctx context.Context, c *pgx.Conn) error { return pgxvec.RegisterTypes(ctx, c) }
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return &PG{pool: pool}, nil
+	return pgxpool.NewWithConfig(ctx, cfg)
 }
 
-func (s *PG) Close() { s.pool.Close() }
+func (s *PG) Close() {
+	for _, p := range s.pools {
+		p.Close()
+	}
+}
 
 // Ping 用于 readiness。
 func (s *PG) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
@@ -279,7 +355,7 @@ const docFrom = `idx.version_docs vd
 func (s *PG) CountDocs(ctx context.Context, version string, f search.Filter, limit int) (int64, error) {
 	meta, metaArgs := metaWhere(f.Meta, 6)
 	var n int64
-	err := s.pool.QueryRow(ctx, `
+	err := s.query.QueryRow(ctx, `
 		SELECT count(*) FROM (SELECT 1 FROM `+docFrom+` WHERE `+mandatory+meta+` LIMIT $5) t`,
 		append([]any{version, f.MaxClassification, f.Tokens, f.Sources, limit}, metaArgs...)...).Scan(&n)
 	return n, err
@@ -291,7 +367,7 @@ func (s *PG) ListDocs(ctx context.Context, version string, f search.Filter, byDa
 	if byDate {
 		order = "d.effective_date DESC NULLS LAST, d.title, vd.doc_id"
 	}
-	rows, err := s.pool.Query(ctx, `
+	rows, err := s.query.Query(ctx, `
 		SELECT vd.doc_id, vd.doc_version, d.title, a.source_id, d.source_uri, d.source_type, a.classification,
 			d.doc_type, d.dept, d.topic_codes, COALESCE(to_char(d.effective_date, 'YYYY-MM-DD'), ''), d.validity_status,
 			d.metadata_missing, d.vocabulary_version, d.superseded_by,
@@ -333,7 +409,7 @@ func (s *PG) CountGroups(ctx context.Context, version string, f search.Filter, b
 		return nil, fmt.Errorf("不支持按 %q 分组", by)
 	}
 	meta, metaArgs := metaWhere(f.Meta, 6)
-	rows, err := s.pool.Query(ctx, `
+	rows, err := s.query.Query(ctx, `
 		SELECT `+key+` AS v, count(*) FROM `+docFrom+` WHERE `+mandatory+meta+`
 		GROUP BY v ORDER BY count(*) DESC, v LIMIT $5`,
 		append([]any{version, f.MaxClassification, f.Tokens, f.Sources, limit}, metaArgs...)...)
@@ -398,8 +474,8 @@ func collect(rows pgx.Rows) ([]search.Candidate, error) {
 	})
 }
 
-// 权限读路径。P0 只有一个 PostgreSQL 实例，副本回放位点 ≥ 撤权位点天然成立；
-// P2 接只读副本时在这两个函数里先校验位点再读（元数据库可用性详细设计第 4–5 节），调用方不变。
+// 权限读路径：都经 s.perm.read（perm.go），在追上撤权位点的权限读副本上读，待生效撤权名单里的文档与分区按不可见处理
+// （元数据库可用性详设第 4、5 节）。
 
 // denied：文档本身或它所属的数据源在紧急拒绝名单里（返回前复核与召回过滤读同一份名单）
 const denied = `(EXISTS (SELECT 1 FROM idx.deny_list dl WHERE dl.doc_id = a.doc_id)
@@ -408,53 +484,72 @@ const denied = `(EXISTS (SELECT 1 FROM idx.deny_list dl WHERE dl.doc_id = a.doc_
 // TenantDenied 判断租户是否被紧急拒绝：被拒绝的租户任何人都检索不到任何文档。
 func (s *PG) TenantDenied(ctx context.Context, tenant string) (bool, error) {
 	var denied bool
-	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM idx.deny_scopes WHERE kind = 'tenant' AND value = $1)`, tenant).Scan(&denied)
+	err := s.perm.read(ctx, nil, func(q pgx.Tx, _ map[string]bool) error {
+		return q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM idx.deny_scopes WHERE kind = 'tenant' AND value = $1)`, tenant).Scan(&denied)
+	})
 	return denied, err
 }
 
 // PartitionTokens 按主体 token 展开可见的分区 token（idx.partition_grants，由 indexing 的快速通道写入）。
+// 授权正在变化（在待生效撤权名单里）的分区不展开：未生效的变更一律按更严处理。
 func (s *PG) PartitionTokens(ctx context.Context, tokens []string) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT DISTINCT 'part:' || source_id || '/' || partition FROM idx.partition_grants
-		WHERE grantee = ANY($1::text[]) ORDER BY 1`, tokens)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, pgx.RowTo[string])
+	var out []string
+	err := s.perm.read(ctx, nil, func(q pgx.Tx, held map[string]bool) error {
+		rows, err := q.Query(ctx, `SELECT DISTINCT 'part:' || source_id || '/' || partition FROM idx.partition_grants
+			WHERE grantee = ANY($1::text[]) ORDER BY 1`, tokens)
+		if err != nil {
+			return err
+		}
+		all, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		out = slices.DeleteFunc(all, func(t string) bool { return held[t] })
+		return err
+	})
+	return out, err
 }
 
 func (s *PG) DocACL(ctx context.Context, docIDs []string) (map[string]search.ACL, error) {
-	return s.acl(ctx, `
+	return s.acl(ctx, docIDs, `
 		SELECT doc_id, doc_id, source_id, acl_tokens, classification, state = 'active', `+denied+`
 		FROM idx.doc_acl a WHERE doc_id = ANY($1::text[])`, docIDs)
 }
 
 func (s *PG) ChunkACL(ctx context.Context, chunkIDs []string) (map[string]search.ACL, error) {
+	var docs []string
+	for _, c := range chunkIDs {
+		docs = append(docs, docCandidates(c)...)
+	}
 	// 同一 chunk_id 可能有多个 doc_version，它们属于同一份文档，权限相同
-	return s.acl(ctx, `
+	return s.acl(ctx, docs, `
 		SELECT DISTINCT ON (c.chunk_id) c.chunk_id, a.doc_id, a.source_id, a.acl_tokens, a.classification, a.state = 'active', `+denied+`
 		FROM idx.chunks c JOIN idx.doc_acl a USING (doc_id)
 		WHERE c.chunk_id = ANY($1::text[])`, chunkIDs)
 }
 
-func (s *PG) acl(ctx context.Context, sql string, ids []string) (map[string]search.ACL, error) {
-	rows, err := s.pool.Query(ctx, sql, ids)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]search.ACL{}
-	for rows.Next() {
-		// 每行用新变量扫描，避免切片在行之间被复用
-		var key string
-		var a search.ACL
-		var classification int16
-		if err := rows.Scan(&key, &a.DocID, &a.SourceID, &a.Tokens, &classification, &a.Active, &a.Denied); err != nil {
-			rows.Close()
-			return nil, err
+// acl 读权限表；docs 是要在待生效撤权名单里点名查的文档，名单里的按拒绝处理（Denied）。
+func (s *PG) acl(ctx context.Context, docs []string, sql string, ids []string) (map[string]search.ACL, error) {
+	var out map[string]search.ACL
+	err := s.perm.read(ctx, docs, func(q pgx.Tx, held map[string]bool) error {
+		rows, err := q.Query(ctx, sql, ids)
+		if err != nil {
+			return err
 		}
-		a.Classification = int32(classification)
-		out[key] = a
-	}
-	return out, rows.Err()
+		out = map[string]search.ACL{}
+		for rows.Next() {
+			// 每行用新变量扫描，避免切片在行之间被复用
+			var key string
+			var a search.ACL
+			var classification int16
+			if err := rows.Scan(&key, &a.DocID, &a.SourceID, &a.Tokens, &classification, &a.Active, &a.Denied); err != nil {
+				rows.Close()
+				return err
+			}
+			a.Classification = int32(classification)
+			a.Denied = a.Denied || held[revocation.DocMember(a.DocID)]
+			out[key] = a
+		}
+		return rows.Err()
+	})
+	return out, err
 }
 
 func (s *PG) Groups(ctx context.Context, username string) ([]string, error) {

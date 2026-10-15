@@ -23,6 +23,7 @@ const (
 	InfoSec          = "infosec"           // 信息安全：紧急拒绝规则、受限级数据源的审批
 	DataOwner        = "data_owner"        // 数据属主：本部门数据源的审批、撤销、授权与紧急拒绝
 	Auditor          = "auditor"           // 审计岗：查审计
+	LLMDebugger      = "llm_debugger"      // LLM 调试人员：按 trace_id 查 LLM 追踪库（技术设计文档 14.2）
 )
 
 // TenantOwner 是租户负责人（governance 详设 9.1）。它不经角色映射文件配置，而由 gateway 按租户配置的 owner_groups 得出，
@@ -44,7 +45,7 @@ func Allows(have, allowed []string) bool {
 	return false
 }
 
-var known = []string{PlatformAdmin, PlatformOperator, InfoSec, DataOwner, Auditor}
+var known = []string{PlatformAdmin, PlatformOperator, InfoSec, DataOwner, Auditor, LLMDebugger}
 
 // Map 是角色 → 群组。
 type Map map[string][]string

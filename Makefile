@@ -28,7 +28,7 @@ export BF_TOOLBOX_TAG
 TOOLBOX := docker compose -f deploy/compose/toolbox.yaml
 export BF_NPM_REGISTRY
 
-DELEGATED := check lint lint-go lint-py lint-ci lint-ts test test-go test-py test-ts deps-check terms-check helm-check \
+DELEGATED := check lint lint-go lint-py lint-ci lint-ts test test-go test-py test-ts deps-check terms-check helm-check alerts-check \
 	contracts-lint contracts-breaking contracts-openapi contracts-fresh
 .PHONY: $(DELEGATED) contracts contracts-gen run fix
 
@@ -98,7 +98,7 @@ GO_DIRS    = $(patsubst %/go.mod,%,$(GO_MODULES))
 PY_DIRS    = $(if $(M),$(wildcard $(M)/pyproject.toml),$(wildcard contracts/gen/python/pyproject.toml services/*/pyproject.toml services/*/*/pyproject.toml libs/*/pyproject.toml plugins/*/*/pyproject.toml))
 PY_PATHS   = $(patsubst %/pyproject.toml,%,$(PY_DIRS))
 
-.PHONY: bootstrap check lint lint-go lint-py lint-ci lint-ts test test-go test-py test-ts console-deps deps-check terms-check helm-check \
+.PHONY: bootstrap check lint lint-go lint-py lint-ci lint-ts test test-go test-py test-ts console-deps deps-check terms-check helm-check alerts-check \
 	contracts contracts-gen contracts-lint contracts-breaking contracts-openapi contracts-fresh \
 	fix-local e2e-tests eval-perm-seed eval-perm-tests bench-seed-local
 
@@ -107,7 +107,7 @@ bootstrap:
 	uv sync --locked --all-packages
 
 # 提交前至少跑这一项
-check: lint test deps-check terms-check helm-check
+check: lint test deps-check terms-check helm-check alerts-check
 
 lint: lint-go lint-py lint-ci lint-ts
 
@@ -182,6 +182,13 @@ deps-check:
 	go run ./tools/deps-check
 
 # Helm chart：生产 values 必须通过 lint 与 schema 校验并能渲染；含测试 realm 与开发口令的反例必须被拒绝。
+# 告警规则（deploy/observability/rules）：语法与表达式检查，再跑规则单元测试
+# promtool 随工具镜像提供（deploy/toolbox/Dockerfile，与 compose 的 Prometheus 同一版本）
+alerts-check:
+	promtool check rules deploy/observability/rules/*.yaml
+	promtool test rules deploy/observability/rules/tests/*.yaml
+	promtool check config --syntax-only deploy/observability/prometheus/prometheus.yml
+
 HELM_CHART := deploy/helm/bambuflow
 # 离线入库平面的 chart，与在线平面分开部署
 HELM_INGEST_CHART := deploy/helm/bambuflow-ingest
@@ -267,7 +274,7 @@ endif
 COMPOSE_PROFILES_ARGS = $(foreach p,$(subst $(comma), ,$(PROFILE)),--profile $(p))
 comma := ,
 
-.PHONY: up down e2e eval-perm eval bench-seed eval-retrieval tunnel ingest reconcile demo helm-smoke helm-smoke-down
+.PHONY: up down e2e eval-perm eval bench-seed eval-retrieval tunnel ingest reconcile demo helm-smoke helm-smoke-down dr-drill
 
 up:
 	$(if $(filter models,$(subst $(comma), ,$(PROFILE))),@$(STACK_DOCKER) volume create bambuflow-model-cache >/dev/null)
@@ -308,6 +315,25 @@ demo:
 e2e:
 	@$(STACK_DOCKER) volume create bambuflow-toolbox_uv-cache >/dev/null
 	$(COMPOSE) --profile test run --rm --build e2e
+
+# 灾备演练（总体设计 11.5，indexing backup / restore）：备份一次 → 在同一 PostgreSQL 的 bambuflow_dr 库（充当灾备站点）里
+# 恢复最新快照 → 核对线上版本的文档数、块数与正文和向量的摘要两边一致 → 起一个指向灾备库的 retrieval 并等它就绪。
+# 需先 make up PROFILE=core,ingest 与 make ingest；bambuflow_dr 每次重建。
+DR_CHECK := SELECT count(DISTINCT vd.doc_id) || ' 份文档 ' || count(*) || ' 块 ' || md5(string_agg(c.chunk_id || c.text || c.embedding::text, '' ORDER BY c.chunk_id, c.doc_version)) \
+	FROM idx.aliases a JOIN idx.version_docs vd ON vd.version = a.version \
+	JOIN idx.chunks c ON c.doc_id = vd.doc_id AND c.doc_version = vd.doc_version WHERE a.alias = 'prod'
+dr-drill:
+	$(COMPOSE) --profile core --profile ingest --profile ingest-job run --rm indexing-backup
+	$(COMPOSE) exec -T postgres psql -U bambuflow -d bambuflow -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS bambuflow_dr' -c 'CREATE DATABASE bambuflow_dr'
+	$(COMPOSE) --profile test run --rm indexing-dr migrate
+	$(COMPOSE) --profile test run --rm indexing-dr
+	@src="$$($(COMPOSE) exec -T postgres psql -U bambuflow -d bambuflow -Atc "$(DR_CHECK)")"; \
+	dr="$$($(COMPOSE) exec -T postgres psql -U bambuflow -d bambuflow_dr -Atc "$(DR_CHECK)")"; \
+	echo "线上：$$src"; echo "灾备：$$dr"; \
+	test -n "$$src" && test "$$src" = "$$dr" || { echo "灾备库与线上不一致"; exit 1; }
+	$(COMPOSE) --profile test up -d --wait retrieval-dr
+	$(COMPOSE) --profile test rm -sf retrieval-dr
+	@echo "灾备演练通过：快照恢复后与线上一致，retrieval 指向灾备库可以就绪"
 
 # 权限评测集 P0 版（tools/e2e/perm_eval）：写入合成文档 → 入库并发布 → 与权限表的暴力计算逐条比对，越权必须为 0；
 # 另起三个故障实例验证 fail-closed。需先 make up PROFILE=core,ingest 并 make ingest 过一次。动了权限相关代码必跑。
@@ -381,5 +407,5 @@ tunnel:
 	@host=$$(docker context inspect $(or $(BF_STACK_CONTEXT),default) --format '{{.Endpoints.docker.Host}}'); \
 	case "$$host" in ssh://*) ;; *) echo "当前 Docker 上下文不是 ssh 远端，不需要隧道"; exit 0;; esac; \
 	hp=$${host#ssh://}; port=$${hp##*:}; [ "$$port" = "$$hp" ] && port=22; hp=$${hp%:*}; \
-	echo "Keycloak http://keycloak:8080（本机 8080） · Jaeger http://localhost:27686 · Vault http://localhost:27200 · PG localhost:27432 · Redis localhost:27379 · S3 http://localhost:27900 · gateway http://localhost:27088 · console http://localhost:27300"; \
-	ssh -N -p $$port -L 8080:127.0.0.1:27080 -L 27686:127.0.0.1:27686 -L 27200:127.0.0.1:27200 -L 27432:127.0.0.1:27432 -L 27379:127.0.0.1:27379 -L 27900:127.0.0.1:27900 -L 27088:127.0.0.1:27088 -L 27300:127.0.0.1:27300 $$hp
+	echo "Keycloak http://keycloak:8080（本机 8080） · Jaeger http://localhost:27686 · Vault http://localhost:27200 · PG localhost:27432 · Redis localhost:27379 · S3 http://localhost:27900 · gateway http://localhost:27088 · console http://localhost:27300 · Prometheus http://localhost:27090 · Grafana http://localhost:27030"; \
+	ssh -N -p $$port -L 8080:127.0.0.1:27080 -L 27686:127.0.0.1:27686 -L 27200:127.0.0.1:27200 -L 27432:127.0.0.1:27432 -L 27379:127.0.0.1:27379 -L 27900:127.0.0.1:27900 -L 27088:127.0.0.1:27088 -L 27300:127.0.0.1:27300 -L 27090:127.0.0.1:27090 -L 27030:127.0.0.1:27030 $$hp

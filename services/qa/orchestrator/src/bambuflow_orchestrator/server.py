@@ -38,6 +38,7 @@ from bambuflow_orchestrator import (
     intent,
     listing,
     llm_rerank,
+    llmtrace,
     records,
     replay,
     structured,
@@ -45,6 +46,7 @@ from bambuflow_orchestrator import (
     topics,
     understand,
 )
+from bambuflow_orchestrator import metrics as bf_metrics
 from bambuflow_orchestrator.admission import Admission, Overloaded
 from bambuflow_orchestrator.budget import (
     AGENT_SECONDS,
@@ -82,6 +84,10 @@ _meter = metrics.get_meter("bambuflow_orchestrator")
 _record_failures = _meter.create_counter(
     "orchestrator.answer_record.write_failures",
     description="回答记录写入失败的次数（回答照常返回，这次回答之后无法回放与反馈）",
+)
+_trace_failures = _meter.create_counter(
+    "orchestrator.llm_trace.write_failures",
+    description="LLM 追踪记录写入失败的次数（回答照常返回，这次回答无法在追踪库里排查）",
 )
 _feedback = _meter.create_counter(
     "orchestrator.feedback", description="收到的反馈，按取值分（技术设计文档 10.2 的在线指标）"
@@ -314,18 +320,21 @@ class _LLM:
         不给时是回答生成，按生成预算并给校验留出时间。
         level 是这次输入里的最高密级，按它选允许的模型（总体设计 8.6）；model 是 routing 指定的
         生成模型（空为默认模型），不在部署允许的模型里时同样不调用。"""
+        use = "plan" if timeout is not None else "generate"
         client = self._router.choose(level, model)
         if client is None:
             _log.warning(
                 "没有允许处理该密级内容的模型，不调用模型", extra={"level": level, "model": model}
             )
-            return RefusedGeneration(level)
+            refused = RefusedGeneration(level)
+            llmtrace.note_call(use, level, refused)
+            return refused
         remaining = self._deadline.remaining()
-        use = "plan" if timeout is not None else "generate"
         if timeout is None:
             timeout = min(GENERATION_BUDGET, remaining - RESERVE_AFTER_GENERATION)
         g = client.generate(system, user, max(0.1, min(timeout, remaining)))
         self._tokens.calls.append((use, g))
+        llmtrace.note_call(use, level, g)
         return g
 
 
@@ -472,6 +481,8 @@ class _Call:
     started: float = dataclasses.field(default_factory=time.monotonic)
     # 返回前复核拦下的块（灰度观察的越权拦截数）
     denied: set[str] = dataclasses.field(default_factory=set)
+    # 这次回答的模型调用与校验结果（LLM 追踪库）
+    trace: llmtrace.Collector = dataclasses.field(default_factory=llmtrace.Collector)
 
 
 class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
@@ -489,12 +500,15 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         keys: envelope.AsyncKeyService | None = None,
         plans: Plans | None = None,
         candidates: Callable[..., Awaitable[config_pb2.Canary]] | None = None,
+        traces: llmtrace.Traces | None = None,
     ) -> None:
         self._retrieval, self._llm, self._nli, self._vocab = retrieval, llm, nli, vocab
         # 回答记录的信封加密（问题原文、受限级回答快照）；没有配置时不加密另存，
         # 受限级回答不能回放正文
         self._keys = keys
         self._records = answer_records
+        # LLM 追踪库；没有配置密钥服务（_keys）时不写
+        self._traces = traces
         self._admission = admission
         self._experiments = experiments if experiments is not None else Experiments()
         # 租户 pipeline 与全局 routing（随配置快照更新）；没有时全部用默认值
@@ -588,7 +602,7 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
                     types_pb2.Degradation(stage="session", reason="unavailable"),
                 ),
             )
-        return _Call(
+        call = _Call(
             answer_id,
             req,
             principal.tenant,
@@ -598,6 +612,8 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
             principal.sub,
             principal.actor,
         )
+        llmtrace.bind(call.trace)
+        return call
 
     async def _candidate(self, context: Ctx) -> config_pb2.Canary | None:
         """配置发布的门禁指定的候选（governance 详设 4.1 第 ③④ 步）。
@@ -848,6 +864,14 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
         resp = run.response()
         resp.answer_id, resp.trace_id = call.answer_id, trace_id
         resp.conversation_id = call.session.conversation_id
+        bf_metrics.observe(
+            call.tenant,
+            call.purpose,
+            resp,
+            call.tokens.total(),
+            time.monotonic() - call.started,
+            len(call.denied),
+        )
         rec = records.build(
             answer_id=call.answer_id,
             tenant=call.tenant,
@@ -882,7 +906,45 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
                 "回答记录写入失败，回答照常返回",
                 extra={"answer_id": call.answer_id, "err": type(e).__name__},
             )
+        # LLM 追踪库：受限级（引用或任何一次模型输入里有）不写；放到后台，不拖慢回答
+        traces, keys = self._traces, self._keys
+        if (
+            traces is not None
+            and keys is not None
+            and not rec.body_withheld
+            and not call.trace.restricted()
+        ):
+            task = asyncio.create_task(self._write_trace(traces, keys, call, trace_id, resp))
+            self._background.add(task)
+            task.add_done_callback(self._background.discard)
         return resp
+
+    async def _write_trace(
+        self,
+        traces: llmtrace.Traces,
+        keys: envelope.AsyncKeyService,
+        call: _Call,
+        trace_id: str,
+        resp: answer_pb2.AnswerResponse,
+    ) -> None:
+        t = llmtrace.build(trace_id, call.answer_id, call.tenant, call.trace)
+        try:
+            sealed = await asyncio.wait_for(
+                llmtrace.seal(t, llmtrace.docs_of(resp), keys), RECORD_WRITE_BUDGET
+            )
+            await asyncio.wait_for(traces.put(sealed), RECORD_WRITE_BUDGET)
+        except (
+            llmtrace.TracesUnavailableError,
+            httpx.HTTPError,
+            KeyError,
+            ValueError,
+            TimeoutError,
+        ) as e:
+            # 追踪记录只服务于排查，写不进去不影响回答
+            _trace_failures.add(1, {"reason": type(e).__name__})
+            _log.warning(
+                "LLM 追踪记录写入失败", extra={"trace_id": trace_id, "err": type(e).__name__}
+            )
 
     async def Answer(
         self, request: answer_pb2.AnswerRequest, context: Ctx
@@ -927,7 +989,13 @@ class AnswerService(answer_pb2_grpc.AnswerServiceServicer):
                 # 这时已产生的用量无法随 final 交给 gateway，只留在日志里。
                 # 中途断开的回答不写记录：没有完整结果可回放
                 async with aclosing(run.events()) as events:
+                    first = True
                     async for event in events:
+                        if first and event.HasField("sentence"):
+                            first = False
+                            bf_metrics.first_sentence.record(
+                                time.monotonic() - call.started, {"tenant": call.tenant}
+                            )
                         if event.HasField("final"):
                             # final 总是最后一个事件，这时回答已经完整、所有 LLM 调用都已结束：
                             # 先写记录再发 final，收到 final 的调用方马上回放也能查到

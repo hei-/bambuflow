@@ -17,6 +17,8 @@ from collections import deque
 from collections.abc import Callable
 from enum import Enum
 
+from bambuflow_orchestrator import metrics as bf_metrics
+
 _log = logging.getLogger(__name__)
 
 WINDOW_SECONDS = 60.0
@@ -104,6 +106,10 @@ class Breaker:
             return
         # 熔断打开要通知 AI Infra（详设 13.4），日志里的这一行是告警的来源
         log = _log.warning if state is State.OPEN else _log.info
+        if state is State.OPEN:
+            bf_metrics.circuit_open.add(1, {"model": self.model})
+        elif self.state is State.OPEN:
+            bf_metrics.circuit_open.add(-1, {"model": self.model})
         log(
             "LLM 熔断状态变化",
             extra={"model": self.model, "from": self.state.value, "to": state.value},

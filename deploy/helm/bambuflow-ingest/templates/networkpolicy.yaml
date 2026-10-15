@@ -1,9 +1,10 @@
 {{- /*
 入站白名单（技术设计文档 12.6）：入库平面的常驻服务默认拒绝所有入站，只放行
 - 在线平面（networkPolicy.onlineNamespace）的 gateway、governance → indexing:9090（索引管理接口、紧急拒绝写入拒绝名单）；
+  orchestrator → indexing:9090（删掉 LLM 追踪记录后补记删除凭证）；
 - 在线平面的 gateway → processing-admin:9090、connectors-admin:9090（管理接口）；
 - 本 release 的 processing、connectors-admin 与各数据源的同步任务 → indexing:9090（写入、删除标记、对账清单）；
-- 监控命名空间 → 各服务（指标）。
+- 监控命名空间 → 各常驻服务的指标端口 9464（processing 没有服务端口，只放行指标）。
 定时任务没有入站。出站（数据库、对象存储、Redis、Vault、模型服务、在线平面的 evaluation 与 governance）由服务网格的出站策略管理。
 */ -}}
 {{- $v := .Values -}}
@@ -23,9 +24,10 @@
 {{- $online := $v.networkPolicy.onlineNamespace -}}
 {{- $local := printf "- podSelector:\n    matchLabels:\n      app.kubernetes.io/instance: %s" .Release.Name -}}
 {{- $rules := dict
-  "indexing" (print (include "ingest.online" (dict "ns" $online "component" "gateway")) "\n" (include "ingest.online" (dict "ns" $online "component" "governance")) "\n" $local "\n" (include "ingest.namespace" $v.networkPolicy.monitoringNamespace))
-  "processing-admin" (print (include "ingest.online" (dict "ns" $online "component" "gateway")) "\n" (include "ingest.namespace" $v.networkPolicy.monitoringNamespace))
-  "connectors-admin" (print (include "ingest.online" (dict "ns" $online "component" "gateway")) "\n" (include "ingest.namespace" $v.networkPolicy.monitoringNamespace))
+  "indexing" (print (include "ingest.online" (dict "ns" $online "component" "gateway")) "\n" (include "ingest.online" (dict "ns" $online "component" "governance")) "\n" (include "ingest.online" (dict "ns" $online "component" "orchestrator")) "\n" $local)
+  "processing-admin" (print (include "ingest.online" (dict "ns" $online "component" "gateway")))
+  "connectors-admin" (print (include "ingest.online" (dict "ns" $online "component" "gateway")))
+  "processing" ""
 -}}
 {{- range $name, $from := $rules }}
 {{- $ctx := dict "root" $ "component" $name }}
@@ -42,8 +44,11 @@ spec:
       {{- include "bambuflow.selector" $ctx | nindent 6 }}
   policyTypes: [Ingress]
   ingress:
+    {{- with $from }}
     - ports:
         - port: 9090
       from:
-        {{- $from | nindent 8 }}
+        {{- . | nindent 8 }}
+    {{- end }}
+    {{- include "bambuflow.metricsIngress" $v.networkPolicy.monitoringNamespace | nindent 4 }}
 {{- end }}

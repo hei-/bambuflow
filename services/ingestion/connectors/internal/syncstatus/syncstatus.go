@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -123,12 +125,51 @@ func (s Store) Record(ctx context.Context, sourceID string, r Run) error {
 	}
 	fields := []any{"last", b}
 	if r.Result == Succeeded {
-		fields = append(fields, "last_success", b)
+		fields = append(fields, "last_success", b, "consecutive_failures", 0)
 	}
 	if r.Reconciliation != nil {
 		fields = append(fields, "last_reconcile", b)
 	}
-	return s.Client.HSet(ctx, key(sourceID), fields...).Err()
+	if err := s.Client.HSet(ctx, key(sourceID), fields...).Err(); err != nil {
+		return err
+	}
+	if r.Result == Failed {
+		return s.Client.HIncrBy(ctx, key(sourceID), "consecutive_failures", 1).Err()
+	}
+	return nil
+}
+
+// Health 是告警用的同步健康度（入库管道详设 11、13 节：连接器连续失败）。
+type Health struct {
+	SourceID            string
+	ConsecutiveFailures int64
+	// 最近一次成功结束的时间；没成功过时为零值
+	LastSuccess time.Time
+}
+
+// Healths 列出所有有同步记录的数据源的健康度。数据源只有几十到几百个，按键名前缀扫一遍。
+func (s Store) Healths(ctx context.Context) ([]Health, error) {
+	var out []Health
+	iter := s.Client.Scan(ctx, 0, "bf:connector:*:sync", 100).Iterator()
+	for iter.Next(ctx) {
+		k := iter.Val()
+		vals, err := s.Client.HMGet(ctx, k, "consecutive_failures", "last_success").Result()
+		if err != nil {
+			return nil, err
+		}
+		h := Health{SourceID: strings.TrimSuffix(strings.TrimPrefix(k, "bf:connector:"), ":sync")}
+		if v, ok := vals[0].(string); ok {
+			h.ConsecutiveFailures, _ = strconv.ParseInt(v, 10, 64)
+		}
+		if v, ok := vals[1].(string); ok {
+			var r Run
+			if json.Unmarshal([]byte(v), &r) == nil {
+				h.LastSuccess = r.FinishedAt
+			}
+		}
+		out = append(out, h)
+	}
+	return out, iter.Err()
 }
 
 // Status 是一个数据源的同步状态；从没同步过、也没暂停过时 Found 为 false。

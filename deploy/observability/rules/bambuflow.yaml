@@ -1,0 +1,340 @@
+# bambuflow 的告警规则（技术设计文档 14.3 的六条，各详设“可观测性”一节的告警，及死信、连接器连续失败、新鲜度、
+# 身份同步、密钥到期）。compose 的 Prometheus 与生产的监控平台共用；阈值是设计里的建议值，按压测与运行数据调整。
+#
+# severity：critical 立即通知值班；warning 工作时间处理。security: "true" 的告警按安全事件处理，同时通知信息安全。
+# 预案写在 annotations.runbook（运维手册见技术设计文档 14.4）。
+groups:
+  - name: bambuflow-slo
+    rules:
+      - alert: AnswerLatencyHigh
+        # 单跳问答端到端 p95 > 4 s 持续 10 分钟（14.3；orchestrator 详设 13.4）
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(orchestrator_answer_duration_seconds_bucket{intent="single_hop"}[10m]))) > 4
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 单跳问答 p95 {{ $value | humanizeDuration }}，超过 4 秒
+          runbook: 看 trace 定位最慢阶段；扩容 orchestrator 或关闭 LLM 重排
+
+      - alert: FirstSentenceSlow
+        # 流式回答第一句到达 p95 > 1.5 s 持续 10 分钟（orchestrator 详设 13.4）
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(orchestrator_answer_first_sentence_seconds_bucket[10m]))) > 1.5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 第一句到达 p95 {{ $value | humanizeDuration }}，超过 1.5 秒
+          runbook: 看哪个阶段变慢；检查 LLM 网关排队
+
+      - alert: ErrorBudgetBurn
+        # 1 小时消耗月度错误预算的 2% 以上（14.3）。在线问答可用性 99.9%（月，技术设计文档 2.2）：
+        # 2% × 720 小时 = 14.4 倍消耗速度，即 1 小时错误率 > 14.4 × 0.1% = 1.44%
+        expr: |
+          sum(rate(gateway_requests_total{endpoint=~"answers|search|mcp|compat_chat_completions",status=~"5.."}[1h]))
+            / sum(rate(gateway_requests_total{endpoint=~"answers|search|mcp|compat_chat_completions"}[1h])) > 0.0144
+        labels: {severity: critical}
+        annotations:
+          summary: 1 小时错误率 {{ $value | humanizePercentage }}，错误预算消耗过快
+          runbook: 冻结发布，回滚最近的变更（索引版本、配置发布、镜像）
+
+      - alert: IngestFreshnessSlow
+        # 变更到可检索 p95 > 60 分钟（14.3；入库管道详设 13 节）
+        expr: |
+          histogram_quantile(0.95, sum by (source, le) (rate(ingest_freshness_seconds_bucket[30m]))) > 3600
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 数据源 {{ $labels.source }} 变更到可检索 p95 {{ $value | humanizeDuration }}，超过 60 分钟
+          runbook: 扩 processing；检查死信与积压
+
+      - alert: AclRevocationSlow
+        # 撤权与删除到生效 p95 > 15 分钟（14.3；入库管道详设 13 节），最高优先级
+        expr: |
+          histogram_quantile(0.95, sum by (kind, le) (rate(indexing_access_lag_seconds_bucket[15m]))) > 900
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.kind }} 从发生到生效 p95 {{ $value | humanizeDuration }}，超过 15 分钟"
+          runbook: 检查 indexing 的快速通道与事件流；必要时对该数据源发紧急拒绝规则临时全量屏蔽
+
+      - alert: GroundednessLow
+        # 在线抽样 Groundedness 低于 0.85（14.3）
+        expr: evaluation_online_groundedness < 0.85
+        labels: {severity: warning}
+        annotations:
+          summary: 租户 {{ $labels.tenant }} 在线抽样 Groundedness {{ $value }}，低于 0.85
+          runbook: 对比最近的索引、模型、提示词变更并回滚
+
+      - alert: OnlineSampleStale
+        # 在线抽样每天一次；超过两天没有新结果，Groundedness 停在旧值
+        expr: time() - evaluation_online_day_seconds > 2 * 86400 + 3 * 3600
+        labels: {severity: warning}
+        annotations:
+          summary: 租户 {{ $labels.tenant }} 的在线抽样超过两天没有新结果
+          runbook: 检查 evaluation-online 定时任务
+
+      - alert: PermissionRecheckBlocked
+        # 返回前复核拦到越权块：召回过滤失效，即使用户没看到也是安全事件（14.3；orchestrator 详设 13.4）
+        expr: increase(orchestrator_security_total{kind="permission_recheck_blocked"}[5m]) > 0
+        labels: {severity: critical, security: "true"}
+        annotations:
+          summary: 租户 {{ $labels.tenant }} 返回前复核拦下了越权块
+          runbook: 安全事件：通知信息安全，冻结相关数据源，查 trace 与审计定位哪一路召回漏了过滤
+
+  - name: bambuflow-orchestrator
+    rules:
+      - alert: ModelRouteDenied
+        # 模型路由越界（orchestrator 详设 13.4）：上下文密级没有允许的模型，配置有问题
+        expr: increase(orchestrator_security_total{kind="model_route_denied"}[5m]) > 0
+        labels: {severity: critical, security: "true"}
+        annotations:
+          summary: 出现模型路由越界拒绝
+          runbook: 安全事件：核对模型路由配置与部署的模型实例
+
+      - alert: LlmCircuitOpen
+        expr: sum by (model) (orchestrator_llm_circuit_open) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: LLM {{ $labels.model }} 熔断打开
+          runbook: 通知 AI Infra；回答按模型不可用降级（只返回证据）
+
+      - alert: InsufficientEvidenceRising
+        # insufficient_evidence 比例 1 小时内比前 7 天同时段高 50%（orchestrator 详设 13.4）
+        expr: |
+          (
+            sum(rate(orchestrator_answers_total{status="insufficient_evidence"}[1h])) / sum(rate(orchestrator_answers_total[1h]))
+          ) > 1.5 * (
+            sum(rate(orchestrator_answers_total{status="insufficient_evidence"}[1h] offset 7d)) / sum(rate(orchestrator_answers_total[1h] offset 7d))
+          )
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 证据不足的比例比上周同时段高 50% 以上
+          runbook: 对比最近的索引、提示词、模型变更
+
+      - alert: SentenceDropRising
+        # 丢句率 1 小时内比前 7 天同时段高 50%（orchestrator 详设 13.4）
+        expr: |
+          sum(rate(orchestrator_sentences_dropped_total[1h])) / sum(rate(orchestrator_answers_total[1h]))
+            > 1.5 * (sum(rate(orchestrator_sentences_dropped_total[1h] offset 7d)) / sum(rate(orchestrator_answers_total[1h] offset 7d)))
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 每次回答丢弃的句子数比上周同时段高 50% 以上
+          runbook: 通常是模型或提示词变更导致，考虑回退
+
+  - name: bambuflow-retrieval
+    rules:
+      - alert: SearchLatencyHigh
+        # Search p95 > 400 ms 持续 10 分钟（retrieval 详设 11.4）
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(rpc_server_call_duration_seconds_bucket{rpc_method="bambuflow.retrieval.v1.RetrievalService/Search"}[10m]))) > 0.4
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: Search p95 {{ $value | humanizeDuration }}，超过 400 毫秒
+          runbook: 按 retrieval_route_duration_seconds 定位最慢的召回路或精排；扩容
+
+      - alert: AssembleDropPersistent
+        # 组装阶段二次过滤丢弃 15 分钟内持续大于 0：索引里的 ACL 落后于元数据（retrieval 详设 11.4）
+        expr: rate(retrieval_assemble_dropped_total[5m]) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 组装阶段持续拦下召回结果
+          runbook: 检查 ACL 快速通道（indexing 的权限与删除事件流）是否卡住
+
+      - alert: RetrievalRouteCircuitOpen
+        # 单路熔断打开超过 5 分钟（retrieval 详设 11.4）
+        expr: sum by (route) (rate(retrieval_route_duration_seconds_count{outcome="circuit_open"}[5m])) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 召回路 {{ $labels.route }} 熔断打开超过 5 分钟
+          runbook: 通知该后端负责人
+
+  # 元数据库可用性（K9 详设 7.2）：权限读副本按复制位点校验，撤权写入方等副本追上
+  - name: bambuflow-metadata-db
+    rules:
+      - alert: PermissionReplicaBehindFence
+        # 权限读副本落后于撤权位点持续 10 秒（详设建议值）；抓取间隔 15 秒，取 1 分钟内一直落后
+        expr: |
+          min_over_time(retrieval_permission_replica_lag_bytes[1m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: 权限读副本 {{ $labels.replica }} 持续落后于撤权位点（{{ $value | humanize1024 }}B）
+          runbook: 看该副本的复制延迟与回放是否卡住；落后的副本读取会被拒绝，问答换副本继续
+
+      - alert: PermissionReplicasFewFresh
+        # 配了两个以上权限读副本、追上撤权位点的少于 2 个：再坏一个问答就 fail-closed
+        expr: |
+          count by (instance) (retrieval_permission_replica_lag_bytes == 0) < 2
+            and count by (instance) (retrieval_permission_replica_lag_bytes) >= 2
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.instance }} 可用的权限读副本少于 2 个"
+          runbook: 恢复或重建落后的副本；检查主库写入压力（全量重建是否在跑）
+
+      - alert: PermissionStaleReadsHigh
+        # 因不新鲜被拒的读取比例 > 0.1%
+        expr: |
+          sum(rate(retrieval_permission_reads_total{outcome="stale"}[5m]))
+            / sum(rate(retrieval_permission_reads_total{outcome="accepted"}[5m])) > 0.001
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 权限读取因副本不新鲜被拒的比例 {{ $value | humanizePercentage }}
+          runbook: 看复制延迟与全量重建限速（indexing_write_throttled_total）
+
+      - alert: PermissionReadsUnavailable
+        # 没有追上撤权位点的权限读副本，检索按 fail-closed 拒绝（返回 503）
+        expr: |
+          sum(rate(retrieval_permission_reads_total{outcome=~"unavailable|no_fence"}[5m])) > 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: 权限读取失败，检索按 fail-closed 拒绝请求
+          runbook: 检查权限读副本、撤权位点所在的 Redis 与同步备库；不要把在线读取改到主库（详设 5.3）
+
+      - alert: RevocationFenceFallback
+        # 撤权位点读不到、改用同步备库位点：进入即告警
+        expr: |
+          sum(increase(retrieval_permission_reads_total{outcome="fallback"}[5m])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: 撤权位点读不到，权限读取改用同步备库位点（落后的副本会被拒）
+          runbook: 检查撤权位点所在的 Redis；indexing 每 5 秒用主库位点重建缺失的撤权位点
+
+      - alert: RevocationFenceFallbackLong
+        # 兜底超过 5 分钟升级
+        expr: |
+          sum(increase(retrieval_permission_reads_total{outcome="fallback"}[5m])) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: 撤权位点读不到已超过 5 分钟
+          runbook: 恢复撤权位点所在的 Redis；期间撤权要等全部副本追上才生效，主库再出故障就会 fail-closed
+
+      - alert: RevocationPendingStuck
+        # 待生效撤权名单最老条目 > 5 分钟：撤权写入卡住（主库写不进或快速通道停了）
+        expr: |
+          max(indexing_revocation_pending_oldest_seconds) > 300
+        labels: {severity: critical}
+        annotations:
+          summary: 待生效撤权名单最老条目已 {{ $value | humanizeDuration }}
+          runbook: 检查主库与 indexing 快速通道；名单期间这些文档对所有人隐藏
+
+      - alert: PermissionCheckSlow
+        # 权限复核 p99 > 20 ms
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(retrieval_permission_duration_seconds_bucket[10m]))) > 0.02
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 权限复核 p99 {{ $value | humanizeDuration }}，超过 20 毫秒
+          runbook: 看权限读副本的负载与连接数；清单类查询不应落在权限读副本上
+
+      - alert: RevocationWriteSlow
+        # 快速通道单条撤权耗时 p95 > 2 s（正常远低于 1 秒）
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(indexing_revocation_duration_seconds_bucket[10m]))) > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 快速通道单条撤权 p95 {{ $value | humanizeDuration }}
+          runbook: 看 indexing_revocation_wait_seconds 的 outcome：timeout 多是副本落后，fallback 多是撤权位点的 Redis 不可用
+
+  - name: bambuflow-ingest
+    rules:
+      - alert: IngestDeadLetters
+        expr: increase(ingest_dead_letters_total[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: 数据源 {{ $labels.source }} 有文档转入死信
+          runbook: 在控制台的入库状态里查看死信原因，修复后重放
+
+      - alert: VectorCacheHitLow
+        # 增量批命中率低于 80%（建议值）：chunk_id 或归一化可能变了（入库管道详设 13 节）
+        expr: |
+          sum(rate(ingest_vector_cache_total{result="hit"}[1h])) / sum(rate(ingest_vector_cache_total[1h])) < 0.8
+          and sum(rate(ingest_vector_cache_total[1h])) > 0
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: 向量缓存命中率 {{ $value | humanizePercentage }}，低于 80%
+          runbook: 核对分块器与归一化有没有改动（全量重建期间命中率低是正常的）
+
+      - alert: ConnectorFailing
+        # 连接器连续失败（入库管道详设 11、13 节）
+        expr: connectors_sync_consecutive_failures >= 3
+        labels: {severity: warning}
+        annotations:
+          summary: 数据源 {{ $labels.source }} 同步连续失败 {{ $value }} 轮
+          runbook: 在控制台的数据源同步页查看错误；检查源系统与连接器凭证
+
+  - name: bambuflow-gateway
+    rules:
+      - alert: MissingUserIdentity
+        # 无用户身份的数据请求：任何一次都记安全事件（gateway 详设 11.1）
+        expr: increase(gateway_requests_total{reason="user_identity_required"}[5m]) > 0
+        labels: {severity: warning, security: "true"}
+        annotations:
+          summary: 有只带服务身份的数据请求被拒绝
+          runbook: 按审计里的调用方核实；通知该业务系统改为代表终端用户调用
+
+      - alert: AuthFailuresRising
+        # 401、403 异常升高（gateway 详设 11.1）：可能是令牌滥用或配置错误
+        expr: |
+          sum(rate(gateway_requests_total{status=~"401|403"}[10m])) / sum(rate(gateway_requests_total[10m])) > 0.05
+          and sum(rate(gateway_requests_total[10m])) > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 401、403 占比 {{ $value | humanizePercentage }}
+          runbook: 按审计看集中在哪个调用方与租户
+
+      - alert: ThrottledOrUnavailable
+        # 429、503 比例超过 1%（gateway 详设 11.1）
+        expr: |
+          sum(rate(gateway_requests_total{status=~"429|503"}[10m])) / sum(rate(gateway_requests_total[10m])) > 0.01
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 429、503 占比 {{ $value | humanizePercentage }}
+          runbook: 区分配额用尽、限流与过载；过载时扩容下游
+
+      - alert: SigningKeyExpiring
+        # 签名密钥剩余有效期少于 7 天（gateway 详设 11.1）：自动轮换一直没写成
+        expr: min(gateway_signing_key_remaining_seconds) < 7 * 86400
+        labels: {severity: critical}
+        annotations:
+          summary: Principal 签名密钥剩余有效期 {{ $value | humanizeDuration }}
+          runbook: 检查 gateway 对 Vault 签名密钥路径的写权限与轮换日志
+
+      - alert: IdentitySyncStale
+        # 身份同步超过 5 分钟未成功（gateway 详设 11.1；gateway 在 15 分钟后 fail-closed）
+        expr: time() - max(identity_sync_last_success_seconds) > 300
+        labels: {severity: critical}
+        annotations:
+          summary: 身份同步 {{ $value | humanizeDuration }} 没有成功
+          runbook: 检查上游目录或 IAM 的连通性与 identity-sync 日志
+
+  - name: bambuflow-governance
+    rules:
+      - alert: SnapshotLoadFailing
+        # 实例加载快照失败（governance 详设 10.1 Ack 失败）：实例在用旧快照
+        expr: sum by (service) (increase(governance_snapshot_acks_total{loaded="false"}[10m])) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }} 有实例加载配置快照持续失败"
+          runbook: 看 governance 日志里的失败原因（验签、编译、格式）
+
+      - alert: RolloutAutoAborted
+        # 每次灰度自动终止都告警（governance 详设 10.1）
+        expr: increase(governance_rollout_auto_aborts_total[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: 配置对象 {{ $labels.object }} 的灰度观察超阈值，已自动终止
+          runbook: 在控制台查看这次发布的观察结果

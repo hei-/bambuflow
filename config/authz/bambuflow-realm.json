@@ -70,6 +70,7 @@
         "authorizationUrl": "${CORP_IDP_ISSUER}/protocol/openid-connect/auth",
         "tokenUrl": "${CORP_IDP_ISSUER}/protocol/openid-connect/token",
         "jwksUrl": "${CORP_IDP_ISSUER}/protocol/openid-connect/certs",
+        "userInfoUrl": "${CORP_IDP_ISSUER}/protocol/openid-connect/userinfo",
         "logoutUrl": "${CORP_IDP_ISSUER}/protocol/openid-connect/logout",
         "useJwksUrl": "true",
         "validateSignature": "true",

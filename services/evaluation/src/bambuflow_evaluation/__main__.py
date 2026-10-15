@@ -65,6 +65,7 @@ from bambuflow_evaluation.metrics import average, judge
 from bambuflow_evaluation.runner import Runner
 from bambuflow_evaluation.signer import Signer, serve_jwks
 from bambuflow_grounding import KServeNLI
+from bambuflow_platform import telemetry
 from bambuflow_platform.grpc_server import AuthInterceptor
 from bambuflow_platform.principal import JWKS, Verifier
 
@@ -185,6 +186,8 @@ GRACE_SECONDS = 10
 
 async def serve() -> None:
     env = os.environ
+    telemetry.setup_metrics("evaluation")
+    online.QualityGauges(env["BF_PG_DSN"]).register()
     async with contextlib.AsyncExitStack() as stack:
         gch = await stack.enter_async_context(grpc.aio.insecure_channel(env["BF_CONFIG_ADDR"]))
         och = await stack.enter_async_context(
@@ -194,10 +197,11 @@ async def serve() -> None:
             # 管理接口只经 gateway 调用，只接受管理 Principal；
             # EvalService 是服务间接口（indexing、governance、CI）
             interceptors=[
+                telemetry.MetricsInterceptor(),
                 AuthInterceptor(
                     Verifier(JWKS(env["BF_PRINCIPAL_JWKS_URL"]), operator=True),
                     internal=frozenset({"bambuflow.evaluation.v1.EvalService"}),
-                )
+                ),
             ]
         )
         experiment_analysis_pb2_grpc.add_ExperimentAnalysisServiceServicer_to_server(

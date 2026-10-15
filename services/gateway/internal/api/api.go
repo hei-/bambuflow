@@ -95,6 +95,7 @@ type Server struct {
 	Ingest        adminv1.IngestAdminServiceClient
 	Tombstones    adminv1.TombstoneAdminServiceClient
 	Receipts      adminv1.DeletionReceiptAdminServiceClient
+	LLMTraces     adminv1.LlmTraceAdminServiceClient
 	SnapshotSync  adminv1.SnapshotSyncAdminServiceClient
 	Rebuilds      adminv1.RebuildAdminServiceClient
 	Connectors    adminv1.ConnectorAdminServiceClient
@@ -282,6 +283,7 @@ func (s *Server) wrap(endpoint string, limit int64, h handlerFunc) http.HandlerF
 		if c.toolErr != nil {
 			auditStatus, auditReason = c.toolErr.status, c.toolErr.typ
 		}
+		countRequest(c, auditStatus, auditReason)
 		if aerr := s.writeAudit(c, auditStatus, auditReason, ""); aerr != nil {
 			// 审计写不进去就不返回结果（fail-closed）
 			s.Log.ErrorContext(ctx, "入口审计写入失败", slog.Any("err", aerr))

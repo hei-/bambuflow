@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package bambuflow.admin.v1;
+
+import "bambuflow/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// LlmTraceAdminService 按 trace_id 查 LLM 追踪记录（技术设计文档 14.2，orchestrator 详设 13.3），由 orchestrator 实现，
+// gateway 的 /v1/admin/llm-traces/{trace_id} 调用；只有 LLM 调试人员（llm_debugger）可看，每次查看由 gateway 写管理审计。
+// 记录在 orchestrator 的库里加密保存：一次回答的全部模型调用（提示词与输出）与逐句校验结果。上下文里有受限级内容的回答不写；
+// 保留期与回答记录一致，文档物理删除时引用过它的记录一并删除（部署配置清单 P2）。
+service LlmTraceAdminService {
+  rpc GetLlmTrace(GetLlmTraceRequest) returns (GetLlmTraceResponse);
+}
+
+message GetLlmTraceRequest {
+  // 32 位十六进制（W3C trace-id）
+  string trace_id = 1;
+}
+
+// LlmCall 是一次模型调用。
+message LlmCall {
+  // generate（回答生成）或 plan（规划、改写、精排等给出了时间预算的调用）
+  string use = 1;
+  // 网关实际使用的模型
+  string model = 2;
+  // 这次输入里的最高密级（按它选模型，技术设计文档 8.6）
+  bambuflow.common.v1.Classification level = 3;
+  string system_prompt = 4;
+  string user_prompt = 5;
+  // 模型输出的原文（校验前）；调用失败或被取消时是已读到的部分
+  string output = 6;
+  int64 prompt_tokens = 7;
+  int64 completion_tokens = 8;
+}
+
+// SentenceVerdict 是一句陈述的校验结果（技术设计文档 7.3）。
+message SentenceVerdict {
+  string text = 1;
+  bool passed = 2;
+  // passed、no_refs、quote_mismatch、low_support、access_denied、contradiction 等
+  string reason = 3;
+  double support = 4;
+  // 通过检查的证据编号
+  repeated int32 refs = 5;
+}
+
+message LlmTrace {
+  string trace_id = 1;
+  // 前缀 ans_
+  string answer_id = 2;
+  string tenant = 3;
+  google.protobuf.Timestamp created_at = 4;
+  repeated LlmCall calls = 5;
+  repeated SentenceVerdict verdicts = 6;
+}
+
+message GetLlmTraceResponse {
+  LlmTrace trace = 1;
+}

@@ -84,13 +84,24 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
     internal 列出的服务（全名，如 bambuflow.answer.v1.AnswerRecordService）是服务间接口：
     只要求 deadline、不要求 Principal，调用方身份由服务网格的 mTLS 与网络策略保证
     （技术设计文档 12.6）；只支持一元调用。
+
+    operators 列出的服务（全名）是经 gateway 管理接口调用的，改用 operator_verifier
+    （只接受管理 Principal）；同一个服务端上其余服务照旧只接受 verifier 认的 Principal。
     """
 
     def __init__(
-        self, verifier: Verifier, internal: frozenset[str] = frozenset(), eval_mode: bool = False
+        self,
+        verifier: Verifier,
+        internal: frozenset[str] = frozenset(),
+        eval_mode: bool = False,
+        operators: frozenset[str] = frozenset(),
+        operator_verifier: Verifier | None = None,
     ) -> None:
+        if operators and operator_verifier is None:
+            raise ValueError("operators 需要 operator_verifier")
         self._verifier = verifier
         self._internal = internal
+        self._operators, self._operator_verifier = operators, operator_verifier
         # 非评测模式的实例收到指定索引版本或候选配置的请求一律拒绝
         # （evaluation 详设 4.2：否则就是绕过发布门禁的后门）
         self._eval_mode = eval_mode
@@ -108,7 +119,10 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "缺少 Principal")
         try:
             # 可能需要拉 JWKS，放到线程里，不阻塞事件循环
-            principal = await asyncio.to_thread(self._verifier.verify, raw)
+            verifier = self._verifier
+            if self._operator_verifier is not None and method.split("/")[1] in self._operators:
+                verifier = self._operator_verifier
+            principal = await asyncio.to_thread(verifier.verify, raw)
         except InvalidPrincipalError as e:
             _log.warning("Principal 校验失败", extra={"method": method, "reason": str(e)})
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Principal 无效")

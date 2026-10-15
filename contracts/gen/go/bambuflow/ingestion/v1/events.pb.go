@@ -412,7 +412,7 @@ func (x *PartitionGrantChanged) GetOccurredAt() *timestamppb.Timestamp {
 
 // DocumentPurged 表示一份文档在索引侧的全部副本已物理删除（技术设计文档 9.2，评估报告 K6），由 indexing 的
 // purge-deleted 产生，经事件流 ingest:document-purged 发出。connectors 据此删掉它持有的对象存储原文与文档包，
-// 再经 IndexWriterService.RecordPurge 把完成时间写进同一份删除凭证。
+// orchestrator 删掉 LLM 追踪库里引用过这份文档的记录，各自经 IndexWriterService.RecordPurge 把完成时间写进同一份删除凭证。
 type DocumentPurged struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 前缀 evt_。

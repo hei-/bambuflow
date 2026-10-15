@@ -14,13 +14,18 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/revocation"
 	"github.com/hei-/bambuflow/libs/platform-go/streams"
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 )
 
 const (
@@ -44,6 +49,9 @@ type Consumer struct {
 	// 消费者名，取主机名
 	Name string
 	Log  *slog.Logger
+	// Pending 是待生效撤权名单（元数据库可用性详设 5.2）：读到的、以及还积压在流里没读到的事件先登记，
+	// 主库写不进时撤权照样立即生效；为 nil 时不登记（测试）
+	Pending *revocation.Store
 }
 
 const maxBackoff = 30 * time.Second
@@ -86,6 +94,7 @@ func (c *Consumer) Run(ctx context.Context) {
 			start = ">"
 			continue
 		}
+		c.hold(ctx, msgs)
 		for _, m := range msgs {
 			if !c.Process(ctx, m.Values) {
 				start = "0"
@@ -134,6 +143,7 @@ func (c *Consumer) Process(ctx context.Context, values map[string]any) bool {
 	}
 	switch {
 	case err == nil:
+		observeLag(ctx, evt.GetChangeType().String(), evt.GetOccurredAt(), evt.GetDetectedAt())
 		return true
 	case status.Code(err) == codes.InvalidArgument:
 		c.Log.ErrorContext(ctx, "权限与删除事件不合法，丢弃", slog.String("doc_id", evt.GetDocId()), slog.Any("err", err))
@@ -155,6 +165,7 @@ func (c *Consumer) partition(ctx context.Context, raw string) bool {
 		Partition: evt.GetPartition(), Grantees: evt.GetGrantees(), OccurredAt: evt.GetOccurredAt()})
 	switch {
 	case err == nil:
+		observeLag(ctx, KindPartitionGrant, evt.GetOccurredAt(), nil)
 		return true
 	case status.Code(err) == codes.InvalidArgument:
 		c.Log.ErrorContext(ctx, "分区授权事件不合法，丢弃", slog.String("source_id", evt.GetSourceId()), slog.Any("err", err))
@@ -165,9 +176,87 @@ func (c *Consumer) partition(ctx context.Context, raw string) bool {
 	}
 }
 
+// Lookahead 每 2 秒把消费组还没读到的积压事件登记进名单（每轮最多 1000 条，重新登记即续期）。
+// 主库写不进时消费者卡在第一条上重试，后面积压的撤权靠这里立即生效；处理完由写入方移出名单。
+func (c *Consumer) Lookahead(ctx context.Context) {
+	for ctx.Err() == nil {
+		if err := c.lookahead(ctx); err != nil && ctx.Err() == nil {
+			c.Log.WarnContext(ctx, "登记积压的权限与删除事件失败", slog.Any("err", err))
+		}
+		sleep(ctx, 2*time.Second)
+	}
+}
+
+func (c *Consumer) lookahead(ctx context.Context) error {
+	groups, err := c.Redis.XInfoGroups(ctx, Stream).Result()
+	if err != nil {
+		return err
+	}
+	for _, g := range groups {
+		if g.Name != Group {
+			continue
+		}
+		msgs, err := c.Redis.XRangeN(ctx, Stream, "("+g.LastDeliveredID, "+", 1000).Result()
+		if err != nil {
+			return err
+		}
+		c.hold(ctx, msgs)
+	}
+	return nil
+}
+
+// hold 登记这些事件涉及的文档与分区；登记失败只记日志（名单只是额外一道拦截）
+func (c *Consumer) hold(ctx context.Context, msgs []redis.XMessage) {
+	if c.Pending == nil || len(msgs) == 0 {
+		return
+	}
+	var members []string
+	for _, m := range msgs {
+		if mb := member(m.Values); mb != "" {
+			members = append(members, mb)
+		}
+	}
+	if err := c.Pending.Hold(ctx, members...); err != nil {
+		c.Log.WarnContext(ctx, "登记待生效撤权名单失败", slog.Any("err", err))
+	}
+}
+
+// member 是事件在名单里的成员；解析不了的事件不登记（处理时会丢弃）
+func member(values map[string]any) string {
+	raw, _ := values["pb"].(string)
+	if kind, _ := values["kind"].(string); kind == KindPartitionGrant {
+		var evt ingestionv1.PartitionGrantChanged
+		if proto.Unmarshal([]byte(raw), &evt) != nil || evt.GetPartition() == "" {
+			return ""
+		}
+		return revocation.PartitionMember(evt.GetSourceId(), evt.GetPartition())
+	}
+	var evt ingestionv1.DocumentChanged
+	if proto.Unmarshal([]byte(raw), &evt) != nil || evt.GetDocId() == "" {
+		return ""
+	}
+	return revocation.DocMember(evt.GetDocId())
+}
+
 func sleep(ctx context.Context, d time.Duration) {
 	select {
 	case <-ctx.Done():
 	case <-time.After(d):
 	}
+}
+
+// 撤权、删除与分区授权从源端发生到写进索引的时间（入库管道详设 13 节：撤权到生效、删除到生效的 p95 超过 15 分钟告警）。
+// 源端没给发生时间时从连接器检测到变化算起，这时少算了检测前的那一段。
+var lag, _ = telemetry.Meter("bambuflow/indexing").Float64Histogram("indexing.access.lag", metric.WithUnit("s"),
+	metric.WithDescription("权限与删除变更从发生到生效的时间"))
+
+func observeLag(ctx context.Context, kind string, occurred, detected *timestamppb.Timestamp) {
+	from := occurred
+	if !from.IsValid() || from.AsTime().IsZero() {
+		from = detected
+	}
+	if !from.IsValid() || from.AsTime().IsZero() {
+		return
+	}
+	lag.Record(ctx, time.Since(from.AsTime()).Seconds(), metric.WithAttributes(attribute.String("kind", kind)))
 }

@@ -31,6 +31,19 @@ func (s *PGStore) State(ctx context.Context, source string) (State, error) {
 	return st, err
 }
 
+// LastSuccess 是这个同步源最近一次成功的时间；还没成功过时为零值。
+func (s *PGStore) LastSuccess(ctx context.Context, source string) (time.Time, error) {
+	var at *time.Time
+	err := s.pool.QueryRow(ctx, `SELECT last_success_at FROM identity.sync_state WHERE source = $1`, source).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && at == nil) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	return *at, nil
+}
+
 func (s *PGStore) Apply(ctx context.Context, source string, b Batch) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error { return apply(ctx, tx, source, b) })
 }

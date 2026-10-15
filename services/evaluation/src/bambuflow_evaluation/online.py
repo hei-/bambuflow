@@ -17,12 +17,15 @@ import datetime as dt
 import hashlib
 import logging
 import re
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
 
 import grpc
 import psycopg
+from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 
 from bambuflow.admin.v1 import quality_trend_pb2, quality_trend_pb2_grpc
 from bambuflow.answer.v1 import answer_pb2, records_pb2
@@ -403,3 +406,68 @@ class TrendService(quality_trend_pb2_grpc.QualityTrendServiceServicer):
             if d.computed_at is not None:
                 q.computed_at.FromDatetime(d.computed_at)
         return out
+
+
+# 抓取间隔是秒级，抽样结果每天才变一次：读一次缓存 5 分钟
+_GAUGE_TTL = 300.0
+
+
+class QualityGauges:
+    """在线抽样的最新一天结果，作为指标导出（技术设计文档 14.3：Groundedness 日抽样低于 0.85 告警；
+    evaluation 详设 10.1）。online-sample 是定时任务、没有指标端口，
+    由常驻的 serve 在抓取时从库里读出。读库失败时这次抓取没有值，不抛到导出器里。"""
+
+    def __init__(self, dsn: str, clock: Callable[[], float] = time.monotonic) -> None:
+        self._dsn, self._clock = dsn, clock
+        self._rows: list[tuple[str, dt.date, float, float]] = []
+        self._at: float | None = None
+
+    def _latest(self) -> list[tuple[str, dt.date, float, float]]:
+        if self._at is not None and self._clock() - self._at < _GAUGE_TTL:
+            return self._rows
+        try:
+            with psycopg.connect(self._dsn, connect_timeout=2) as conn:
+                self._rows = [
+                    (r[0], r[1], r[2], r[3])
+                    for r in conn.execute(
+                        """SELECT DISTINCT ON (tenant) tenant, day, groundedness, citation_precision
+                             FROM evaluation.online_quality ORDER BY tenant, day DESC"""
+                    ).fetchall()
+                ]
+            self._at = self._clock()
+        except psycopg.Error as e:
+            _log.warning("读取在线抽样结果失败", extra={"err": type(e).__name__})
+            return []
+        return self._rows
+
+    def groundedness(self, _: CallbackOptions) -> Iterable[Observation]:
+        return [Observation(g, {"tenant": t}) for t, _day, g, _p in self._latest()]
+
+    def citation_precision(self, _: CallbackOptions) -> Iterable[Observation]:
+        return [Observation(p, {"tenant": t}) for t, _day, _g, p in self._latest()]
+
+    def day(self, _: CallbackOptions) -> Iterable[Observation]:
+        # 最新一天的日期（Unix 秒）：抽样停了的话 Groundedness 停在旧值，靠它发现
+        return [
+            Observation(dt.datetime.combine(d, dt.time(), dt.UTC).timestamp(), {"tenant": t})
+            for t, d, _g, _p in self._latest()
+        ]
+
+    def register(self) -> None:
+        meter = metrics.get_meter("bambuflow_evaluation")
+        meter.create_observable_gauge(
+            "evaluation.online.groundedness",
+            callbacks=[self.groundedness],
+            description="在线抽样最新一天的 Groundedness",
+        )
+        meter.create_observable_gauge(
+            "evaluation.online.citation_precision",
+            callbacks=[self.citation_precision],
+            description="在线抽样最新一天的引用精确率",
+        )
+        meter.create_observable_gauge(
+            "evaluation.online.day",
+            callbacks=[self.day],
+            unit="s",
+            description="在线抽样最新一天的日期（Unix 秒）",
+        )

@@ -51,7 +51,8 @@ type IndexWriterServiceClient interface {
 	// ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
 	// connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
 	ListSourceDocuments(ctx context.Context, in *ListSourceDocumentsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListSourceDocumentsResponse], error)
-	// RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+	// RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（DocumentPurged 的消费方删完后调用：connectors 删对象存储里的原文，
+	// orchestrator 删 LLM 追踪库里引用过这份文档的记录）。
 	// 同一存储重复记录时保留最早的时间。
 	RecordPurge(ctx context.Context, in *RecordPurgeRequest, opts ...grpc.CallOption) (*RecordPurgeResponse, error)
 }
@@ -166,7 +167,8 @@ type IndexWriterServiceServer interface {
 	// ListSourceDocuments 列出一个数据源已入库的全部文档（每日对账用，入库管道详设第 5 节，技术设计文档 5.5）：
 	// connectors 拿源端全量清单与它比对。只给 ID、内容摘要、权限与删除状态，不给正文。按 doc_id 排序分批返回。
 	ListSourceDocuments(*ListSourceDocumentsRequest, grpc.ServerStreamingServer[ListSourceDocumentsResponse]) error
-	// RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（connectors 删完对象存储里的原文后调用，DocumentPurged）。
+	// RecordPurge 把索引之外的存储完成删除的时间写进删除凭证（DocumentPurged 的消费方删完后调用：connectors 删对象存储里的原文，
+	// orchestrator 删 LLM 追踪库里引用过这份文档的记录）。
 	// 同一存储重复记录时保留最早的时间。
 	RecordPurge(context.Context, *RecordPurgeRequest) (*RecordPurgeResponse, error)
 	mustEmbedUnimplementedIndexWriterServiceServer()

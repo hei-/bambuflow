@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"sync/atomic"
 	"time"
 
 	"github.com/hei-/bambuflow/libs/platform-go/vault"
@@ -50,6 +51,19 @@ type Rotator struct {
 	Every time.Duration
 	Log   *slog.Logger
 	Now   func() time.Time
+
+	// 当前签名密钥按轮换周期的到期时间（Unix 秒），Sync 成功时更新；轮换一直写不回 Vault 时它会过去，由告警发现
+	expires atomic.Int64
+}
+
+// Remaining 是当前签名密钥离按轮换周期到期还有多久（gateway 详设 11.1“签名密钥剩余有效期”）；
+// 正常情况下自动轮换，不会低于 RotationLead；还没 Sync 成功过时为 0。
+func (r *Rotator) Remaining() time.Duration {
+	exp := r.expires.Load()
+	if exp == 0 {
+		return 0
+	}
+	return time.Unix(exp, 0).Sub(r.Now())
 }
 
 // Validate 检查轮换周期：上一把密钥只留到下一次轮换，周期短于批量任务委托的最长有效期时，执行中的批次会因验不了签而失败。
@@ -86,7 +100,17 @@ func (r *Rotator) Sync(ctx context.Context) error {
 				r.Log.InfoContext(ctx, "Principal 签名密钥轮换", slog.String("step", step))
 			}
 		}
-		return r.Issuer.load(next, now)
+		if err := r.Issuer.load(next, now); err != nil {
+			return err
+		}
+		// 已发布下一把时从它的启用时间算起（发布到启用的 15 分钟里不算临近到期）；
+		// 缺少或无法解析的开始时间视为已到期（与 advance 一致）
+		start, _ := time.Parse(time.RFC3339, next[FieldCreatedAt])
+		if next[FieldNext] != "" {
+			start, _ = time.Parse(time.RFC3339, next[FieldNextAt])
+		}
+		r.expires.Store(start.Add(r.Every).Unix())
+		return nil
 	}
 }
 

@@ -9,6 +9,8 @@ dependencies = [
     "bambuflow-grounding",
     # 常驻服务的鉴权拦截器与 Principal 校验（A/B 分析接口，evaluation 详设 8.2）
     "bambuflow-platform",
+    # 在线抽样结果的指标（经 bambuflow-platform 的 telemetry 导出）
+    "opentelemetry-api>=1.38",
     "grpcio>=1.84.0",
     "httpx>=0.28",
     "pyjwt[crypto]>=2.10",

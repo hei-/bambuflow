@@ -92,6 +92,7 @@ bambuflow/governance-git（键 token）以文件挂载，不进环境变量 */ -
       "BF_SNAPSHOT_CACHE_DIR" "/tmp/snapshots"
       "BF_RERANKER_URL" $v.retrieval.rerankerUrl
       "BF_REDIS_ADDR" $v.events.redisAddr
+      "BF_REVOCATION_REDIS_ADDR" $v.revocation.redisAddr
       "BF_CACHE_REDIS_ADDR" ($v.retrieval.cacheRedisAddr | default "")
       "BF_EMERGENCY_DENY_DIR" "/etc/bambuflow/emergency-denials"
       "VAULT_TOKEN_FILE" "/vault/secrets/token"))
@@ -140,6 +141,8 @@ bambuflow/governance-git（键 token）以文件挂载，不进环境变量 */ -
       "BF_SQL_CATALOG" (ternary "" "/etc/bambuflow/sql-catalog.yaml" (empty $v.orchestrator.sqlCatalog))
       "BF_LLM_API_KEY_FILE" "/run/secrets/llm_api_key"
       "BF_ANSWER_KEY" "bambuflow-answers"
+      "BF_INDEXING_ADDR" $v.indexing.addr
+      "BF_EVENTS_REDIS_ADDR" $v.events.redisAddr
       "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "batch" (dict
     "image" "batch" "values" $v.batch "kind" "Deployment" "args" (list "serve")
@@ -195,6 +198,8 @@ bambuflow/governance-git（键 token）以文件挂载，不进环境变量 */ -
 {{- $_ := set $oe.env "BF_EVAL_MODE" "1" -}}
 {{- $_ := set $oe.env "BF_PRINCIPAL_JWKS_URL" (printf "http://%s-evaluation:8081/internal/jwks.json" .Release.Name) -}}
 {{- $_ := set $oe.env "BF_RETRIEVAL_ADDR" (printf "%s-retrieval-eval:9090" .Release.Name) -}}
+{{- /* 文档删除时清理 LLM 追踪库由线上的 orchestrator 做，评测副本不消费删除事件 */ -}}
+{{- $_ := set $oe.env "BF_INDEXING_ADDR" "" -}}
 {{- $_ := set $components "orchestrator-eval" $oe -}}
 {{- range $name, $c := $components }}
 {{- $ctx := dict "root" $ "component" $name }}
@@ -230,6 +235,7 @@ spec:
       annotations:
         # 租户配置与策略数据只在启动时读取，内容变了就滚动重启
         checksum/config: {{ $configSum }}
+        {{- include "bambuflow.metricsAnnotations" $ | nindent 8 }}
       {{- if $runtimeVault }}
         # 运行期要访问 Vault 的组件由 Vault Agent 注入令牌文件，令牌到期由 Agent 续期
         vault.hashicorp.com/agent-inject: "true"
@@ -267,6 +273,8 @@ spec:
             - name: {{ .name }}
               containerPort: {{ .port }}
             {{- end }}
+            - name: metrics
+              containerPort: 9464
           env:
             {{- range $k, $val := $c.env }}
             - name: {{ $k }}

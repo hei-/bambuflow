@@ -507,15 +507,18 @@ func (s *Server) liveIndex(ctx context.Context) (string, string, error) {
 // guarded 经熔断器执行一路召回：熔断打开时不调用后端，直接标记 circuit_open（详设 9.4）。
 // 出错（含超时）的调用计为失败；没有出错但被跳过的（如 model_mismatch）不计。
 func (s *Server) guarded(name string, run func() route) route {
-	if s.Breakers == nil {
-		return run()
-	}
-	if !s.Breakers.Allow(name) {
-		return route{name: name, reason: "circuit_open"}
+	if s.Breakers != nil && !s.Breakers.Allow(name) {
+		r := route{name: name, reason: "circuit_open"}
+		observeRoute(r, 0)
+		return r
 	}
 	start := time.Now()
 	r := run()
-	s.Breakers.Record(name, r.err != nil, time.Since(start))
+	d := time.Since(start)
+	if s.Breakers != nil {
+		s.Breakers.Record(name, r.err != nil, d)
+	}
+	observeRoute(r, d)
 	return r
 }
 
@@ -676,10 +679,12 @@ func (s *Server) assemble(ctx context.Context, f Filter, cands []scored, topK in
 	hits := []*retrievalv1.Hit{}
 	for _, c := range cands {
 		if !visible(f, acls, c.DocID) {
+			assembleDropped.Add(ctx, 1)
 			continue
 		}
 		// 图路径上任何一条边的证据在召回之后变得不可见，整块不返回：路径本身会泄露那份文档里的关系（详设 13 节用例 4）
 		if slices.ContainsFunc(c.PathDocs, func(d string) bool { return !visible(f, acls, d) }) {
+			assembleDropped.Add(ctx, 1)
 			continue
 		}
 		a := acls[c.DocID]

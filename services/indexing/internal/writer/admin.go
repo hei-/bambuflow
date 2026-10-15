@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	adminv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/admin/v1"
+	"github.com/hei-/bambuflow/services/indexing/internal/fence"
 )
 
 // Admin 实现 IndexAdminService。命令行的 publish 与它调用同一个函数；Rollback 已停用（改为 VersionAdmin 双人复核）。
@@ -18,6 +19,8 @@ type Admin struct {
 	Pool  *pgxpool.Pool
 	Audit Auditor
 	Log   *slog.Logger
+	// Fence 抬撤权位点并等权限读副本（拒绝规则也是撤权）；为 nil 时不做（测试）
+	Fence *fence.Fence
 }
 
 // Publish 发布增量的待发布版本；没有时发布全量重建的版本（仍要写完全部在用文档）。
@@ -71,6 +74,9 @@ func (a *Admin) AddDenyRules(ctx context.Context, r *adminv1.AddDenyRulesRequest
 		}
 		return nil
 	})
+	if err == nil {
+		err = a.Fence.Commit(ctx, true)
+	}
 	if err != nil {
 		a.Log.ErrorContext(ctx, "写拒绝名单失败", slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "写入失败")

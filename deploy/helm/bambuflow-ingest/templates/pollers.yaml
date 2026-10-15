@@ -46,6 +46,8 @@ spec:
       labels:
         {{- include "bambuflow.labels" $ctx | nindent 8 }}
         bambuflow.io/source-id: {{ $src.id | quote }}
+      annotations:
+        {{- include "bambuflow.metricsAnnotations" $ | nindent 8 }}
     spec:
       serviceAccountName: {{ include "bambuflow.name" $ctx }}
       automountServiceAccountToken: false
@@ -62,6 +64,8 @@ spec:
           ports:
             - name: http
               containerPort: 9090
+            - name: metrics
+              containerPort: 9464
           env:
             {{- range $k, $val := $env }}
             - name: {{ $k }}
@@ -116,8 +120,8 @@ spec:
     matchLabels:
       {{- include "bambuflow.selector" $ctx | nindent 6 }}
   policyTypes: [Ingress]
-  {{- if $src.webhook }}
   ingress:
+    {{- if $src.webhook }}
     - ports:
         - port: 9090
       from:
@@ -126,10 +130,9 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: {{ . }}
         {{- end }}
-  {{- else }}
-  # 没有接收 Webhook：不放行任何入站
-  ingress: []
-  {{- end }}
+    {{- end }}
+    {{- /* 没有接收 Webhook 时只放行指标 */}}
+    {{- include "bambuflow.metricsIngress" $v.networkPolicy.monitoringNamespace | nindent 4 }}
 {{- if $src.webhook }}
 ---
 apiVersion: v1

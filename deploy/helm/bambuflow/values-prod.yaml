@@ -34,6 +34,9 @@ otel:
 events:
   redisAddr: redis.corp.example:6379
 
+revocation:
+  redisAddr: redis-revocation.corp.example:6379
+
 gateway:
   publicUrl: https://rag.corp.example
   platformIssuer: https://sso.corp.example/realms/bambuflow

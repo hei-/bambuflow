@@ -31,7 +31,7 @@ from bambuflow.answer.v1 import answer_pb2
 from bambuflow.common.v1 import types_pb2
 from bambuflow.retrieval.v1 import retrieval_pb2
 from bambuflow_grounding import Evidence, Grounder, GroundingUnavailableError, Verdict
-from bambuflow_orchestrator import listing, prompt, redact
+from bambuflow_orchestrator import listing, llmtrace, prompt, redact
 from bambuflow_orchestrator.flow import LLM, citation, level_of
 from bambuflow_orchestrator.llm import LLMUnavailableError
 from bambuflow_orchestrator.parse import Parser, load_json_line
@@ -278,6 +278,7 @@ class TopicSummary:
         if parser.unusable or not claims:
             return []
         result = await self.grounder.verify(claims, evidence)
+        llmtrace.note_verdicts(result.verdicts)
         self.why.nli_model = self.why.nli_model or result.nli_model
         self.why.support_threshold = result.support_threshold
         groups: dict[str, _Group] = {}

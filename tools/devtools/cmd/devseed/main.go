@@ -113,12 +113,12 @@ func run() error {
 	if err := c.post("sys/mounts/transit", map[string]any{"type": "transit"}, http.StatusNoContent, http.StatusOK, http.StatusBadRequest); err != nil {
 		return err
 	}
-	for _, key := range []string{piiKey, answerKey} {
+	for _, key := range []string{piiKey, answerKey, backupKey} {
 		if err := c.post("transit/keys/"+key, map[string]any{"type": "aes256-gcm96"}, http.StatusNoContent, http.StatusOK); err != nil {
 			return err
 		}
 	}
-	fmt.Println("devseed: PII 与回答记录的加密主密钥已就绪")
+	fmt.Println("devseed: PII、回答记录与灾备备份的加密主密钥已就绪")
 	return nil
 }
 
@@ -127,6 +127,9 @@ const piiKey = "bambuflow-pii"
 
 // answerKey 是回答记录（问题原文、受限级回答快照）信封加密的主密钥名（orchestrator 生成与解开，部署配置 BF_ANSWER_KEY）。
 const answerKey = "bambuflow-answers"
+
+// backupKey 包裹灾备备份里每份文档的数据密钥（indexing backup / restore，部署配置 BF_BACKUP_KEY）。
+const backupKey = "bambuflow-backup"
 
 func (c *vaultClient) post(path string, body map[string]any, ok ...int) error {
 	b, err := json.Marshal(body)

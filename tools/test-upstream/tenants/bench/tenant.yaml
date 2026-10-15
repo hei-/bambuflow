@@ -1,0 +1,8 @@
+# 只检索评测的租户（只用于开发与 CI，make bench-seed / make eval-retrieval）：数据源 src_t2retrieval 只授权给它，
+# 提问身份由 evaluation 签发（群组 bench-readers），不经 gateway。策略层 tenant.bench 要求有一份生效的租户配置
+tenant: bench
+rollout: general
+member_groups: [bench-readers]
+pilot_groups: []
+bound_clients: []
+quota: {max_concurrency: 1000, daily_tokens: 1000000000000}

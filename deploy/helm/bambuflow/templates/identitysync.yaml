@@ -52,6 +52,7 @@ spec:
         {{- include "bambuflow.labels" $ctx | nindent 8 }}
       annotations:
         checksum/config: {{ $config | sha256sum }}
+        {{- include "bambuflow.metricsAnnotations" $ | nindent 8 }}
     spec:
       serviceAccountName: {{ include "bambuflow.name" $ctx }}
       automountServiceAccountToken: false
@@ -65,11 +66,13 @@ spec:
           image: "{{ $v.image.registry }}/governance:{{ $v.image.tag }}"
           imagePullPolicy: {{ $v.image.pullPolicy }}
           args: ["identity-sync"]
-          {{- if $scim }}
           ports:
+            - name: metrics
+              containerPort: 9464
+            {{- if $scim }}
             - name: scim
               containerPort: {{ trimPrefix ":" $s.config.scim.listen | atoi }}
-          {{- end }}
+            {{- end }}
           env:
             - name: BF_IDENTITY_SYNC_CONFIG
               value: /etc/bambuflow/identity-sync.yaml
@@ -149,12 +152,11 @@ spec:
     matchLabels:
       {{- include "bambuflow.selector" $ctx | nindent 6 }}
   policyTypes: [Ingress]
-  {{- if $scim }}
   ingress:
+    {{- if $scim }}
     - ports:
         - port: {{ trimPrefix ":" $s.config.scim.listen | atoi }}
       from:
         {{- include "bambuflow.namespace" $v.networkPolicy.ingressNamespace | nindent 8 }}
-  {{- else }}
-  ingress: []
-  {{- end }}
+    {{- end }}
+    {{- include "bambuflow.metricsIngress" $v.networkPolicy.monitoringNamespace | nindent 4 }}

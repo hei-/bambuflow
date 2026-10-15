@@ -1,7 +1,12 @@
 """python -m bambuflow_orchestrator serve | migrate | healthcheck | purge
 
-purge：销毁过了保留期（BF_ANSWER_RETENTION_DAYS）的回答记录原文，每天由调度方运行；
+purge：销毁过了保留期（BF_ANSWER_RETENTION_DAYS）的回答记录原文与 LLM 追踪记录，每天由调度方运行；
 没有配置保留期时不清理。
+
+serve 同时提供 LLM 追踪库的管理接口（LlmTraceAdminService，只接受管理 Principal），
+并消费文档删除事件（ingest:document-purged，事件流的 Redis 为 BF_EVENTS_REDIS_ADDR，
+默认同 BF_REDIS_ADDR），删掉引用过该文档的追踪记录，完成时间经 indexing（BF_INDEXING_ADDR）
+补记进删除凭证；没有配置 BF_INDEXING_ADDR 时不消费，删除凭证里的 llm_traces 一直显示为未完成。
 """
 
 from __future__ import annotations
@@ -22,11 +27,13 @@ import redis.asyncio
 from bambuflow_vocabulary import Vocabularies
 from psycopg_pool import AsyncConnectionPool
 
+from bambuflow.admin.v1 import llm_trace_admin_pb2_grpc
 from bambuflow.answer.v1 import answer_pb2_grpc, records_pb2_grpc
 from bambuflow.config.v1 import config_pb2_grpc
+from bambuflow.ingestion.v1 import index_writer_pb2_grpc
 from bambuflow.retrieval.v1 import retrieval_pb2_grpc
 from bambuflow_grounding import KServeNLI
-from bambuflow_orchestrator import export, migrate, records, structured
+from bambuflow_orchestrator import export, llmtrace, migrate, records, structured
 from bambuflow_orchestrator.admission import DEFAULT_LIMIT, Admission
 from bambuflow_orchestrator.config import ConfigClient
 from bambuflow_orchestrator.experiments import Experiments, refresh
@@ -119,9 +126,36 @@ def _answer_keys(
     )
 
 
+def _purge_consumer(
+    env: Mapping[str, str], traces: llmtrace.Traces, stop: asyncio.Event
+) -> asyncio.Task[None] | None:
+    """文档删除时清理 LLM 追踪库（部署配置清单 P2）；任务在 stop 置位后退出。"""
+    if not env.get("BF_INDEXING_ADDR"):
+        _log.warning("没有配置 BF_INDEXING_ADDR，不清理被删除文档的 LLM 追踪记录")
+        return None
+    host, _, port = (env.get("BF_EVENTS_REDIS_ADDR") or env["BF_REDIS_ADDR"]).rpartition(":")
+    rdb = redis.asyncio.Redis(
+        host=host, port=int(port), password=env.get("BF_EVENTS_REDIS_PASSWORD") or None
+    )
+    channel = grpc.aio.insecure_channel(env["BF_INDEXING_ADDR"])
+    consumer = llmtrace.PurgeConsumer(
+        rdb, traces, index_writer_pb2_grpc.IndexWriterServiceStub(channel), socket.gethostname()
+    )
+
+    async def run() -> None:
+        try:
+            await consumer.run(stop)
+        finally:
+            await rdb.aclose()
+            await channel.close()
+
+    return asyncio.create_task(run())
+
+
 async def serve() -> None:
     env = os.environ
     provider = telemetry.setup("orchestrator") if env.get("OTEL_EXPORTER_OTLP_ENDPOINT") else None
+    telemetry.setup_metrics("orchestrator")
     # 评测副本（BF_EVAL_MODE=1）只信任 evaluation 签发的评测身份，不接受 gateway 签发的 Principal；
     # 线上实例反之（evaluation 详设 4.2）
     eval_mode = env.get("BF_EVAL_MODE") == "1"
@@ -182,6 +216,7 @@ async def serve() -> None:
     ):
         server = grpc.aio.server(
             interceptors=[
+                telemetry.MetricsInterceptor(),
                 telemetry.aio_server_interceptor(),
                 # 评测副本（BF_EVAL_MODE=1）接受评测指定的索引版本并转给 retrieval
                 # （evaluation 详设 4.2）
@@ -189,11 +224,19 @@ async def serve() -> None:
                     verifier,
                     internal=frozenset({export.SERVICE}),
                     eval_mode=eval_mode,
+                    # LLM 追踪库的查看经 gateway 管理接口调用（技术设计文档 14.2）
+                    operators=frozenset({"bambuflow.admin.v1.LlmTraceAdminService"}),
+                    operator_verifier=Verifier(JWKS(env["BF_PRINCIPAL_JWKS_URL"]), operator=True),
                 ),
             ]
         )
         records_pb2_grpc.add_AnswerRecordServiceServicer_to_server(
             export.RecordService(pool), server
+        )
+        keys = _answer_keys(env, http)
+        traces = llmtrace.PGTraces(pool)
+        llm_trace_admin_pb2_grpc.add_LlmTraceAdminServiceServicer_to_server(
+            llmtrace.AdminService(traces, keys), server
         )
         answers = AnswerService(
             retrieval_pb2_grpc.RetrievalServiceStub(channel),
@@ -206,10 +249,11 @@ async def serve() -> None:
             Admission(int(env.get("BF_MAX_CONCURRENCY") or DEFAULT_LIMIT)),
             experiments,
             _sql(env),
-            _answer_keys(env, http),
+            keys,
             plans,
             # 评测副本按请求取配置发布门禁的候选（governance 详设 4.1 第 ③④ 步）
             config.candidate if eval_mode else None,
+            traces,
         )
         answer_pb2_grpc.add_AnswerServiceServicer_to_server(answers, server)
         server.add_insecure_port(LISTEN)
@@ -229,14 +273,17 @@ async def serve() -> None:
             )
         )
         watching = asyncio.create_task(config.watch(lambda: loaded["version"], wake))
-        _log.info("orchestrator 已启动")
         stop = asyncio.Event()
+        purging = _purge_consumer(env, traces, stop)
+        _log.info("orchestrator 已启动")
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
         await stop.wait()
         refreshing.cancel()
         watching.cancel()
+        if purging is not None:
+            await purging
         # 下线前等进行中的请求结束
         await server.stop(GRACE_SECONDS)
     await rdb.aclose()
@@ -263,7 +310,11 @@ async def purge_expired(env: Mapping[str, str]) -> int:
         return 0
     before = dt.datetime.now(dt.UTC) - dt.timedelta(days=int(days))
     n = await records.purge(env["BF_PG_DSN"], before)
-    _log.info("已销毁过期回答记录的原文", extra={"records": n, "before": before.isoformat()})
+    traces = await llmtrace.purge(env["BF_PG_DSN"], before)
+    _log.info(
+        "已销毁过期回答记录的原文与 LLM 追踪记录",
+        extra={"records": n, "llm_traces": traces, "before": before.isoformat()},
+    )
     return n
 
 

@@ -133,6 +133,9 @@ func runMigrate(ctx context.Context, log *slog.Logger) error {
 }
 
 func runIdentitySync(ctx context.Context, log *slog.Logger) error {
+	if err := telemetry.ServeMetrics(ctx, "governance-identity-sync", log); err != nil {
+		return err
+	}
 	cfg, err := identitysync.LoadConfig(os.Getenv("BF_IDENTITY_SYNC_CONFIG"))
 	if err != nil {
 		return err
@@ -147,6 +150,18 @@ func runIdentitySync(ctx context.Context, log *slog.Logger) error {
 	}
 	defer pool.Close()
 	store := identitysync.NewPGStore(pool)
+	// 超过 5 分钟没成功告警（gateway 详设 11.1）：拉取式按同步周期写，SCIM 每次推送写一次。
+	// 读不到身份库时记 0，与从未成功一样告警：此时 gateway 同样拿不到新鲜的身份
+	telemetry.Gauge("bambuflow/identity-sync", "identity_sync.last_success", "身份同步最近一次成功的时间（Unix 秒，0 为从未成功）", "s",
+		func() float64 {
+			qctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			at, err := store.LastSuccess(qctx, cfg.Source)
+			if err != nil || at.IsZero() {
+				return 0
+			}
+			return float64(at.Unix())
+		})
 	// 上游三选一（gateway 详设 3.5）：SCIM 是上游推送，LDAP 与导出文件由这里定时拉取
 	switch cfg.Kind() {
 	case identitysync.KindSCIM:
@@ -195,6 +210,9 @@ func runServe(ctx context.Context, log *slog.Logger) error {
 			return err
 		}
 		defer func() { _ = shutdown(context.WithoutCancel(ctx)) }()
+	}
+	if err := telemetry.ServeMetrics(ctx, "governance", log); err != nil {
+		return err
 	}
 	d, err := dsn()
 	if err != nil {
@@ -481,6 +499,9 @@ func runWebhook(ctx context.Context, log *slog.Logger) error {
 			return err
 		}
 		defer func() { _ = shutdown(context.WithoutCancel(ctx)) }()
+	}
+	if err := telemetry.ServeMetrics(ctx, "governance-webhook", log); err != nil {
+		return err
 	}
 	d, err := dsn()
 	if err != nil {

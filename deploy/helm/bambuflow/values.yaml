@@ -37,6 +37,13 @@ otel:
 events:
   redisAddr: ""
 
+# 撤权位点与待生效撤权名单所在的 Redis（元数据库可用性详设 4.1、5.2）：retrieval 读、入库平面的 indexing 写，必须是同一个；
+# 与事件流的 Redis 分开。口令 BF_REVOCATION_REDIS_PASSWORD 经 Vault 注入（bambuflow/retrieval）。
+# 元数据库的读副本也经 Vault 注入（连接串含口令）：BF_PERMISSION_REPLICA_DSNS（权限读副本组，逗号分隔）、
+# BF_QUERY_REPLICA_DSN（查询读副本组）、BF_SYNC_STANDBY_DSNS（同步备库，撤权位点读不到时兜底）；都不配时全部读 BF_PG_DSN
+revocation:
+  redisAddr: ""
+
 # 租户配置的初始版本（governance 详设 3、4）：governance 启动时只为还没有任何版本的租户导入，之后经变更单与发布修改、
 # 由配置快照推给 gateway，再改这里不会生效。键是租户名，
 # 值是 tenant.yaml 除 tenant 以外的字段（rollout、member_groups、pilot_groups、bound_clients、mcp_agents、mcp_tools、
@@ -68,7 +75,8 @@ gateway:
   # 租户每日 token 配额按这个时区的自然日计数
   quotaTimezone: Asia/Shanghai
   # 管理接口的 RBAC（gateway 详设 4.2）：平台角色 → 平台身份库里的群组。角色为 platform_admin（平台管理员）、
-  # platform_operator（平台运维）、infosec（信息安全）、data_owner（数据属主，按本人部门限定范围）、auditor（审计岗）；
+  # platform_operator（平台运维）、infosec（信息安全）、data_owner（数据属主，按本人部门限定范围）、auditor（审计岗）、
+  # llm_debugger（LLM 调试人员，可看 LLM 追踪库里的完整提示词与输出）；
   # 不配置的角色没有人拥有，对应的管理接口一律 403
   adminRoles: {}
   # 审批类管理操作（变更单与发布的审批、数据源审批、索引切换与重建等双人复核的第二人）要求的加强认证

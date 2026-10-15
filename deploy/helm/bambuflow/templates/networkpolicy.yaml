@@ -11,9 +11,9 @@
   gateway → governance:9090（管理接口，gateway 详设 4.2）；gateway、governance → indexing:9090、gateway → processing-admin:9090、connectors-admin:9090 在入库平面（不在本 chart），出站由服务网格管理；
 - gateway → qa/batch:9090（受理批次）；qa/batch → gateway:9090（换发 Principal，gateway 详设 3.3）；
 - retrieval、orchestrator、qa/batch、governance、evaluation 与入库平面（networkPolicy.ingestNamespace，indexing）→ gateway:8081（取 Principal 验签公钥）；
-- 监控命名空间 → 各服务的内部端口（指标）。
+- 监控命名空间 → 各服务的指标端口 9464（含只有出站的 webhook）。
 webhook 只有出站（事件流、Vault、订阅方回调地址），它的订阅管理接口（9090）现由运维经 kubectl port-forward 调用，
-不放行任何入站；console 接入后经 gateway 调用时再放行 gateway。
+除指标外不放行任何入站；console 接入后经 gateway 调用时再放行 gateway。
 探针由 kubelet 发起，不受 NetworkPolicy 限制。出站（数据库、对象存储、Vault、模型服务、LLM 网关）由服务网格的出站策略管理，
 地址随部署环境而定，不在这里写死。
 */ -}}
@@ -32,21 +32,19 @@ webhook 只有出站（事件流、Vault、订阅方回调地址），它的订�
 {{- $rules := dict
   "gateway" (list
     (dict "port" 8080 "from" (include "bambuflow.namespace" .Values.networkPolicy.ingressNamespace))
-    (dict "port" 8081 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "retrieval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "batch")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "governance")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "retrieval-eval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator-eval")) "\n" (include "bambuflow.namespace" .Values.networkPolicy.ingestNamespace) "\n" (include "bambuflow.namespace" .Values.networkPolicy.monitoringNamespace)))
+    (dict "port" 8081 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "retrieval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "batch")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "governance")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "retrieval-eval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator-eval")) "\n" (include "bambuflow.namespace" .Values.networkPolicy.ingestNamespace)))
     (dict "port" 9090 "from" (include "bambuflow.peer" (dict "root" $ "component" "batch"))))
   "retrieval" (list
-    (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "gateway")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "batch"))))
-    (dict "port" 8081 "from" (include "bambuflow.namespace" .Values.networkPolicy.monitoringNamespace)))
+    (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "gateway")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "batch")))))
   "orchestrator" (list
     (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "gateway")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "batch")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation-guard")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation-observe")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation-online")))))
   "governance" (list
     (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "orchestrator")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "gateway")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "retrieval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation-guard")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "evaluation-observe")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "retrieval-eval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator-eval")))))
   "evaluation" (list
     (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "gateway")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "governance")) "\n" (include "bambuflow.namespace" .Values.networkPolicy.ingestNamespace)))
-    (dict "port" 8081 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "retrieval-eval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator-eval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "governance")) "\n" (include "bambuflow.namespace" .Values.networkPolicy.monitoringNamespace))))
+    (dict "port" 8081 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "retrieval-eval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator-eval")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "governance")))))
   "retrieval-eval" (list
-    (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "evaluation")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator-eval"))))
-    (dict "port" 8081 "from" (include "bambuflow.namespace" .Values.networkPolicy.monitoringNamespace)))
+    (dict "port" 9090 "from" (print (include "bambuflow.peer" (dict "root" $ "component" "evaluation")) "\n" (include "bambuflow.peer" (dict "root" $ "component" "orchestrator-eval")))))
   "orchestrator-eval" (list
     (dict "port" 9090 "from" (include "bambuflow.peer" (dict "root" $ "component" "evaluation"))))
   "batch" (list
@@ -67,9 +65,6 @@ spec:
     matchLabels:
       {{- include "bambuflow.selector" $ctx | nindent 6 }}
   policyTypes: [Ingress]
-  {{- if not $ports }}
-  ingress: []
-  {{- else }}
   ingress:
     {{- range $ports }}
     - ports:
@@ -77,5 +72,5 @@ spec:
       from:
         {{- .from | nindent 8 }}
     {{- end }}
-  {{- end }}
+    {{- include "bambuflow.metricsIngress" $.Values.networkPolicy.monitoringNamespace | nindent 4 }}
 {{- end }}

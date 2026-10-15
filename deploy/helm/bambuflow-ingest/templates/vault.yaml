@@ -1,6 +1,8 @@
 {{- /*
 Vault 注入（部署配置清单）：Vault Secrets Operator 把 <kvMount>/bambuflow/<名称> 同步为 Secret <release>-<名称>：
-- indexing：BF_PG_DSN、BF_REDIS_PASSWORD、BF_AUDIT_S3_ACCESS_KEY、BF_AUDIT_S3_SECRET_KEY（审计桶）；
+- indexing：BF_PG_DSN、BF_REDIS_PASSWORD、BF_AUDIT_S3_ACCESS_KEY、BF_AUDIT_S3_SECRET_KEY（审计桶）、
+  BF_REVOCATION_REDIS_PASSWORD 与可选的 BF_PERMISSION_REPLICA_DSNS（元数据库可用性）、
+  BF_BACKUP_S3_ACCESS_KEY、BF_BACKUP_S3_SECRET_KEY（灾备备份桶）；
 - processing：BF_REDIS_URL（含口令）、BF_S3_ACCESS_KEY、BF_S3_SECRET_KEY；
 - connectors：BF_REDIS_PASSWORD、BF_S3_ACCESS_KEY、BF_S3_SECRET_KEY、BF_AUDIT_S3_ACCESS_KEY、BF_AUDIT_S3_SECRET_KEY（审计桶）；
 - connectors-<数据源>：这个数据源自己的密钥（可选，如表结构源的 BF_DBSCHEMA_DSN）。

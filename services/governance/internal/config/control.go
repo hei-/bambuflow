@@ -3,12 +3,15 @@ package config
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
 	"github.com/hei-/bambuflow/libs/platform-go/changeaudit"
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 )
 
 // ObserverActor 是灰度观察自动全量或终止时记下的操作人。
@@ -20,6 +23,9 @@ type RolloutControl struct {
 	configv1.UnimplementedRolloutControlServiceServer
 	Configs *Server
 }
+
+var rolloutAborts, _ = telemetry.Meter("bambuflow/governance").Int64Counter("governance.rollout.auto_aborts",
+	metric.WithDescription("灰度观察超阈值自动终止的次数"))
 
 func (c *RolloutControl) ListRollouts(ctx context.Context, _ *configv1.ListRolloutsRequest) (*configv1.ListRolloutsResponse, error) {
 	out := &configv1.ListRolloutsResponse{}
@@ -66,6 +72,7 @@ func (c *RolloutControl) ReportObservation(ctx context.Context, r *configv1.Repo
 		var rel Release
 		if rel, _, err = s.abort(ctx, r.GetReleaseId(), r.GetVersionId(), ObserverActor, "灰度观察超阈值："+summary); err == nil {
 			// 每次自动终止都告警（governance 详设 10.1“灰度自动回退次数”）
+			rolloutAborts.Add(ctx, 1, metric.WithAttributes(attribute.String("object", rel.Object)))
 			s.Log.WarnContext(ctx, "灰度观察超阈值，已自动终止", "release_id", rel.ID, "object", rel.Object, "scope", rel.Scope,
 				"observation", summary)
 		}

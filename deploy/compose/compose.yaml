@@ -37,6 +37,14 @@ services:
       <<: *healthcheck
       test: [CMD, redis-cli, ping]
 
+  # 撤权位点与待生效撤权名单（元数据库可用性详设 4.1、5.2）：与事件流的 Redis 分开，事件流实例故障切换丢消息时名单不跟着丢
+  redis-revocation:
+    profiles: [core]
+    image: redis:8.10.2
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, redis-cli, ping]
+
   vault:
     profiles: [core]
     image: hashicorp/vault:2.1.1
@@ -75,6 +83,41 @@ services:
     healthcheck:
       <<: *healthcheck
       test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:13133/status]
+
+  # 指标与仪表盘（技术设计文档 14.2）：make up PROFILE=core,obs；配置、告警规则与仪表盘在 deploy/observability
+  prometheus:
+    profiles: [obs]
+    build:
+      context: ../..
+      dockerfile: deploy/observability/Dockerfile
+      target: prometheus
+    image: bambuflow-prometheus:dev
+    volumes:
+      - prometheus-data:/prometheus
+    ports:
+      - 127.0.0.1:${BF_PROMETHEUS_PORT:-27090}:9090
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9090/-/ready]
+
+  grafana:
+    profiles: [obs]
+    build:
+      context: ../..
+      dockerfile: deploy/observability/Dockerfile
+      target: grafana
+    image: bambuflow-grafana:dev
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${BF_GRAFANA_ADMIN_PASSWORD:-dev-only-grafana}
+      GF_USERS_DEFAULT_LANGUAGE: zh-Hans
+    ports:
+      - 127.0.0.1:${BF_GRAFANA_PORT:-27030}:3000
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:3000/api/health]
 
   # 测试用公司目录（只用于开发与 CI）
   openldap:
@@ -506,6 +549,10 @@ services:
       BF_RERANKER_URL: ${BF_RERANKER_URL:-http://embedder:8000}
       # 启用的召回路；对照评测时可设为 dense 只开稠密路
       BF_RETRIEVERS: ${BF_RETRIEVERS:-dense,keyword,graph,identifier}
+      # 紧急拒绝规则备用通道的事件流与 ChunkAclChanged
+      BF_REDIS_ADDR: redis:6379
+      # 撤权位点与待生效撤权名单；开发环境只有一个 PostgreSQL，权限直接读 BF_PG_DSN，不配读副本与同步备库
+      BF_REVOCATION_REDIS_ADDR: redis-revocation:6379
       # 检索结果与查询向量缓存（retrieval 详设第 8 节）；开发环境默认不开，设成 redis:6379 即可试用
       BF_CACHE_REDIS_ADDR: ${BF_CACHE_REDIS_ADDR:-}
       # 权限评测集与 e2e 用少数几个租户连续调用，开发环境把租户限流放宽；生产取 retrieval 详设 9.2 的部署值
@@ -518,6 +565,10 @@ services:
       OTEL_EXPORTER_OTLP_INSECURE: "true"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-revocation:
         condition: service_healthy
       embedder:
         condition: service_healthy
@@ -541,6 +592,8 @@ services:
       BF_EVAL_MODE: "1"
       BF_PRINCIPAL_JWKS_URL: http://evaluation-api:8081/internal/jwks.json
       BF_RETRIEVAL_ADDR: retrieval-eval:9090
+      # 删除事件只由线上的 orchestrator 消费
+      BF_INDEXING_ADDR: ""
     depends_on:
       retrieval-eval:
         condition: service_healthy
@@ -591,6 +644,8 @@ services:
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
       BF_ANSWER_KEY: bambuflow-answers
+      # 文档物理删除时清理 LLM 追踪库，完成时间补记进删除凭证（indexing 在 ingest profile 里）
+      BF_INDEXING_ADDR: indexing:9090
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       # sql_query：视图目录与查询账号（P3-Q）；查询账号由 make ingest 的 dbschema-seed 建，之前 sql_query 返回不可用
@@ -704,6 +759,8 @@ services:
       BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
       # 平台事件（index.version.live）转发到 Redis 事件流
       BF_REDIS_ADDR: redis:6379
+      # 撤权位点与待生效撤权名单（与 retrieval 同一个）
+      BF_REVOCATION_REDIS_ADDR: redis-revocation:6379
       # 索引版本的管理接口只接受 gateway 签发的管理 Principal
       BF_PRINCIPAL_JWKS_URL: http://gateway:8081/internal/jwks.json
       # 发布、过期、物理删除写变更审计，与 gateway 入口审计同一个审计桶
@@ -716,6 +773,8 @@ services:
       indexing-migrate:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      redis-revocation:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck
@@ -956,6 +1015,45 @@ services:
       evaluation-api:
         condition: service_healthy
 
+  # 灾备备份（总体设计 11.5，indexing backup）：生产每小时一次，备份桶跨地域复制到灾备站点；开发环境由 make dr-drill 调用。
+  # 每份文档一把数据密钥，经 Vault transit 的 bambuflow-backup 包裹（vault-seed 建）
+  indexing-backup:
+    profiles: [ingest-job]
+    image: bambuflow-indexing:dev
+    pull_policy: never
+    command: [backup]
+    environment: &backup-env
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow?sslmode=disable
+      BF_BACKUP_S3_ENDPOINT: http://rustfs:9000
+      BF_BACKUP_S3_ACCESS_KEY: ${BF_S3_ACCESS_KEY:-dev-only-s3}
+      BF_BACKUP_S3_SECRET_KEY: ${BF_S3_SECRET_KEY:-dev-only-s3-secret}
+      BF_BACKUP_BUCKET: bambuflow-backup
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${BF_VAULT_DEV_TOKEN:-dev-only-vault}
+    depends_on:
+      indexing:
+        condition: service_healthy
+
+  # 灾备演练（make dr-drill）：同一个 PostgreSQL 里的 bambuflow_dr 库充当灾备站点，从备份桶恢复后起一个 retrieval 指向它
+  indexing-dr:
+    profiles: [test]
+    image: bambuflow-indexing:dev
+    pull_policy: never
+    command: [restore]
+    environment:
+      <<: *backup-env
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow_dr?sslmode=disable
+  retrieval-dr:
+    profiles: [test]
+    image: bambuflow-retrieval:dev
+    pull_policy: never
+    environment:
+      <<: *retrieval-env
+      BF_PG_DSN: postgres://bambuflow:${BF_PG_PASSWORD:-dev-only-pg}@postgres:5432/bambuflow_dr?sslmode=disable
+    healthcheck:
+      <<: *healthcheck
+      test: [CMD, retrieval, healthcheck]
+
   # 权限评测集的故障注入（make eval-perm）：同一镜像分别没有策略包、指向不存在的元数据库、拿不到 governance 的租户授权，
   # 验证三种故障下都拒绝而不是放行。它们的 readiness 本来就应为 false，所以不等健康检查。
   # 策略包与租户授权在同一份签名快照里下发：没有策略包的实例在这里是拿不到快照、本地也没有缓存的；
@@ -1109,6 +1207,7 @@ volumes:
   k3s-data:
   k3s-config:
   pg-data:
+  prometheus-data:
   rustfs-data:
   ldap-data:
   ldap-config:

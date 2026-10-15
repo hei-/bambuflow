@@ -21,7 +21,8 @@ message ListDeletionReceiptsRequest {
 }
 
 message StoreDeletion {
-  // chunks（含关键词与向量索引）、sections、graph、manifests、metadata、object_store
+  // chunks（含关键词与向量索引）、sections、graph、manifests、metadata、backups（灾备备份里这份文档的数据密钥已销毁）、
+  // object_store、llm_traces
   string store = 1;
   google.protobuf.Timestamp completed_at = 2;
 }
@@ -34,7 +35,8 @@ message DeletionReceipt {
   // 删除标记的时间（删除事件的发生时间）
   google.protobuf.Timestamp tombstoned_at = 4;
   repeated StoreDeletion stores = 5;
-  // 还没有完成删除的存储（如 connectors 还没删完对象存储里的原文）
+  // 还没有完成删除的存储（如 connectors 还没删完对象存储里的原文、orchestrator 还没删完 LLM 追踪记录、
+  // 下一次灾备备份还没重写销毁了密钥的密钥环）
   repeated string pending_stores = 6;
   google.protobuf.Timestamp created_at = 7;
 }

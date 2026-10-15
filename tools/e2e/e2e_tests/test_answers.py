@@ -68,7 +68,7 @@ def test_answer_is_grounded_and_cites_only_this_search() -> None:
     why = a["why"]
     assert why["index_version"].startswith("ix-") and why["policy_version"].startswith("sha256:")
     assert why["embedding_model"] == "bge-m3@mock-hash-1"
-    assert why["generation_model"] == "mock-chat-1" and why["nli_model"] == "nli@mock-bigram-1"
+    assert why["generation_model"] == "mock-chat-1" and why["nli_model"] == "nli@mock-bigram-2"
     assert why["prompt_version"] and why["support_threshold"] == 0.5
     assert why["retrievers"] == ["dense", "keyword"] and why["rerank_model"]
 

@@ -17,6 +17,7 @@ import (
 
 	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
+	"github.com/hei-/bambuflow/libs/platform-go/revocation"
 )
 
 type fakeWriter struct {
@@ -159,5 +160,36 @@ func TestFastPathAppliesPartitionGrants(t *testing.T) {
 	defer w.mu.Unlock()
 	if len(w.parts) != 2 || w.parts[0].GetGrantees()[0] != "dept:风险管理部" || len(w.parts[1].GetGrantees()) != 0 || len(w.acls) != 0 {
 		t.Fatalf("分区授权: %v", w.parts)
+	}
+}
+
+func TestBacklogIsHeldBeforeProcessing(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	ctx := context.Background()
+	at := timestamppb.Now()
+	if err := rdb.XGroupCreateMkStream(ctx, Stream, Group, "0").Err(); err != nil {
+		t.Fatal(err)
+	}
+	add(t, rdb, &ingestionv1.DocumentChanged{SourceId: "src_a", DocId: "d1", ChangeType: ingestionv1.ChangeType_CHANGE_TYPE_DELETE, OccurredAt: at})
+	// 第一条已被读走（卡在主库写不进上重试），后面积压的还没读到
+	if err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: Group, Consumer: "indexing-0", Streams: []string{Stream, ">"}, Count: 1}).Err(); err != nil {
+		t.Fatal(err)
+	}
+	add(t, rdb, &ingestionv1.DocumentChanged{SourceId: "src_a", DocId: "d2", ChangeType: ingestionv1.ChangeType_CHANGE_TYPE_ACL_ONLY, OccurredAt: at})
+	pb, _ := proto.Marshal(&ingestionv1.PartitionGrantChanged{SourceId: "src_rules", Partition: "信贷", OccurredAt: at})
+	rdb.XAdd(ctx, &redis.XAddArgs{Stream: Stream, Values: map[string]any{"kind": KindPartitionGrant, "pb": pb}})
+	rdb.XAdd(ctx, &redis.XAddArgs{Stream: Stream, Values: map[string]any{"pb": "坏数据"}})
+
+	pending := &revocation.Store{Redis: rdb}
+	c := &Consumer{Redis: rdb, Name: "indexing-0", Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Pending: pending}
+	if err := c.lookahead(ctx); err != nil {
+		t.Fatal(err)
+	}
+	d1, d2, part := revocation.DocMember("d1"), revocation.DocMember("d2"), revocation.PartitionMember("src_rules", "信贷")
+	v, _ := pending.Read(ctx, []string{d1, d2, part})
+	// 已读走的那条由处理时登记（写入方的 Hold），这里只登记还没读到的
+	if v.Held[d1] || !v.Held[d2] || !v.Held[part] {
+		t.Fatalf("积压的撤权应先进名单: %v", v.Held)
 	}
 }

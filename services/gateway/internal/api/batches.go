@@ -388,6 +388,7 @@ func (s *Server) resultLine(c *call, res *batchv1.BatchResult) (batchResultLine,
 }
 
 func (s *Server) endResults(c *call, reason string) {
+	countRequest(c, http.StatusOK, reason)
 	if err := s.writeAudit(c, http.StatusOK, reason, "end"); err != nil {
 		s.Log.ErrorContext(c.ctx, "入口审计写入失败", slog.Any("err", err))
 	}

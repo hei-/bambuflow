@@ -1,0 +1,35 @@
+# Compose 环境的 Prometheus 抓取配置（只用于开发与演示，技术设计文档 14.2）。
+# 生产由公司的监控平台按 Pod 注解 prometheus.io/scrape、port、path 抓取（Helm chart 已写好注解与网络策略），
+# 不使用这份文件；告警规则（rules/）两边共用。
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yaml
+
+scrape_configs:
+  # 各服务的指标端口都是 9464（telemetry 库的 BF_METRICS_LISTEN 默认值）。
+  # 没启用的 profile 里的服务抓不到，up 为 0，不影响其他目标
+  - job_name: bambuflow
+    static_configs:
+      - targets:
+          - gateway:9464
+          - governance:9464
+          - identity-sync:9464
+          - webhook:9464
+          - retrieval:9464
+          - orchestrator:9464
+          - batch:9464
+          - evaluation-api:9464
+        labels: {plane: online}
+      - targets:
+          - indexing:9464
+          - processing-admin:9464
+          - connectors-admin:9464
+        labels: {plane: ingest}
+    relabel_configs:
+      # service 维度取容器名（去掉端口），仪表盘与告警按它分组
+      - source_labels: [__address__]
+        regex: "([^:]+):.*"
+        target_label: service

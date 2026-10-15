@@ -639,9 +639,33 @@ export interface paths {
         /**
          * 删除凭证
          * @description 删除标记过了观察期、索引侧的全部副本物理删除后，每份文档一份删除凭证，记各存储完成删除的时间；
-         *     对象存储里的原文由入库平面删除后补记，没完成的列在 pending_stores。审计岗与信息安全可看，doc_id 与 source_id 至少给一个。
+         *     对象存储里的原文由入库平面删除后补记，LLM 追踪库里引用过这份文档的记录由 orchestrator 删除后补记，
+         *     灾备备份里这份文档的数据密钥销毁后由下一次备份补记（backups），
+         *     没完成的列在 pending_stores。审计岗与信息安全可看，doc_id 与 source_id 至少给一个。
          */
         get: operations["list_deletion_receipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/llm-traces/{trace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * LLM 追踪记录
+         * @description 一次回答的全部模型调用（系统与用户提示词、模型输出原文、用量）与逐句校验结果，按回答里的 trace_id 查。
+         *     只有 LLM 调试人员（llm_debugger）可看，每次查看都写管理审计（不记内容）。上下文里有受限级内容的回答不写追踪库；
+         *     过了回答记录的保留期、或引用过的文档已物理删除的记录不再保留，返回 404。
+         */
+        get: operations["get_llm_trace"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2095,8 +2119,11 @@ export interface components {
             tombstoned_at?: string;
             /** @description 已完成删除的存储与时间 */
             stores: {
-                /** @enum {string} */
-                store: "chunks" | "sections" | "graph" | "manifests" | "metadata" | "object_store";
+                /**
+                 * @description backups 表示灾备备份里这份文档的数据密钥已销毁（备份里的内容再也解不开）
+                 * @enum {string}
+                 */
+                store: "chunks" | "sections" | "graph" | "manifests" | "metadata" | "backups" | "object_store" | "llm_traces";
                 /** Format: date-time */
                 completed_at: string;
             }[];
@@ -2104,6 +2131,48 @@ export interface components {
             pending_stores: string[];
             /** Format: date-time */
             created_at: string;
+        };
+        /** @description 一次回答的 LLM 追踪记录。 */
+        llm_trace: {
+            trace_id: string;
+            answer_id: string;
+            tenant: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** @description 模型调用，按发生的先后 */
+            calls: {
+                /**
+                 * @description generate 为回答生成，plan 为规划、改写、精排等
+                 * @enum {string}
+                 */
+                use: "generate" | "plan";
+                /** @description 实际使用的模型；因密级不允许而没有调用时为空 */
+                model: string;
+                /**
+                 * @description 这次输入里的最高密级
+                 * @enum {string}
+                 */
+                level: "public" | "internal" | "confidential" | "restricted";
+                system_prompt: string;
+                user_prompt: string;
+                /** @description 模型输出原文（校验前）；调用失败或被取消时是已读到的部分 */
+                output: string;
+                /** Format: int64 */
+                prompt_tokens: number;
+                /** Format: int64 */
+                completion_tokens: number;
+            }[];
+            /** @description 逐句校验结果 */
+            verdicts: {
+                text: string;
+                passed: boolean;
+                /** @description passed、no_refs、quote_mismatch、low_support、access_denied、contradiction 等 */
+                reason: string;
+                /** Format: double */
+                support: number;
+                /** @description 通过检查的证据编号 */
+                refs: number[];
+            }[];
         };
         /** @description 一页删除凭证。 */
         deletion_receipt_list: {
@@ -4829,6 +4898,37 @@ export interface operations {
             400: components["responses"]["problem"];
             401: components["responses"]["problem"];
             403: components["responses"]["problem"];
+            503: components["responses"]["retryable_problem"];
+        };
+    };
+    get_llm_trace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description W3C 追踪上下文 */
+                traceparent?: components["parameters"]["traceparent"];
+            };
+            path: {
+                /** @description 回答的 trace_id（32 位十六进制） */
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 追踪记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["llm_trace"];
+                };
+            };
+            400: components["responses"]["problem"];
+            401: components["responses"]["problem"];
+            403: components["responses"]["problem"];
+            404: components["responses"]["problem"];
             503: components["responses"]["retryable_problem"];
         };
     };

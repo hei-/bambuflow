@@ -104,8 +104,10 @@ func (s *Server) cachedResult(ctx context.Context, key string, f Filter, version
 	}
 	r, ok := s.Results.Get(ctx, key)
 	if !ok {
+		countCache(ctx, "result", 0, 1)
 		return nil, "", nil, false
 	}
+	countCache(ctx, "result", 1, 0)
 	ids := make([]string, 0, len(r.Items))
 	for _, it := range r.Items {
 		ids = append(ids, it.ChunkID)
@@ -159,6 +161,7 @@ func (s *Server) embed(ctx context.Context, model string, texts []string) ([]Que
 		return s.Embedder.Embed(ctx, texts)
 	}
 	hit := s.Vectors.Get(ctx, model, texts)
+	countCache(ctx, "vector", len(hit), len(texts)-len(hit))
 	if len(hit) == len(texts) {
 		out := make([]QueryVector, len(texts))
 		for i := range texts {
@@ -231,9 +234,13 @@ func (s *Server) decide(ctx context.Context, in policy.Input, granted []string, 
 	s.decisions.mu.Lock()
 	if e, ok := s.decisions.m[key]; ok && key != "" && now.Before(e.exp) {
 		s.decisions.mu.Unlock()
+		countCache(ctx, "decision", 1, 0)
 		return e.d, nil
 	}
 	s.decisions.mu.Unlock()
+	if key != "" {
+		countCache(ctx, "decision", 0, 1)
+	}
 	d, err := s.Policy.Decide(ctx, in, granted)
 	if err != nil || key == "" {
 		return d, err

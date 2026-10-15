@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -12,6 +14,7 @@ import (
 
 	configv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/config/v1"
 	"github.com/hei-/bambuflow/libs/platform-go/grpcmw"
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 )
 
 // Snapshots 是 Server 读取词表的来源（生产为 Store）。
@@ -235,6 +238,10 @@ func (s *Server) Watch(r *configv1.WatchRequest, stream grpc.ServerStreamingServ
 	}
 }
 
+// 各服务实例上报的快照加载结果（governance 详设 10.1“Ack 失败数”：任一实例连续失败告警）
+var acks, _ = telemetry.Meter("bambuflow/governance").Int64Counter("governance.snapshot.acks",
+	metric.WithDescription("服务实例上报的配置快照加载结果"))
+
 func (s *Server) Ack(ctx context.Context, r *configv1.AckRequest) (*configv1.AckResponse, error) {
 	if r.GetService() == "" || r.GetInstanceId() == "" || len(r.GetInstanceId()) > 256 || len(r.GetReason()) > 512 {
 		return nil, status.Error(codes.InvalidArgument, "需要 service 与 instance_id")
@@ -243,6 +250,7 @@ func (s *Server) Ack(ctx context.Context, r *configv1.AckRequest) (*configv1.Ack
 		s.Log.ErrorContext(ctx, "记录加载结果失败", slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "暂时不可用")
 	}
+	acks.Add(ctx, 1, metric.WithAttributes(attribute.String("service", r.GetService()), attribute.Bool("loaded", r.GetLoaded())))
 	if !r.GetLoaded() {
 		// 加载失败要有人看：实例在用旧快照（governance 详设 8.2）
 		s.Log.WarnContext(ctx, "实例加载快照失败", slog.String("service", r.GetService()), slog.String("instance", r.GetInstanceId()),

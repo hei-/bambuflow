@@ -3,6 +3,7 @@
 - indexing-publish：增量发布（发布前在评测副本上跑评测门禁，通过才切别名；全量重建写完后跑完整评测集门禁）；
 - indexing-expire：按数据源保留期给到期文档写删除标记（只在配置了 indexing.retention 时渲染）；
 - indexing-purge-deleted：删除标记过了观察期后物理删除，写删除凭证；
+- indexing-backup：每小时的灾备备份（按文档加密写进跨地域复制的备份桶），经 Vault Agent 取令牌调用 transit；
 - connectors-sync-<数据源>、connectors-reconcile-<数据源>：每个数据源的同步与每日对账。CronJob 与它拉起的 Pod 都带
   bambuflow.io/source-id 标签：connectors-admin 的“立即同步”按它找到 CronJob、从模板建 Job，并据此判断是否已有同步在跑。
 上一次没跑完不重叠执行（concurrencyPolicy: Forbid）；失败由 Job 重试两次，仍失败时等下一轮并告警（Job 失败指标）。
@@ -14,6 +15,10 @@
   "indexing-publish" (dict "schedule" $v.indexing.publishSchedule "image" "indexing" "args" (list "publish") "secret" "indexing"
     "resources" $v.indexing.resources "deadline" 3600
     "env" (merge (dict "BF_EVAL_ADDR" $v.online.evaluationAddr) $audit))
+  "indexing-backup" (dict "schedule" $v.backup.schedule "image" "indexing" "args" (list "backup") "secret" "indexing"
+    "resources" $v.indexing.resources "deadline" 3300 "vault" true
+    "env" (dict "BF_BACKUP_S3_ENDPOINT" $v.backup.s3Endpoint "BF_BACKUP_BUCKET" $v.backup.bucket "BF_BACKUP_KEY" $v.backup.keyName
+      "VAULT_ADDR" $v.vault.addr "VAULT_TOKEN_FILE" "/vault/secrets/token"))
   "indexing-purge-deleted" (dict "schedule" $v.indexing.purgeSchedule "image" "indexing" "args" (list "purge-deleted") "secret" "indexing"
     "resources" $v.indexing.resources "deadline" 3600
     "env" (merge (dict "BF_PURGE_GRACE_HOURS" (toString $v.indexing.purgeGraceHours)) $audit))
@@ -82,9 +87,19 @@ spec:
         metadata:
           labels:
             {{- include "bambuflow.labels" $ctx | nindent 12 }}
+          {{- if $job.vault }}
+          # 只在启动前取一次令牌（pre-populate-only）：常驻的 Agent 边车会让 Job 一直不结束
+          annotations:
+            vault.hashicorp.com/agent-inject: "true"
+            vault.hashicorp.com/agent-inject-token: "true"
+            vault.hashicorp.com/agent-pre-populate-only: "true"
+            vault.hashicorp.com/agent-run-as-same-user: "true"
+            vault.hashicorp.com/role: {{ $v.vault.role | quote }}
+            vault.hashicorp.com/auth-path: {{ printf "auth/%s" $v.vault.authMount | quote }}
+          {{- end }}
         spec:
           serviceAccountName: {{ include "bambuflow.name" $ctx }}
-          automountServiceAccountToken: false
+          automountServiceAccountToken: {{ $job.vault | default false }}
           restartPolicy: Never
           securityContext:
             runAsNonRoot: true

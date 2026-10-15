@@ -27,7 +27,7 @@ from minio import Minio
 from bambuflow.admin.v1 import ingest_admin_pb2_grpc
 from bambuflow.config.v1 import config_pb2, config_pb2_grpc
 from bambuflow.ingestion.v1 import index_writer_pb2_grpc
-from bambuflow_platform import envelope, logs
+from bambuflow_platform import envelope, logs, telemetry
 from bambuflow_platform.grpc_server import AuthInterceptor
 from bambuflow_platform.principal import JWKS, Verifier
 from bambuflow_platform.snapshot import open_snapshot, parse_keys
@@ -85,9 +85,13 @@ GRACE_SECONDS = 10
 
 async def serve_admin() -> None:
     env = os.environ
+    telemetry.setup_metrics("processing-admin")
     server = grpc.aio.server(
         # 只经 gateway 的管理接口调用，只接受管理 Principal
-        interceptors=[AuthInterceptor(Verifier(JWKS(env["BF_PRINCIPAL_JWKS_URL"]), operator=True))]
+        interceptors=[
+            telemetry.MetricsInterceptor(),
+            AuthInterceptor(Verifier(JWKS(env["BF_PRINCIPAL_JWKS_URL"]), operator=True)),
+        ]
     )
     rdb = redis.Redis.from_url(env["BF_REDIS_URL"], socket_timeout=5, socket_connect_timeout=5)
     state = IngestState(rdb, PIPELINE_VERSION)
@@ -174,6 +178,7 @@ def main() -> int:
             ),
         )
         if resident:
+            telemetry.setup_metrics("processing")
             # 常驻：收到停止信号后处理完手上的消息再退出；
             # 受控词表在启动时加载，词表变更后由部署滚动重启生效
             stopping = {"now": False}

@@ -27,7 +27,8 @@ from bambuflow_grounding import (
     GroundingUnavailableError,
     Verdict,
 )
-from bambuflow_orchestrator import confidence, context, plans, prompt, redact, understand
+from bambuflow_orchestrator import confidence, context, llmtrace, plans, prompt, redact, understand
+from bambuflow_orchestrator import metrics as bf_metrics
 from bambuflow_orchestrator.experiments import Assignment
 from bambuflow_orchestrator.llm import CircuitOpenError, LLMUnavailableError, ModelNotAllowedError
 from bambuflow_orchestrator.parse import Parser
@@ -351,12 +352,14 @@ class Answer:
                     if not claims:
                         continue
                     result = await self._grounder.verify(claims, by_ref)
+                    llmtrace.note_verdicts(result.verdicts)
                     why.nli_model = why.nli_model or result.nli_model
                     why.support_threshold = result.support_threshold
                     for v in result.verdicts:
                         supports.append(v.support)
                         if not v.passed:
                             dropped.append(v.reason)
+                            bf_metrics.dropped_sentences.add(1, {"reason": v.reason})
                             noted.update(v.conflicts)
                             continue
                         passed += 1

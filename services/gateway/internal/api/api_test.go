@@ -367,6 +367,7 @@ func newEnv(t *testing.T) *env {
 			"olga":  {Username: "olga", Dept: "平台部", Clearance: 2, Active: true, Groups: []string{"platform-ops"}},
 			"oscar": {Username: "oscar", Dept: "平台部", Clearance: 2, Active: true, Groups: []string{"platform-ops"}},
 			"audra": {Username: "audra", Dept: "审计部", Clearance: 2, Active: true, Groups: []string{"platform-audit"}},
+			"dora":  {Username: "dora", Dept: "平台部", Clearance: 2, Active: true, Groups: []string{"llm-debuggers"}},
 			"dana":  {Username: "dana", Dept: "信贷部", Clearance: 3, Active: true, Groups: []string{"credit-l2", "data-owners"}},
 			"paul":  {Username: "paul", Dept: "平台部", Clearance: 2, Active: true, Groups: []string{"platform-admins"}},
 			"ivan":  {Username: "ivan", Dept: "信息安全部", Clearance: 2, Active: true, Groups: []string{"infosec"}},
@@ -388,7 +389,7 @@ func newEnv(t *testing.T) *env {
 		StepUp: StepUp{ACR: []string{"2"}, MaxAge: 10 * time.Minute},
 		AdminRoles: roles.Map{
 			roles.PlatformOperator: {"platform-ops"}, roles.Auditor: {"platform-audit"}, roles.DataOwner: {"data-owners"},
-			roles.InfoSec: {"infosec"}, roles.PlatformAdmin: {"platform-admins"},
+			roles.InfoSec: {"infosec"}, roles.PlatformAdmin: {"platform-admins"}, roles.LLMDebugger: {"llm-debuggers"},
 		},
 		Idempotency: &idempotency.Store{Redis: rdb},
 		Log:         logging.New(&bytes.Buffer{}, "gateway", slog.LevelInfo), Now: time.Now,

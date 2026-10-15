@@ -16,13 +16,17 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	commonv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/common/v1"
 	ingestionv1 "github.com/hei-/bambuflow/contracts/gen/go/bambuflow/ingestion/v1"
 	"github.com/hei-/bambuflow/libs/platform-go/outbox"
+	revocations "github.com/hei-/bambuflow/libs/platform-go/revocation"
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 	"github.com/hei-/bambuflow/libs/textseg"
+	"github.com/hei-/bambuflow/services/indexing/internal/fence"
 )
 
 type Server struct {
@@ -32,6 +36,13 @@ type Server struct {
 	// Notify 在文档权限变化或写删除标记提交后发出 ChunkAclChanged（retrieval 据此清检索结果缓存）；为 nil 时不发。
 	// 尽力而为：发不出去只记日志，retrieval 组装时还会按最新权限复核，缓存最多多留到过期
 	Notify func(ctx context.Context, docIDs []string, change string) error
+	// Fence 是读副本下撤权的登记、抬位点与等待（internal/fence）；为 nil 时不做（测试）
+	Fence *fence.Fence
+}
+
+// revoke 在主库事务外按详设 4.2 的顺序做一次权限或删除变更（fence.Revoke）。
+func (s *Server) revoke(ctx context.Context, members []string, txn func(pgx.Tx) error, notify func()) error {
+	return s.Fence.Revoke(ctx, members, func() error { return pgx.BeginFunc(ctx, s.Pool, txn) }, notify)
 }
 
 func (s *Server) notify(ctx context.Context, docID, change string) {
@@ -43,9 +54,25 @@ func (s *Server) notify(ctx context.Context, docID, change string) {
 	}
 }
 
+// lagPause 是副本回放落后时每次内容写入前的等待
+const lagPause = 500 * time.Millisecond
+
+var throttled, _ = telemetry.Meter("bambuflow/indexing").Int64Counter("indexing.write.throttled",
+	metric.WithDescription("因权限读副本回放落后而放慢的内容写入次数"))
+
 func (s *Server) WriteDocument(ctx context.Context, r *ingestionv1.WriteDocumentRequest) (*ingestionv1.WriteDocumentResponse, error) {
 	if err := validate(r); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	// 权限读副本回放延迟超过 1 秒时每次写入先等一会儿，压低写入速度，主要压住全量重建（元数据库可用性详设 7.1）；
+	// 这个延迟只用于限速，不参与正确性判断
+	if s.Fence.Lag() > 1 {
+		throttled.Add(ctx, 1)
+		select {
+		case <-ctx.Done():
+			return nil, status.Error(codes.Canceled, "已取消")
+		case <-time.After(lagPause):
+		}
 	}
 	var resp *ingestionv1.WriteDocumentResponse
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
@@ -53,6 +80,10 @@ func (s *Server) WriteDocument(ctx context.Context, r *ingestionv1.WriteDocument
 		resp, err = write(ctx, tx, r)
 		return err
 	})
+	if err == nil {
+		// 内容写入也会改文档级权限（可能收窄）：抬撤权位点，不等副本
+		err = s.Fence.Commit(ctx, false)
+	}
 	if err != nil {
 		s.Log.ErrorContext(ctx, "写入文档失败", slog.String("doc_id", r.GetDocId()), slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "写入失败")
@@ -263,17 +294,18 @@ func (s *Server) TombstoneDocument(ctx context.Context, r *ingestionv1.Tombstone
 		return nil, status.Error(codes.InvalidArgument, "source_id、doc_id、occurred_at 必填")
 	}
 	var result ingestionv1.TombstoneResult
-	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	err := s.revoke(ctx, []string{revocations.DocMember(r.GetDocId())}, func(tx pgx.Tx) error {
 		var err error
 		result, err = tombstone(ctx, tx, r)
 		return err
+	}, func() {
+		if result == ingestionv1.TombstoneResult_TOMBSTONE_RESULT_TOMBSTONED {
+			s.notify(ctx, r.GetDocId(), "tombstone")
+		}
 	})
 	if err != nil {
 		s.Log.ErrorContext(ctx, "写删除标记失败", slog.String("doc_id", r.GetDocId()), slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "写入失败")
-	}
-	if result == ingestionv1.TombstoneResult_TOMBSTONE_RESULT_TOMBSTONED {
-		s.notify(ctx, r.GetDocId(), "tombstone")
 	}
 	return &ingestionv1.TombstoneDocumentResponse{Result: result}, nil
 }
@@ -310,17 +342,18 @@ func (s *Server) UpdateAcl(ctx context.Context, r *ingestionv1.UpdateAclRequest)
 		return nil, status.Error(codes.InvalidArgument, "密级必填")
 	}
 	var result ingestionv1.AclResult
-	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	err := s.revoke(ctx, []string{revocations.DocMember(r.GetDocId())}, func(tx pgx.Tx) error {
 		var err error
 		result, err = updateACL(ctx, tx, r)
 		return err
+	}, func() {
+		if result == ingestionv1.AclResult_ACL_RESULT_UPDATED {
+			s.notify(ctx, r.GetDocId(), "acl")
+		}
 	})
 	if err != nil {
 		s.Log.ErrorContext(ctx, "更新权限失败", slog.String("doc_id", r.GetDocId()), slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "写入失败")
-	}
-	if result == ingestionv1.AclResult_ACL_RESULT_UPDATED {
-		s.notify(ctx, r.GetDocId(), "acl")
 	}
 	return &ingestionv1.UpdateAclResponse{Result: result}, nil
 }
@@ -410,7 +443,7 @@ func (s *Server) SetPartitionGrants(ctx context.Context, r *ingestionv1.SetParti
 	}
 	at := r.GetOccurredAt().AsTime()
 	var result ingestionv1.AclResult
-	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	err := s.revoke(ctx, []string{revocations.PartitionMember(r.GetSourceId(), r.GetPartition())}, func(tx pgx.Tx) error {
 		// 先占住这个分区的状态行，同一分区的并发变化串行处理
 		if _, err := tx.Exec(ctx, `INSERT INTO idx.partition_grant_state (source_id, partition, occurred_at)
 			VALUES ($1, $2, '-infinity') ON CONFLICT DO NOTHING`, r.GetSourceId(), r.GetPartition()); err != nil {
@@ -449,7 +482,7 @@ func (s *Server) SetPartitionGrants(ctx context.Context, r *ingestionv1.SetParti
 		_, err = tx.Exec(ctx, `UPDATE idx.partition_grant_state SET occurred_at = $3, updated_at = now()
 			WHERE source_id = $1 AND partition = $2`, r.GetSourceId(), r.GetPartition(), at)
 		return err
-	})
+	}, func() {})
 	if err != nil {
 		s.Log.ErrorContext(ctx, "更新分区授权失败", slog.String("source_id", r.GetSourceId()), slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "写入失败")

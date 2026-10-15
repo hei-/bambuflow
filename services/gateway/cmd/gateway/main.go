@@ -126,6 +126,9 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		}
 		defer func() { _ = shutdown(context.WithoutCancel(ctx)) }()
 	}
+	if err := telemetry.ServeMetrics(ctx, "gateway", log); err != nil {
+		return err
+	}
 
 	// 签名密钥只从 Vault 取；取不到就不启动，不生成临时密钥
 	vc, err := vault.FromEnv()
@@ -147,6 +150,9 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	go rotator.Run(ctx, time.Minute)
+	// 少于 7 天告警（gateway 详设 11.1）：说明自动轮换一直没写成
+	telemetry.Gauge("bambuflow/gateway", "gateway.signing_key.remaining", "Principal 签名密钥按轮换周期的剩余有效期", "s",
+		func() float64 { return rotator.Remaining().Seconds() })
 
 	dsn, err := env("BF_PG_DSN")
 	if err != nil {
@@ -322,6 +328,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		IndexVersions:    adminv1.NewIndexVersionAdminServiceClient(indexingConn),
 		Tombstones:       adminv1.NewTombstoneAdminServiceClient(indexingConn),
 		Receipts:         adminv1.NewDeletionReceiptAdminServiceClient(indexingConn),
+		LLMTraces:        adminv1.NewLlmTraceAdminServiceClient(orchestratorConn),
 		SnapshotSync:     adminv1.NewSnapshotSyncAdminServiceClient(governanceConn),
 		Rebuilds:         adminv1.NewRebuildAdminServiceClient(indexingConn),
 		AuditQuery:       adminv1.NewAuditAdminServiceClient(governanceConn),
@@ -380,7 +387,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	defer gs.GracefulStop()
 
 	servers := []*http.Server{
-		{Addr: envOr("BF_LISTEN", ":8080"), Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second},
+		{Addr: envOr("BF_LISTEN", ":8080"), Handler: telemetry.HTTPServer(srv.Handler()), ReadHeaderTimeout: 5 * time.Second},
 		{Addr: envOr("BF_INTERNAL_LISTEN", ":8081"), Handler: internal, ReadHeaderTimeout: 5 * time.Second},
 	}
 	errc := make(chan error, len(servers)+1)

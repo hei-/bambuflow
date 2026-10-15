@@ -14,6 +14,9 @@ dependencies = [
     "opentelemetry-sdk>=1.38",
     "opentelemetry-exporter-otlp-proto-grpc>=1.38",
     "opentelemetry-instrumentation-grpc>=0.59b0",
+    # 指标经 Prometheus 格式导出（与 Go 服务的 otel/exporters/prometheus 对应）
+    "opentelemetry-exporter-prometheus>=0.59b0",
+    "prometheus-client>=0.21",
 ]
 
 [tool.uv.sources]

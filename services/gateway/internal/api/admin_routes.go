@@ -33,6 +33,9 @@ func (s *Server) adminRoutes() []adminRoute {
 			roles: []string{roles.PlatformOperator}, call: s.getRebuild},
 		{name: "admin-index-rebuilds-cancel", method: http.MethodPost, pattern: "/v1/admin/index-rebuilds/{rebuild_id}/cancel", owner: "indexing",
 			roles: []string{roles.PlatformOperator}, call: s.cancelRebuild},
+		// LLM 追踪库（技术设计文档 14.2，orchestrator 详设 13.3）：只有 LLM 调试人员按 trace_id 查，每次查看照常写管理审计
+		{name: "admin-llm-traces-get", method: http.MethodGet, pattern: "/v1/admin/llm-traces/{trace_id}", owner: "orchestrator",
+			roles: []string{roles.LLMDebugger}, call: s.getLLMTrace},
 		// 删除凭证（技术设计文档 9.2，K6）：审计岗与信息安全按文档或数据源查
 		{name: "admin-deletion-receipts-list", method: http.MethodGet, pattern: "/v1/admin/deletion-receipts", owner: "indexing",
 			roles: []string{roles.Auditor, roles.InfoSec}, call: s.listDeletionReceipts},

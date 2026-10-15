@@ -92,6 +92,8 @@ func (s *Server) streamAnswer(ctx context.Context, w http.ResponseWriter, c *cal
 		}
 	}()
 
+	sseStreams.Add(c.ctx, 1)
+	defer sseStreams.Add(context.WithoutCancel(c.ctx), -1)
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
@@ -116,6 +118,7 @@ func (s *Server) streamAnswer(ctx context.Context, w http.ResponseWriter, c *cal
 		c.answerSHA = audit.AnswerDigest(c.pushed)
 	}
 	// 内容已经发出，结束记录写不进去只能记日志
+	countRequest(c, http.StatusOK, reason)
 	if err := s.writeAudit(c, http.StatusOK, reason, "end"); err != nil {
 		s.Log.ErrorContext(c.ctx, "入口审计写入失败", slog.Any("err", err))
 	}

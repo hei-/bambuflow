@@ -6,6 +6,8 @@ Vault 注入（技术设计文档 12.6，部署配置清单）：
   orchestrator 的数据库连接串（回答记录与反馈）与 Redis 口令在 bambuflow/orchestrator；
   qa/batch、webhook 的数据库连接串与 Redis 口令分别在 bambuflow/batch、bambuflow/webhook；
   身份同步的数据库连接串与上游凭证（LDAP 绑定口令或 SCIM 调用凭证）在 bambuflow/identity-sync；
+  retrieval 的数据库连接串、撤权位点所在 Redis 的口令（BF_REVOCATION_REDIS_PASSWORD）与可选的元数据库读副本
+  （BF_PERMISSION_REPLICA_DSNS、BF_QUERY_REPLICA_DSN、BF_SYNC_STANDBY_DSNS）在 bambuflow/retrieval；
   evaluation 的数据库连接串（在线抽样评审的结果）在 bambuflow/evaluation，常驻服务与在线抽样评审的 CronJob 共用；
   密钥在 Vault 里轮换后，Operator 在 refreshAfter 内更新 Secret 并滚动重启对应工作负载。
 - Operator 以 <release>-vault-sync 这个 ServiceAccount 经 Kubernetes 认证登录 Vault，角色为 vault.role。

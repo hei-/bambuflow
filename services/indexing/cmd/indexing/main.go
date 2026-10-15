@@ -17,9 +17,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,9 +41,13 @@ import (
 	"github.com/hei-/bambuflow/libs/platform-go/outbox"
 	"github.com/hei-/bambuflow/libs/platform-go/pgmigrate"
 	"github.com/hei-/bambuflow/libs/platform-go/principal"
+	"github.com/hei-/bambuflow/libs/platform-go/revocation"
+	"github.com/hei-/bambuflow/libs/platform-go/telemetry"
 	"github.com/hei-/bambuflow/libs/platform-go/worm"
 	"github.com/hei-/bambuflow/libs/textseg"
 	"github.com/hei-/bambuflow/services/indexing/internal/access"
+	"github.com/hei-/bambuflow/services/indexing/internal/backup"
+	"github.com/hei-/bambuflow/services/indexing/internal/fence"
 	"github.com/hei-/bambuflow/services/indexing/internal/schema"
 	"github.com/hei-/bambuflow/services/indexing/internal/writer"
 )
@@ -49,7 +55,7 @@ import (
 func main() {
 	log := logging.New(os.Stdout, "indexing", slog.LevelInfo)
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "用法: indexing migrate | serve | publish | expire | purge-deleted | healthcheck")
+		fmt.Fprintln(os.Stderr, "用法: indexing migrate | serve | publish | expire | purge-deleted | backup | restore [快照] | healthcheck")
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -66,6 +72,10 @@ func main() {
 		err = expire(ctx, log)
 	case "purge-deleted":
 		err = purgeDeleted(ctx, log)
+	case "backup":
+		err = runBackup(ctx, log)
+	case "restore":
+		err = runRestore(ctx, log, os.Args[2:])
 	case "healthcheck":
 		err = healthcheck(ctx)
 	default:
@@ -83,6 +93,42 @@ func dsn() (string, error) {
 		return "", errors.New("未设置 BF_PG_DSN")
 	}
 	return d, nil
+}
+
+// revocationFence 连接撤权位点与名单所在的 Redis（BF_REVOCATION_REDIS_ADDR，与事件流的 Redis 分开，元数据库可用性详设第 9 节）
+// 和权限读副本（BF_PERMISSION_REPLICA_DSNS，逗号分隔；不设表示没有单独的读副本，retrieval 直接读主库）。
+func revocationFence(ctx context.Context, primary *pgxpool.Pool, log *slog.Logger) (*fence.Fence, func(), error) {
+	addr := os.Getenv("BF_REVOCATION_REDIS_ADDR")
+	if addr == "" {
+		return nil, nil, errors.New("未设置 BF_REVOCATION_REDIS_ADDR")
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: addr, Password: os.Getenv("BF_REVOCATION_REDIS_PASSWORD")})
+	f := &fence.Fence{Primary: primary, Store: &revocation.Store{Redis: rdb}, Log: log}
+	closers := []func(){func() { _ = rdb.Close() }}
+	closeAll := func() {
+		for _, c := range closers {
+			c()
+		}
+	}
+	for d := range strings.SplitSeq(os.Getenv("BF_PERMISSION_REPLICA_DSNS"), ",") {
+		if d = strings.TrimSpace(d); d == "" {
+			continue
+		}
+		cfg, err := pgxpool.ParseConfig(d)
+		if err != nil {
+			closeAll()
+			return nil, nil, fmt.Errorf("BF_PERMISSION_REPLICA_DSNS: %w", err)
+		}
+		cfg.MaxConns = 2
+		rp, err := pgxpool.NewWithConfig(ctx, cfg)
+		if err != nil {
+			closeAll()
+			return nil, nil, err
+		}
+		closers = append(closers, rp.Close)
+		f.Replicas = append(f.Replicas, fence.Replica{Name: fmt.Sprintf("%s:%d", cfg.ConnConfig.Host, cfg.ConnConfig.Port), DB: rp})
+	}
+	return f, closeAll, nil
 }
 
 func listenAddr() string {
@@ -121,6 +167,9 @@ func migrate(ctx context.Context, log *slog.Logger) error {
 }
 
 func serve(ctx context.Context, log *slog.Logger) error {
+	if err := telemetry.ServeMetrics(ctx, "indexing", log); err != nil {
+		return err
+	}
 	// 分词词典启动时加载一次；加载失败不接收写入，否则关键词索引会悄悄缺词
 	if err := textseg.Load(); err != nil {
 		return fmt.Errorf("加载分词词典: %w", err)
@@ -144,13 +193,20 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return errors.New("未设置 BF_PRINCIPAL_JWKS_URL")
 	}
 	// IndexWriterService 的调用方是 processing（服务身份，经服务网格 mTLS），不是终端用户，所以不校验 Principal
-	s := grpc.NewServer(grpc.UnaryInterceptor(grpcmw.UnaryServerFor([]string{"bambuflow.admin.v1.IndexVersionAdminService", "bambuflow.admin.v1.TombstoneAdminService",
+	s := grpc.NewServer(telemetry.ServerOption(), grpc.UnaryInterceptor(grpcmw.UnaryServerFor([]string{"bambuflow.admin.v1.IndexVersionAdminService", "bambuflow.admin.v1.TombstoneAdminService",
 		"bambuflow.admin.v1.RebuildAdminService", "bambuflow.admin.v1.DeletionReceiptAdminService"},
 		principal.NewOperatorVerifier(principal.NewJWKS(jwksURL, nil)), log)))
 	// 转发发件表里的平台事件（index.version.live）到 Redis 事件流；Redis 暂时不可用时事件留在发件表里，恢复后补发
 	rdb := redis.NewClient(&redis.Options{Addr: redisAddr, Password: os.Getenv("BF_REDIS_PASSWORD")})
 	defer func() { _ = rdb.Close() }()
-	ws := &writer.Server{Pool: p, Log: log, Notify: writer.ChunkAclNotifier(rdb)}
+	fc, closeFence, err := revocationFence(ctx, p, log)
+	if err != nil {
+		return err
+	}
+	defer closeFence()
+	fc.Gauges()
+	go fc.Run(ctx)
+	ws := &writer.Server{Pool: p, Log: log, Notify: writer.ChunkAclNotifier(rdb), Fence: fc}
 	ingestionv1.RegisterIndexWriterServiceServer(s, ws)
 	relay := &outbox.Relay{Pool: p, Redis: rdb, SelectSQL: writer.OutboxSelectSQL, MarkSQL: writer.OutboxMarkSQL, Log: log}
 	go relay.Run(ctx, 2*time.Second)
@@ -167,12 +223,14 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	go (&access.Consumer{Redis: rdb, Writer: ws, Name: host, Log: log}).Run(ctx)
+	consumer := &access.Consumer{Redis: rdb, Writer: ws, Name: host, Log: log, Pending: fc.Store}
+	go consumer.Run(ctx)
+	go consumer.Lookahead(ctx)
 	audit, err := changes(ctx)
 	if err != nil {
 		return err
 	}
-	adminv1.RegisterIndexAdminServiceServer(s, &writer.Admin{Pool: p, Audit: audit, Log: log})
+	adminv1.RegisterIndexAdminServiceServer(s, &writer.Admin{Pool: p, Audit: audit, Log: log, Fence: fc})
 	adminv1.RegisterIndexVersionAdminServiceServer(s, &writer.VersionAdmin{Pool: p, Log: log, Now: time.Now})
 	adminv1.RegisterTombstoneAdminServiceServer(s, &writer.TombstoneAdmin{Pool: p, Log: log, Now: time.Now})
 	adminv1.RegisterRebuildAdminServiceServer(s, &writer.RebuildAdmin{Pool: p, Log: log, Now: time.Now})
@@ -323,6 +381,73 @@ func purgeDeleted(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	log.Info("已物理删除到期的删除标记文档", slog.Int64("docs", n), slog.Duration("grace", grace))
+	return nil
+}
+
+// backupDeps 连接备份桶（BF_BACKUP_*，跨地域复制到灾备站点）与包裹数据密钥的 Vault transit（主密钥 BF_BACKUP_KEY）。
+func backupDeps(ctx context.Context) (backup.Bucket, backup.Wrapper, error) {
+	bucket, err := backup.OpenFromEnv(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	addr := os.Getenv("VAULT_ADDR")
+	if addr == "" {
+		return nil, nil, errors.New("未设置 VAULT_ADDR")
+	}
+	key := os.Getenv("BF_BACKUP_KEY")
+	if key == "" {
+		key = "bambuflow-backup"
+	}
+	return bucket, &backup.Transit{Addr: addr, Key: key, Token: os.Getenv("VAULT_TOKEN"), TokenFile: os.Getenv("VAULT_TOKEN_FILE"),
+		HTTP: &http.Client{Timeout: 30 * time.Second}}, nil
+}
+
+// runBackup 是每小时的灾备备份（总体设计 11.5，internal/backup）。
+func runBackup(ctx context.Context, log *slog.Logger) error {
+	p, err := pool(ctx)
+	if err != nil {
+		return err
+	}
+	defer p.Close()
+	bucket, keys, err := backupDeps(ctx)
+	if err != nil {
+		return err
+	}
+	res, err := (&backup.Backup{Pool: p, Bucket: bucket, Keys: keys, Log: log, Now: time.Now}).Run(ctx)
+	if err != nil {
+		return err
+	}
+	log.Info("备份完成", slog.String("snapshot", res.Snapshot), slog.Int("docs", res.Docs), slog.Int("written", res.Written),
+		slog.Int("keyring_shards", res.Shards), slog.Int("receipts", res.Receipts), slog.Int("expired_snapshots", res.Expired))
+	return nil
+}
+
+// runRestore 在灾备站点把快照（不给时取最新的）恢复进空库；之后把在线平面指向这个库并切 DNS（运维手册“灾备切换”）。
+func runRestore(ctx context.Context, log *slog.Logger, args []string) error {
+	p, err := pool(ctx)
+	if err != nil {
+		return err
+	}
+	defer p.Close()
+	bucket, keys, err := backupDeps(ctx)
+	if err != nil {
+		return err
+	}
+	snapshot := ""
+	if len(args) > 0 {
+		snapshot = args[0]
+	} else if snapshot, err = backup.Latest(ctx, bucket); err != nil {
+		return err
+	}
+	res, err := (&backup.Restore{Pool: p, Bucket: bucket, Keys: keys, Log: log}).Run(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	log.Info("恢复完成", slog.String("snapshot", res.Snapshot), slog.String("version", res.Version), slog.Int("restored", res.Restored),
+		slog.Int("shredded", res.Shredded), slog.Int("missing", res.Missing))
+	if res.Missing > 0 {
+		return fmt.Errorf("有 %d 份文档的备份对象缺失", res.Missing)
+	}
 	return nil
 }
 

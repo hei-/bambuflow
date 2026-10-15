@@ -21,6 +21,7 @@ import grpc
 import redis
 from bambuflow_vocabulary import Vocabularies
 from google.protobuf.timestamp_pb2 import Timestamp
+from opentelemetry import metrics
 
 from bambuflow.common.v1 import types_pb2
 from bambuflow.ingestion.v1 import events_pb2, index_writer_pb2
@@ -62,6 +63,20 @@ REBUILD_GROUP = "processing-rebuild"
 PIPELINE_VERSION = "p3-3"
 
 _log = logging.getLogger(__name__)
+
+# 入库指标（入库管道详设 13 节）：维度只用数据源、阶段与结果，不记文档内容
+_meter = metrics.get_meter("bambuflow_processing")
+# 变更到可检索：从源端发生到写进线上索引，按数据源（p95 超过 60 分钟告警）
+_freshness = _meter.create_histogram(
+    "ingest.freshness", unit="s", description="内容变更从发生到写进索引的时间"
+)
+_documents = _meter.create_counter(
+    "ingest.documents", description="处理完的文档，按结果（written、unchanged、stale）"
+)
+_failures = _meter.create_counter("ingest.failures", description="处理失败，按阶段与原因码")
+_dead_letters = _meter.create_counter("ingest.dead_letters", description="转入死信的文档")
+# 增量批命中率低于 80% 提示 chunk_id 或归一化可能变了
+_vector_cache = _meter.create_counter("ingest.vector_cache", description="向量缓存的查找结果")
 
 _CLASSIFICATION = {
     "public": types_pb2.CLASSIFICATION_PUBLIC,
@@ -327,6 +342,12 @@ class Worker:
         else:
             stats.stale += 1
             outcome = "stale"
+        _documents.add(1, {"source": evt.source_id, "outcome": outcome})
+        if outcome == "written" and evt.HasField("occurred_at"):
+            _freshness.record(
+                max(0.0, time.time() - evt.occurred_at.ToDatetime(dt.UTC).timestamp()),
+                {"source": evt.source_id},
+            )
         self._state.succeeded(evt, "write", outcome)
         if not self._enrich_failed:
             self._state.enrich_ok(evt.doc_id)
@@ -352,7 +373,9 @@ class Worker:
             },
         )
         stats.failed.append(evt.doc_id)
+        _failures.add(1, {"source": evt.source_id, "stage": f.stage, "code": f.code})
         if self._state.failed(evt, f):
+            _dead_letters.add(1, {"source": evt.source_id})
             stats.dead_lettered += 1
             self._stream.ack(msg_id)
 
@@ -487,6 +510,8 @@ class Worker:
             for j, i in enumerate(missing):
                 computed[i] = Vector(dense[j], sparse[j] if sparse is not None else None)
         if self._cache is not None:
+            _vector_cache.add(len(inputs) - len(missing), {"result": "hit"})
+            _vector_cache.add(len(missing), {"result": "miss"})
             _log.info(
                 "向量化",
                 extra={

@@ -89,6 +89,9 @@ func TestRotationPublishesBeforeSigningAndKeepsThePreviousKey(t *testing.T) {
 	if got := jwksKIDs(t, r.Issuer); len(got) != 1 || got[0] != first || kv.version != 1 {
 		t.Fatalf("未到期不应轮换: %v, version %d", got, kv.version)
 	}
+	if got := r.Remaining(); got != 30*24*time.Hour {
+		t.Fatalf("剩余有效期应为一个轮换周期: %s", got)
+	}
 	d := delegation(now)
 	d.Expires = now.Add(30*24*time.Hour + 2*time.Hour)
 	r.Issuer.now = func() time.Time { return now.Add(30*24*time.Hour - time.Hour) }
@@ -106,6 +109,10 @@ func TestRotationPublishesBeforeSigningAndKeepsThePreviousKey(t *testing.T) {
 	}
 	if got := jwksKIDs(t, r.Issuer); len(got) != 2 {
 		t.Fatalf("发布期间 JWKS 应有新旧两把: %v", got)
+	}
+	// 下一把已发布：按它的启用时间算，不报临近到期
+	if got := r.Remaining(); got != 30*24*time.Hour+RotationLead {
+		t.Fatalf("发布后剩余有效期应从下一把的启用时间算起: %s", got)
 	}
 
 	now = now.Add(RotationLead)
@@ -167,6 +174,10 @@ func TestRotationWriteFailureKeepsSigning(t *testing.T) {
 	}
 	if _, _, err := r.Issuer.Issue(Subject{Username: "alice", Tenant: "credit"}); err != nil {
 		t.Fatal(err)
+	}
+	// 一直轮换不了：剩余有效期为负，由告警发现
+	if r.Remaining() >= 0 {
+		t.Fatalf("轮换写不回时剩余有效期应已过期: %s", r.Remaining())
 	}
 }
 
